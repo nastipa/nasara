@@ -1,0 +1,29 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "types": ["react", "react-native"],
+
+    "baseUrl": ".",
+    "paths": {
+      "@/": ["./"]
+    }
+  },
+  "include": [
+    "app/*/",
+    "components/*/",
+    "constants/*/",
+    "context/*/",
+    "data/*/",
+    "hooks/*/",
+    "lib/*/",
+    "supabase.ts"
+  ],
+  "exclude": ["node_modules", "android", "ios"]
+}
