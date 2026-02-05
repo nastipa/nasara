@@ -10,21 +10,21 @@ export default {
 
     plugins: ["expo-router", "expo-video"],
 
-    web: {
-      bundler: "metro",
-    },
-
     android: {
-      package: "com.nasara.app", // ✅ REQUIRED
+      package: "com.nastipa.nasara",
     },
 
     ios: {
-      bundleIdentifier: "com.nasara.app", // ✅ REQUIRED
+      bundleIdentifier: "com.nastipa.nasara",
     },
 
     extra: {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
+
+      eas: {
+        projectId: "633ed251-5676-4382-83d6-34b631bc416b",
+      },
     },
   },
 };
