@@ -8,28 +8,31 @@ export default {
 
     platforms: ["ios", "android", "web"],
 
-    plugins: ["expo-router", "expo-video"],
-
-    // ✅ FIX ICON PATHS
+    // ✅ App Icon (FIXED PATH)
     icon: "./assets/images/icon.png",
 
+    // ✅ Splash Screen (FIXED PATH)
     splash: {
       image: "./assets/images/splash.png",
       resizeMode: "contain",
       backgroundColor: "#ffffff",
     },
 
+    plugins: ["expo-router", "expo-video"],
+
+    // ✅ Android Config + Permissions + Adaptive Icon
     android: {
       package: "com.nastipa.nasara",
+
+      permissions: ["CAMERA", "RECORD_AUDIO"],
 
       adaptiveIcon: {
         foregroundImage: "./assets/images/adaptive-icon.png",
         backgroundColor: "#ffffff",
       },
-
-      permissions: ["CAMERA", "RECORD_AUDIO"],
     },
 
+    // ✅ iOS Config + Permissions
     ios: {
       bundleIdentifier: "com.nastipa.nasara",
 
@@ -41,6 +44,7 @@ export default {
       },
     },
 
+    // ✅ Extra ENV + EAS Project ID
     extra: {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
