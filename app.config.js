@@ -10,12 +10,35 @@ export default {
 
     plugins: ["expo-router", "expo-video"],
 
+    // ✅ FIX ICON PATHS
+    icon: "./assets/images/icon.png",
+
+    splash: {
+      image: "./assets/images/splash.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff",
+    },
+
     android: {
       package: "com.nastipa.nasara",
+
+      adaptiveIcon: {
+        foregroundImage: "./assets/images/adaptive-icon.png",
+        backgroundColor: "#ffffff",
+      },
+
+      permissions: ["CAMERA", "RECORD_AUDIO"],
     },
 
     ios: {
       bundleIdentifier: "com.nastipa.nasara",
+
+      infoPlist: {
+        NSCameraUsageDescription:
+          "Nasara needs camera access for live selling broadcasts.",
+        NSMicrophoneUsageDescription:
+          "Nasara needs microphone access for live selling broadcasts.",
+      },
     },
 
     extra: {
