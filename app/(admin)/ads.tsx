@@ -1,38 +1,20 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
-  FlatList,
   Image,
+  ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-
 import { supabase } from "../../lib/supabase";
-import { useAdmin } from "../../lib/useAdmin";
-const showAlert = (title: string, message: string) => {
-  if (typeof window !== "undefined") {
-    window.alert(title + "\n\n" + message);
-  } else {
-    Alert.alert(title, message);
-  }
-};
 
-
-export default function AdsAdmin() {
-  const router = useRouter();
-  const isAdmin = useAdmin();
-
-  const [loading, setLoading] = useState(true);
+export default function AdminAdsApproval() {
   const [ads, setAds] = useState<any[]>([]);
-  const [approvingId, setApprovingId] = useState<number | null>(null);
+  const router = useRouter();
 
-  /* ================= LOAD PENDING ADS ================= */
   const loadAds = async () => {
-    setLoading(true);
-
     const { data, error } = await supabase
       .from("ads")
       .select("*")
@@ -40,184 +22,125 @@ export default function AdsAdmin() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.log("LOAD ADS ERROR:", error.message);
-      Alert.alert("Error loading ads", error.message);
-      setAds([]);
-    } else {
-      setAds(data || []);
+      Alert.alert("Error", error.message);
+      return;
     }
 
-    setLoading(false);
+    setAds(data ?? []);
   };
 
-  /* ================= RUN ON OPEN ================= */
   useEffect(() => {
-    if (isAdmin) {
-      loadAds();
-    } else {
-      setLoading(false);
-    }
-  }, [isAdmin]);
+    loadAds();
+  }, []);
 
-  /* ================= APPROVE AD ================= */
   const approveAd = async (ad: any) => {
-    if (approvingId === ad.id) return;
-
-    setApprovingId(ad.id);
-
     try {
-      console.log("APPROVING AD:", ad.id);
+      const days = Number(ad.days) || 1;
 
-      /* ✅ FIX: ALWAYS VALID DAYS */
-      const totalDays = Number(ad.days) > 0 ? Number(ad.days) : 1;
+      const expireDate = new Date();
+      expireDate.setDate(expireDate.getDate() + days);
 
-      /* ✅ FIX: SET START + END DATES PROPERLY */
-      const start = new Date();
-      const end = new Date();
-      end.setDate(start.getDate() + totalDays);
+      const expires_at = expireDate.toISOString();
 
-      console.log("START:", start.toISOString());
-      console.log("END:", end.toISOString());
+      let title = ad.title;
 
-      /* ✅ UPDATE AD PROPERLY */
-      const { data, error } = await (supabase as any)
+      if (!title || title.trim() === "") {
+        title = "Sponsored Ad";
+      }
+
+      const { error } = await (supabase as any)
         .from("ads")
         .update({
-          status: "active",
-
-          // REQUIRED FOR BROWSE
+          status: "approved",
           is_active: true,
-
-          // REQUIRED FOR FEED QUERY
-          position: "feed",
-
-          // REQUIRED FOR DATE FILTERS
-          starts_at: start.toISOString(),
-          ends_at: end.toISOString(),
-
-           // ✅ ADD THIS
-         approved_at: new Date().toISOString(),
+          title: title,
+          expires_at: expires_at,
         })
-        .eq("id", ad.id)
-        .select()
-        .single();
+        .eq("id", ad.id);
 
       if (error) {
-        console.log("APPROVE ERROR FULL:", error);
-        showAlert("Approval failed", error.message);
-        setApprovingId(null);
+        Alert.alert("Error", error.message);
         return;
       }
 
-      console.log("APPROVED RESULT:", data);
+      Alert.alert("Approved ✅", "Ad is now live on Browse.");
 
-      /* ✅ Notify user */
-      await (supabase as any).from("notifications").insert({
-        user_id: ad.user_id,
-        message: "Your ad has been approved and is now live 🎉",
-      });
-
-      showAlert("Approved!", "Ad is now active");
-
-      /* ✅ Remove instantly from UI */
-      setAds((prev) => prev.filter((x) => x.id !== ad.id));
-    } catch (e: any) {
-      console.log("UNEXPECTED APPROVE ERROR:", e.message);
-      showAlert("Unexpected error", e.message);
+      loadAds();
+    } catch (err) {
+      console.log(err);
+      Alert.alert("Error", "Approval failed");
     }
-
-    setApprovingId(null);
   };
 
-  /* ================= GUARDS ================= */
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center" }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  if (!isAdmin) {
-    return <Text style={{ margin: 20 }}>Not authorized</Text>;
-  }
-
-  /* ================= UI ================= */
   return (
-    <View style={{ flex: 1 }}>
-      <FlatList
-        data={ads}
-        keyExtractor={(item) => String(item.id)}
-        ListEmptyComponent={
-          <Text style={{ textAlign: "center", marginTop: 40 }}>
-            No pending ads 🎉
-          </Text>
-        }
-        renderItem={({ item }) => (
-          <View
-            style={{
-              padding: 12,
-              borderBottomWidth: 1,
-              borderColor: "#ddd",
-            }}
-          >
-            {/* IMAGE */}
-            {item.image_url ? (
-              <Image
-                source={{ uri: item.image_url + "?t=" + Date.now() }}
-                style={{
-                  height: 160,
-                  borderRadius: 8,
-                  backgroundColor: "#eee",
-                }}
-                resizeMode="cover"
-              />
-            ) : (
-              <Text style={{ marginBottom: 8 }}>No image uploaded</Text>
-            )}
-
-            {/* TITLE */}
-            <Text style={{ marginTop: 8, fontWeight: "bold", fontSize: 16 }}>
-              {item.title}
-            </Text>
-
-            <Text>Days: {item.days}</Text>
-            <Text>Amount: {item.amount} GHS</Text>
-
-            {/* APPROVE BUTTON */}
-            <TouchableOpacity
-              onPress={() => approveAd(item)}
-              disabled={approvingId === item.id}
-              style={{
-                backgroundColor:
-                  approvingId === item.id ? "#9ca3af" : "green",
-                padding: 12,
-                marginTop: 10,
-                borderRadius: 6,
-              }}
-            >
-              <Text style={{ color: "white", textAlign: "center" }}>
-                {approvingId === item.id ? "Approving..." : "Approve Ad"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      />
-
-      {/* BACK */}
+    <ScrollView style={{ padding: 16 }}>
       <TouchableOpacity
-        onPress={() => router.replace("/(admin)")}
+        onPress={() => router.push("/(admin)")}
         style={{
-          padding: 14,
-          backgroundColor: "#111827",
-          margin: 12,
+          backgroundColor: "black",
+          padding: 10,
           borderRadius: 8,
+          marginBottom: 12,
         }}
       >
         <Text style={{ color: "white", textAlign: "center" }}>
-          Back to Admin Dashboard
+          ← Back to Admin Dashboard
         </Text>
       </TouchableOpacity>
-    </View>
+
+      <Text style={{ fontSize: 22, fontWeight: "bold" }}>
+        📢 Ads Approvals
+      </Text>
+
+      {ads.length === 0 && (
+        <Text style={{ marginTop: 20 }}>No pending ads</Text>
+      )}
+
+      {ads.map((ad) => (
+        <View
+          key={ad.id}
+          style={{
+            marginTop: 16,
+            borderWidth: 1,
+            padding: 14,
+            borderRadius: 12,
+            borderColor: "#ddd",
+          }}
+        >
+          {ad.image_url && (
+            <Image
+              source={{ uri: ad.image_url }}
+              style={{
+                width: "100%",
+                height: 180,
+                borderRadius: 10,
+              }}
+              resizeMode="contain"
+            />
+          )}
+
+          <Text style={{ fontWeight: "bold", marginTop: 10 }}>
+            {ad.title || "Sponsored Ad"}
+          </Text>
+
+          <Text>Days: {ad.days}</Text>
+          <Text>Amount: GH₵ {ad.amount}</Text>
+
+          <TouchableOpacity
+            onPress={() => approveAd(ad)}
+            style={{
+              backgroundColor: "green",
+              padding: 12,
+              marginTop: 12,
+              borderRadius: 8,
+            }}
+          >
+            <Text style={{ color: "white", textAlign: "center" }}>
+              Approve Ad
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ))}
+    </ScrollView>
   );
 }

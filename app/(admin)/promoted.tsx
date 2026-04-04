@@ -2,272 +2,188 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
-import { useAdmin } from "../../lib/useAdmin";
 
-type PromoteRequest = {
-  id: number;
-  amount: number;
-  seller_id: string;
-  item_id: number;
-  created_at: string;
-  items_live: {
-    id: number;
-    title: string;
-    image_url: string | null;
-    user_id: string;
-  };
-};
-
-export default function PromotedAdmin() {
-  const router = useRouter();
-  const isAdmin = useAdmin();
-
+export default function AdminPromoted() {
   const [loading, setLoading] = useState(true);
-  const [requests, setRequests] = useState<PromoteRequest[]>([]);
-  const [sellerNames, setSellerNames] = useState<Record<string, string>>({});
+  const [promos, setPromos] = useState<any[]>([]);
+  const router = useRouter();
 
-  /* ================= LOAD REQUESTS ================= */
-
-  const loadRequests = async () => {
+  /* ================= LOAD PROMOTIONS ================= */
+  const loadPromotions = async () => {
     setLoading(true);
 
     const { data, error } = await supabase
       .from("promoted")
       .select(`
         id,
-        amount,
-        seller_id,
         item_id,
-        created_at,
+        seller_id,
+        amount,
+        payment_code,
+        promoted_until,
+        status,
         items_live (
-          id,
           title,
-          image_url,
-          user_id
+          image_url
         )
       `)
-      .eq("type", "promote")
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.log("PROMOTED ADMIN ERROR:", error.message);
-      setRequests([]);
+      Alert.alert("Error", error.message);
     } else {
-      setRequests(data || []);
+      setPromos(data || []);
     }
 
     setLoading(false);
   };
 
-  /* ================= LOAD SELLER NAME ================= */
-
-  const loadSellerName = async (sellerId: string) => {
-    if (sellerNames[sellerId]) return;
-
-    const { data } = await (supabase as any)
-      .from("profiles")
-      .select("full_name")
-      .eq("id", sellerId)
-      .single();
-
-    setSellerNames((prev) => ({
-      ...prev,
-      [sellerId]: data?.full_name || "Unknown Seller",
-    }));
-  };
+  useEffect(() => {
+    loadPromotions();
+  }, []);
 
   /* ================= APPROVE ================= */
+  const approvePromo = async (promo: any) => {
+    const { error } = await (supabase as any)
+      .from("promoted")
+      .update({ status: "approved" })
+      .eq("id", promo.id);
 
-  const approvePromotion = async (req: PromoteRequest) => {
-    const start = new Date();
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
 
-    // ✅ PROMOTION FOR 7 DAYS
-    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    /* ✅ UPDATE ITEM (FIXED COLUMNS) */
+    // Activate item promoted flag
     await (supabase as any)
       .from("items_live")
-      .update({
-        is_promoted: true,
+      .update({ is_promoted: true })
+      .eq("id", promo.item_id);
 
-        // ✅ THIS IS WHAT BROWSE USES
-        promoted_until: end.toISOString(),
-      })
-      .eq("id", req.item_id);
-
-    /* ✅ UPDATE REQUEST STATUS */
-    await (supabase as any)
-      .from("promoted")
-      .update({
-        status: "active", // ✅ MUST BE ACTIVE
-        approved_at: new Date().toISOString(),
-      })
-      .eq("id", req.id);
-
-    /* ✅ NOTIFY SELLER */
-    await (supabase as any).from("notifications").insert({
-      user_id: req.items_live.user_id,
-      message: "Your item has been promoted successfully 🎉",
-    });
-
-    /* ✅ REMOVE FROM UI */
-    setRequests((prev) => prev.filter((r) => r.id !== req.id));
+    Alert.alert("Approved ✅", "Item is now promoted!");
+    loadPromotions();
   };
 
-  /* ================= EFFECTS ================= */
+  /* ================= REJECT ================= */
+  const rejectPromo = async (promo: any) => {
+    await (supabase as any)
+      .from("promoted")
+      .update({ status: "rejected" })
+      .eq("id", promo.id);
 
-  useEffect(() => {
-    if (isAdmin) loadRequests();
-  }, [isAdmin]);
+    Alert.alert("Rejected ❌");
+    loadPromotions();
+  };
 
-  useEffect(() => {
-    requests.forEach((r) => loadSellerName(r.seller_id));
-  }, [requests]);
-
-  /* ================= GUARDS ================= */
-
-  if (isAdmin === null || loading) {
+  /* ================= UI ================= */
+  if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={{ flex: 1, justifyContent: "center" }}>
         <ActivityIndicator size="large" />
       </View>
     );
   }
 
-  if (!isAdmin) {
-    return (
-      <View style={styles.center}>
-        <Text>You are not authorized</Text>
-      </View>
-    );
-  }
-
-  /* ================= UI ================= */
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>⭐ Promotion Requests</Text>
+    <FlatList
+      data={promos}
+      keyExtractor={(x) => String(x.id)}
+      contentContainerStyle={{ padding: 16 }}
 
-      <FlatList
-        data={requests}
-        keyExtractor={(i) => i.id.toString()}
-        ListEmptyComponent={
-          <Text style={{ textAlign: "center", marginTop: 40 }}>
-            No pending promotion requests
+      /* ✅ BACK TO ADMIN DASHBOARD BUTTON ADDED */
+      ListHeaderComponent={
+        <TouchableOpacity
+          onPress={() => router.push("/(admin)")}
+          style={{
+            backgroundColor: "black",
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>
+            ← Back to Admin Dashboard
           </Text>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            {item.items_live?.image_url && (
-              <Image
-                source={{ uri: item.items_live.image_url }}
-                style={styles.image}
-              />
-            )}
+        </TouchableOpacity>
+      }
 
-            <Text style={styles.itemTitle}>
-              {item.items_live?.title}
-            </Text>
+      ListEmptyComponent={
+        <Text style={{ textAlign: "center", marginTop: 50 }}>
+          No pending promotions
+        </Text>
+      }
 
-            <Text>
-              Seller: {sellerNames[item.seller_id] || "Loading..."}
-            </Text>
+      renderItem={({ item }) => (
+        <View
+          style={{
+            backgroundColor: "white",
+            padding: 14,
+            borderRadius: 12,
+            marginBottom: 14,
+            borderWidth: 1,
+            borderColor: "#ddd",
+          }}
+        >
+          {/* ITEM IMAGE */}
+          {item.items_live?.image_url && (
+            <Image
+              source={{ uri: item.items_live.image_url }}
+              style={{
+                width: "100%",
+                height: 180,
+                borderRadius: 10,
+              }}
+            />
+          )}
 
-            <Text>Amount Paid: GHS {item.amount}</Text>
+          <Text style={{ fontWeight: "bold", marginTop: 10 }}>
+            {item.items_live?.title}
+          </Text>
 
-            <Text style={styles.date}>
-              Requested: {new Date(item.created_at).toDateString()}
-            </Text>
+          <Text>Amount: GH₵ {item.amount}</Text>
+          <Text>Code: {item.payment_code}</Text>
+
+          {/* ACTIONS */}
+          <View style={{ flexDirection: "row", marginTop: 12, gap: 10 }}>
+            <TouchableOpacity
+              onPress={() => approvePromo(item)}
+              style={{
+                flex: 1,
+                backgroundColor: "green",
+                padding: 12,
+                borderRadius: 8,
+              }}
+            >
+              <Text style={{ color: "white", textAlign: "center" }}>
+                Approve
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.approveBtn}
-              onPress={() => approvePromotion(item)}
+              onPress={() => rejectPromo(item)}
+              style={{
+                flex: 1,
+                backgroundColor: "red",
+                padding: 12,
+                borderRadius: 8,
+              }}
             >
-              <Text style={styles.approveText}>Approve Promotion</Text>
+              <Text style={{ color: "white", textAlign: "center" }}>
+                Reject
+              </Text>
             </TouchableOpacity>
           </View>
-        )}
-      />
-
-      <TouchableOpacity
-        style={styles.backBtn}
-        onPress={() => router.replace("/(admin)")}
-      >
-        <Text style={styles.backText}>⬅ Back to Admin Dashboard</Text>
-      </TouchableOpacity>
-    </View>
+        </View>
+      )}
+    />
   );
 }
-
-/* ================= STYLES ================= */
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-    backgroundColor: "#f9fafb",
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  card: {
-    backgroundColor: "white",
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#eee",
-  },
-  image: {
-    width: "100%",
-    height: 160,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  itemTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 6,
-  },
-  date: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 4,
-  },
-  approveBtn: {
-    backgroundColor: "#16a34a",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 12,
-  },
-  approveText: {
-    color: "white",
-    textAlign: "center",
-    fontWeight: "bold",
-  },
-  backBtn: {
-    padding: 14,
-  },
-  backText: {
-    textAlign: "center",
-    color: "#2563eb",
-    fontWeight: "bold",
-  },
-});

@@ -1,52 +1,94 @@
-import { Redirect, Stack } from "expo-router";
-import { useEffect, useState } from "react";
+import { Stack, useRouter } from "expo-router";
+import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { supabase } from "../../lib/supabase";
+import { useAdmin } from "../../hooks/useAdmin";
 
 export default function AdminLayout() {
-  const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const router = useRouter();
+  const { isAdmin, loading } = useAdmin();
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      const { data } = await supabase.auth.getSession();
+    if (!loading && !isAdmin) {
+      router.replace("/browse");
+    }
+  }, [loading, isAdmin]);
 
-      const session = data.session;
-
-      if (!session) {
-        setIsAdmin(false);
-        setLoading(false);
-        return;
-      }
-
-      const userId = session.user.id;
-
-      const { data: admin } = await supabase
-        .from("admins")
-        .select("user_id")
-        .eq("user_id", userId);
-
-      setIsAdmin(!!admin && admin.length > 0);
-      setLoading(false);
-    };
-
-    checkAdmin();
-  }, []);
-
-  // ⏳ LOADING
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <ActivityIndicator size="large" />
       </View>
     );
   }
 
-  // 🚫 NOT ADMIN
-  if (!isAdmin) {
-    return <Redirect href="/" />;
-  }
+  if (!isAdmin) return null;
 
-  // 👑 ADMIN OK
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: "#111827" },
+        headerTintColor: "#fff",
+        headerTitleStyle: { fontWeight: "bold" },
+      }}
+    >
+      <Stack.Screen
+        name="index"
+        options={{ title: "Admin Dashboard" }}
+      />
+
+      <Stack.Screen
+        name="ads"
+        options={{ title: "Approve Ads" }}
+      />
+
+      <Stack.Screen
+        name="banner"
+        options={{ title: "Approve Banner" }}
+      />
+
+      <Stack.Screen
+        name="promotion"
+        options={{ title: "Approve Promotion" }}
+      />
+
+      <Stack.Screen
+        name="boost"
+        options={{ title: "Approve Boost" }}
+      />
+      <Stack.Screen
+        name="battle"
+        options={{ title: "Approve Battle" }}
+      />
+      <Stack.Screen
+        name="users"
+        options={{ title: "Manage Users" }}
+      />
+
+      <Stack.Screen
+        name="marketplace"
+        options={{ title: "Marketplace Moderation" }}
+      />
+
+      <Stack.Screen
+        name="live"
+        options={{ title: "Live System Control" }}
+      />
+
+      <Stack.Screen
+        name="finance"
+        options={{ title: "Finance & Payouts" }}
+      />
+
+      <Stack.Screen
+        name="analytics"
+        options={{ title: "Platform Analytics" }}
+      />
+    </Stack>
+  );
 }

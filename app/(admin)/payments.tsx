@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Text,
@@ -8,139 +9,131 @@ import {
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
-export default function AdminPayments() {
-  const [list, setList] = useState<any[]>([]);
+export default function PaymentsApproval() {
+  const [loading, setLoading] = useState(true);
+  const [payments, setPayments] = useState<any[]>([]);
 
-  /* ===== LOAD PENDING PAYMENTS ===== */
-  const load = async () => {
+  /* ================= LOAD PAYMENTS ================= */
+  const loadPayments = async () => {
+    setLoading(true);
+
     const { data, error } = await supabase
-      .from("payment_requests")
-      .select(
-        `
-        id,
-        type,
-        amount,
-        item_id,
-        seller_id,
-        created_at,
-        status,
-        profiles (
-          full_name
-        ),
-        live_items (
-          id,
-          title,
-          image_url
-        )
-      `
-      )
+      .from("payments")
+      .select("*")
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
-    if (error) console.log(error);
-    setList(data || []);
-  };
-
-  /* ===== APPROVE PAYMENT ===== */
-  const approve = async (p: any) => {
-    try {
-      const now = new Date();
-      const end = new Date();
-      end.setDate(end.getDate() + 7); // default 7 days promote
-
-      /* ===== PROMOTE ITEM ===== */
-      if (p.type === "promote") {
-        await (supabase as any)
-          .from("live_items")
-          .update({
-            is_promoted: true,
-            promoted_start_date: now.toISOString(),
-            promoted_end_date: end.toISOString(),
-            advertiser_name: p.profiles?.full_name ?? "Unknown",
-            paid_amount: p.amount,
-          })
-          .eq("id", p.item_id);
-      }
-
-      /* ===== MARK PAYMENT APPROVED ===== */
-      await (supabase as any)
-        .from("payment_requests")
-        .update({
-          status: "approved",
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", p.id);
-
-      /* ===== NOTIFY SELLER ===== */
-      await (supabase as any).from("notifications").insert({
-        user_id: p.seller_id,
-        message:
-          "✅ Your " +
-          p.type +
-          " payment has been approved. Your item is now live.",
-      });
-
-      Alert.alert("Approved", "Payment approved successfully");
-      load();
-    } catch (e) {
-      console.log(e);
-      Alert.alert("Error", "Failed to approve payment");
+    if (error) {
+      Alert.alert("Error", error.message);
     }
+
+    setPayments(data || []);
+    setLoading(false);
   };
 
   useEffect(() => {
-    load();
+    loadPayments();
   }, []);
 
-  /* ===== UI ===== */
+  /* ================= APPROVE PAYMENT ================= */
+  const approvePayment = async (pay: any) => {
+    Alert.alert(
+      "Approve Payment?",
+      `Approve ${pay.product_type.toUpperCase()} request for GH₵${pay.amount}?`,
+      [
+        { text: "Cancel" },
+        {
+          text: "Approve",
+          onPress: async () => {
+            /* 1️⃣ Mark payment approved */
+            await (supabase as any)
+              .from("payments")
+              .update({ status: "approved" })
+              .eq("id", pay.id);
+
+            /* 2️⃣ Activate promotion/boost automatically */
+            if (pay.product_type === "promote" || pay.product_type === "boost") {
+              await (supabase as any)
+                .from("promoted")
+                .update({ status: "approved" })
+                .eq("payment_code", pay.code);
+            }
+
+            /* 3️⃣ Reload */
+            loadPayments();
+
+            Alert.alert("Approved ✅", "Request activated successfully.");
+          },
+        },
+      ]
+    );
+  };
+
+  /* ================= UI ================= */
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center" }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
+
   return (
-    <FlatList
-      data={list}
-      keyExtractor={(i) => i.id.toString()}
-      renderItem={({ item }) => (
-        <View
-          style={{
-            padding: 12,
-            borderBottomWidth: 1,
-            borderColor: "#e5e7eb",
-          }}
-        >
-          <Text>Type: {item.type}</Text>
-          <Text>Amount: GHS {item.amount}</Text>
+    <View style={{ flex: 1, padding: 20 }}>
+      <Text
+        style={{
+          fontSize: 22,
+          fontWeight: "bold",
+          marginBottom: 15,
+          textAlign: "center",
+        }}
+      >
+        💰 Pending Payments
+      </Text>
 
-          {item.profiles?.full_name && (
-            <Text>Seller: {item.profiles.full_name}</Text>
-          )}
-
-          {item.live_items?.title && (
-            <Text>Item: {item.live_items.title}</Text>
-          )}
-
-          <Text>
-            Requested:{" "}
-            {new Date(item.created_at).toDateString()}
+      <FlatList
+        data={payments}
+        keyExtractor={(x) => String(x.id)}
+        ListEmptyComponent={
+          <Text style={{ textAlign: "center", marginTop: 30 }}>
+            No pending payments right now.
           </Text>
-
-          <TouchableOpacity
-            onPress={() => approve(item)}
+        }
+        renderItem={({ item }) => (
+          <View
             style={{
-              backgroundColor: "green",
-              padding: 10,
-              marginTop: 6,
-              borderRadius: 6,
+              backgroundColor: "white",
+              padding: 15,
+              borderRadius: 12,
+              marginBottom: 12,
+              borderWidth: 1,
+              borderColor: "#eee",
             }}
           >
-            <Text style={{ color: "white", textAlign: "center" }}>
-              Approve
+            <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+              {item.product_type.toUpperCase()}
             </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      ListEmptyComponent={
-        <Text style={{ textAlign: "center", marginTop: 30 }}>
-          No pending payments
-        </Text>
-      }
-    />
+
+            <Text>Amount: GH₵ {item.amount}</Text>
+            <Text>User: {item.user_id}</Text>
+            <Text>Code: {item.code}</Text>
+
+            <TouchableOpacity
+              onPress={() => approvePayment(item)}
+              style={{
+                backgroundColor: "green",
+                padding: 12,
+                borderRadius: 8,
+                marginTop: 10,
+              }}
+            >
+              <Text style={{ color: "white", textAlign: "center" }}>
+                Approve ✅
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      />
+    </View>
   );
 }

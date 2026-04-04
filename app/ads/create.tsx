@@ -4,194 +4,381 @@ import { useState } from "react";
 import {
   Alert,
   Image,
+  Modal,
   Platform,
+  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
+const PRICE_PER_DAY = 30;
+
+const CLOUD_NAME = "ajars";
+const UPLOAD_PRESET = "ajars_images";
+
+/* ================= ALERT FIX ================= */
+const showAlert = (title: string, message: string) => {
+  if (typeof window !== "undefined") {
+    window.alert(title + "\n\n" + message);
+  } else {
+    Alert.alert(title, message);
+  }
+};
+
 export default function CreateAd() {
+
   const router = useRouter();
 
   const [title, setTitle] = useState("");
   const [link, setLink] = useState("");
-  const [days, setDays] = useState("1");
+  const [days, setDays] = useState("3");
 
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [image, setImage] = useState<any>(null);
 
-  const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const pricePerDay = 5;
-  const amount = Number(days) * pricePerDay;
+  const [payVisible, setPayVisible] = useState(false);
 
-  /* ===== PICK IMAGE ===== */
+  const [adData, setAdData] = useState<any>(null);
+
+  const momoName = "NASARA MARKET";
+  const momoNumber = "0539703374";
+  const momoNetwork = "MTN";
+
+  const totalAmount = Number(days || 0) * PRICE_PER_DAY;
+
+  /* ================= PICK IMAGE ================= */
+
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      base64: true, // ✅ MUST BE TRUE
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images", "videos"],
+      quality: 0.8
     });
 
-    if (!res.canceled) {
-      setImageUri(res.assets[0].uri);
-      setImageBase64(res.assets[0].base64 || null);
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+
+    if (Platform.OS === "web") {
+      setImage(asset.file);
+    } else {
+      setImage(asset.uri);
     }
+
   };
 
-  /* ===== SAFE EXPO UPLOAD (BASE64 FIX) ===== */
+  /* ================= CLOUDINARY UPLOAD ================= */
+
   const uploadImage = async () => {
-    if (!imageBase64) throw new Error("No image selected");
 
-    const fileName = "ads_" + Date.now() + ".jpg";
+    if (!image) return null;
 
-    // ✅ Convert base64 → bytes
-    const bytes = Uint8Array.from(
-      atob(imageBase64),
-      (c) => c.charCodeAt(0)
+    const formData = new FormData();
+
+    if (Platform.OS === "web") {
+
+      formData.append("file", image);
+
+    } else {
+
+      formData.append("file", {
+        uri: image,
+        type: "image/jpeg",
+        name: "ad.jpg"
+      } as any);
+
+    }
+
+    formData.append("upload_preset", UPLOAD_PRESET);
+
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+      {
+        method: "POST",
+        body: formData
+      }
     );
 
-    const { error } = await supabase.storage
-      .from("ads")
-      .upload(fileName, bytes, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+    const data = await response.json();
 
-    if (error) throw error;
-
-    const publicUrl = supabase.storage
-      .from("ads")
-      .getPublicUrl(fileName).data.publicUrl;
-
-    return publicUrl;
-  };
-
-  /* ===== SUBMIT ===== */
-  const submitAd = async () => {
-    if (submitting) return;
-    setSubmitting(true);
-
-    try {
-      if (!imageUri) throw new Error("Image required");
-
-      const auth = await supabase.auth.getUser();
-      if (!auth.data.user) throw new Error("Not logged in");
-
-      // ✅ Upload properly
-      const imageUrl = await uploadImage();
-
-      // CREATE AD
-      const { error } = await (supabase as any).from("ads").insert({
-        user_id: auth.data.user.id,
-        title,
-        link,
-        days: Number(days),
-        amount,
-        image_url: imageUrl,
-        position: "feed",
-        status: "pending",
-        is_active: false,
-      });
-
-      if (error) throw error;
-
-      // Notify admin
-      await (supabase as any).from("notifications").insert({
-        is_admin: true,
-        message: "New advertisement awaiting approval",
-      });
-
-      // ✅ MOMO PAYMENT MESSAGE RESTORED
-      const { data: admin } = await (supabase as any)
-        .from("profiles")
-        .select("momo_name, momo_number")
-        .eq("is_admin", true)
-        .single();
-
-      const message =
-        "Send " +
-        amount +
-        " GHS to:\n\n" +
-        admin?.momo_name +
-        "\n" +
-        admin?.momo_number +
-        "\n\nThen wait for admin approval.";
-
-      if (Platform.OS === "web") {
-        window.alert(message);
-      } else {
-        Alert.alert("Pay for Advertisement", message);
-      }
-
-      router.replace("/(tabs)/browse");
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to submit ad");
-    } finally {
-      setSubmitting(false);
+    if (!data.secure_url) {
+      showAlert("Upload Error", "Image upload failed");
+      return null;
     }
+
+    return data.secure_url;
+
   };
+
+  /* ================= SUBMIT AD ================= */
+
+  const submitAd = async () => {
+
+    if (!title.trim() || !link.trim() || !days.trim() || !image) {
+      showAlert("Error", "Fill all fields and select image");
+      return;
+    }
+
+    setLoading(true);
+
+    const image_url = await uploadImage();
+
+    if (!image_url) {
+      setLoading(false);
+      return;
+    }
+
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      showAlert("Login Required", "Please login first");
+      setLoading(false);
+      return;
+    }
+
+   const { data, error } = await (supabase as any)
+  .from("ads")
+  .insert([
+    {
+      user_id: user.id,
+      title: title,
+      link: link,
+      image_url: image_url,
+      days: Number(days),
+      amount: totalAmount,
+      status: "pending",
+      is_active: false
+    }
+  ])
+  .select()
+  .single();
+
+    if (error) {
+  setLoading(false);
+
+  /* 🔥 HANDLE JWT EXPIRED */
+  if (error?.message?.includes("JWT expired")) {
+    await supabase.auth.signOut();
+    router.replace("/(auth)/login");
+    return;
+  }
+
+  showAlert("Error", error.message);
+  return;
+}
+
+setAdData({ user, adId: data.id });
+
+    setPayVisible(true);
+
+    setLoading(false);
+
+  };
+
+  /* ================= SEND PAYMENT ================= */
+
+  const sendPayment = async () => {
+
+    if (!adData) return;
+
+    const code = "AD-" + Date.now();
+
+    await (supabase as any)
+      .from("payments")
+      .insert({
+        user_id: adData.user.id,
+        product_type: "ad",
+        amount: totalAmount,
+        momo_name: momoName,
+        momo_number: momoNumber,
+        network: momoNetwork,
+        code,
+        status: "pending"
+      });
+
+    showAlert(
+      "Request Sent ✅",
+      `Ad Request Submitted!\n\nPay GH₵${totalAmount} to:\n${momoName}\n${momoNumber} (${momoNetwork})\n\nCode: ${code}`
+    );
+
+    setPayVisible(false);
+
+    router.replace("/ads/my-ads");
+
+  };
+
+  /* ================= UI ================= */
 
   return (
-    <View style={{ padding: 20 }}>
-      <Text style={{ fontSize: 22, fontWeight: "bold" }}>
-        Create Advertisement
-      </Text>
+    <>
+      <ScrollView style={{ padding: 16 }}>
 
-      <Text style={{ marginTop: 10 }}>Ad Title</Text>
-      <TextInput
-        value={title}
-        onChangeText={setTitle}
-        style={{ borderWidth: 1, padding: 12 }}
-      />
-
-      <Text style={{ marginTop: 10 }}>Link (optional)</Text>
-      <TextInput
-        value={link}
-        onChangeText={setLink}
-        style={{ borderWidth: 1, padding: 12 }}
-      />
-
-      <Text style={{ marginTop: 10 }}>Number of Days</Text>
-      <TextInput
-        keyboardType="number-pad"
-        value={days}
-        onChangeText={setDays}
-        style={{ borderWidth: 1, padding: 12 }}
-      />
-
-      <TouchableOpacity onPress={pickImage}>
-        <Text style={{ color: "blue", marginTop: 10 }}>
-          Pick Image
+        <Text style={{ fontSize: 22, fontWeight: "bold" }}>
+          📢 Create Advertisement
         </Text>
-      </TouchableOpacity>
 
-      {imageUri && (
-        <Image
-          source={{ uri: imageUri }}
-          style={{ height: 120, marginTop: 10 }}
+        <Text style={{ marginTop: 12 }}>Ad Title</Text>
+
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Enter ad title"
+          style={{
+            borderWidth: 1,
+            padding: 12,
+            borderRadius: 10,
+            marginBottom: 12
+          }}
         />
-      )}
 
-      <Text style={{ marginTop: 10 }}>
-        Total: {amount} GHS
-      </Text>
+        <Text>Website Link</Text>
 
-      <TouchableOpacity
-        disabled={submitting}
-        onPress={submitAd}
-        style={{
-          backgroundColor: submitting ? "#999" : "green",
-          padding: 14,
-          marginTop: 20,
-        }}
-      >
-        <Text style={{ color: "white", textAlign: "center" }}>
-          {submitting ? "Submitting..." : "Submit & Pay"}
+        <TextInput
+          value={link}
+          onChangeText={setLink}
+          placeholder="https://yourwebsite.com"
+          style={{
+            borderWidth: 1,
+            padding: 12,
+            borderRadius: 10,
+            marginBottom: 12
+          }}
+        />
+
+        <Text>Number of Days</Text>
+
+        <TextInput
+          value={days}
+          onChangeText={setDays}
+          keyboardType="numeric"
+          style={{
+            borderWidth: 1,
+            padding: 12,
+            borderRadius: 10,
+            marginBottom: 12
+          }}
+        />
+
+        <Text style={{ fontWeight: "bold", marginBottom: 10 }}>
+          Total Cost: GH₵ {totalAmount}
         </Text>
-      </TouchableOpacity>
-    </View>
+
+        <TouchableOpacity
+          onPress={pickImage}
+          style={{
+            backgroundColor: "#ddd",
+            padding: 14,
+            borderRadius: 10
+          }}
+        >
+          <Text>Select Ad Image</Text>
+        </TouchableOpacity>
+
+        {image && (
+
+          <Image
+            source={{
+              uri: Platform.OS === "web" ? URL.createObjectURL(image) : image
+            }}
+            style={{
+              width: "100%",
+              height: 200,
+              borderRadius: 14,
+              marginTop: 12,
+              resizeMode: "contain",
+              backgroundColor: "#f3f4f6"
+            }}
+          />
+
+        )}
+
+        <TouchableOpacity
+          onPress={submitAd}
+          disabled={loading}
+          style={{
+            backgroundColor: "green",
+            padding: 16,
+            borderRadius: 12,
+            marginTop: 20
+          }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>
+            {loading ? "Submitting..." : "Submit Ad"}
+          </Text>
+        </TouchableOpacity>
+
+      </ScrollView>
+
+      {/* PAYMENT MODAL */}
+
+      <Modal transparent visible={payVisible}>
+
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#0007",
+            justifyContent: "center",
+            padding: 20
+          }}
+        >
+
+          <View style={{ backgroundColor: "white", padding: 20 }}>
+
+            <Text style={{ fontSize: 18, fontWeight: "bold" }}>
+              Advertisement Payment
+            </Text>
+
+            <Text style={{ marginTop: 10 }}>
+              Pay To:
+            </Text>
+
+            <Text style={{ fontWeight: "bold" }}>
+              {momoName} - {momoNumber}
+            </Text>
+
+            <Text style={{ marginTop: 12, fontWeight: "bold" }}>
+              Total Amount: GH₵ {totalAmount}
+            </Text>
+
+            <TouchableOpacity
+              onPress={sendPayment}
+              style={{
+                backgroundColor: "#2563eb",
+                padding: 14,
+                marginTop: 15
+              }}
+            >
+              <Text style={{ color: "white", textAlign: "center" }}>
+                Generate Payment Code
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setPayVisible(false)}
+            >
+              <Text
+                style={{
+                  textAlign: "center",
+                  marginTop: 10,
+                  color: "red"
+                }}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+
+          </View>
+
+        </View>
+
+      </Modal>
+    </>
   );
+
 }

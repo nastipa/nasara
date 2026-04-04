@@ -13,11 +13,10 @@ export default function TabLayout() {
 
           if (route.name === "browse") iconName = "home-outline";
           else if (route.name === "sell") iconName = "add-circle-outline";
-          else if (route.name === "my") iconName = "person-outline";
           else if (route.name === "chat") iconName = "chatbubble-ellipses-outline";
-          else if (route.name === "offers") iconName = "pricetag-outline";
           else if (route.name === "profile") iconName = "settings-outline";
-        
+          else if (route.name === "reels") iconName = "play-circle-outline";
+      
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
@@ -25,11 +24,9 @@ export default function TabLayout() {
     >
       <Tabs.Screen name="browse" options={{ title: "Browse" }} />
       <Tabs.Screen name="sell" options={{ title: "Sell" }} />
-      <Tabs.Screen name="my" options={{ title: "My" }} />
       <Tabs.Screen name="chat" options={{ title: "Chat" }} />
-      <Tabs.Screen name="offers" options={{ title: "Offers" }} />
       <Tabs.Screen name="profile" options={{ title: "Profile" }} />
-      
+      <Tabs.Screen name="reels" options={{ title: "Reels" }} />
 
 
     </Tabs>

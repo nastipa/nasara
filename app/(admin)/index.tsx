@@ -1,122 +1,95 @@
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { supabase } from "../../lib/supabase";
-import { useAdmin } from "../../lib/useAdmin";
+import { ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";
+import { useAdminGuard } from "../../hooks/useAdminGuard";
 
-export default function AdminHome() {
+export default function AdminDashboard() {
   const router = useRouter();
-  const isAdmin = useAdmin();
+  const { loading } = useAdminGuard();
 
-  const [loading, setLoading] = useState(true);
+  if (loading) return null;
 
-  useEffect(() => {
-    if (isAdmin !== null) {
-      setLoading(false);
-    }
-  }, [isAdmin]);
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.denied}>Access Denied 🚫</Text>
-        <TouchableOpacity
-          style={styles.btn}
-          onPress={() => router.replace("/browse")}
-        >
-          <Text style={styles.btnText}>Back to Home</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  const Tile = ({ label, route }: any) => (
+    <TouchableOpacity
+      style={styles.tile}
+      onPress={() => router.push(route)}
+    >
+      <Text style={styles.tileText}>{label}</Text>
+    </TouchableOpacity>
+  );
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Admin Dashboard 👑</Text>
+    <ScrollView style={styles.container}>
+      <Text style={styles.title}>Admin Dashboard</Text>
+
+      <Text style={styles.section}>Moderation</Text>
+      <Tile label="Approve Ads" route="/(admin)/ads" />
+      <Tile label="Approve Banner" route="/(admin)/banner" />
+      <Tile label="Approve Promotion" route="/(admin)/promoted" />
+      <Tile label="Approve Boost" route="/(admin)/boost" />
+      <Tile label="Approve Battle" route="/(admin)/battle" />
+
+      <Text style={styles.section}>Users</Text>
+      <Tile label="View Users" route="/(admin)/users" />
+      <Tile label="Ban / Unban User" route="/(admin)/users" />
+
+      <Text style={styles.section}>Marketplace</Text>
+      <Tile label="Delete Listings" route="/(admin)/delete-listings" />
+      <Tile label="Remove Fake Items" route="/(admin)/remove-fake-items" />
+
+      <Text style={styles.section}>Live System</Text>
+      <Tile label="Stop Live Stream" route="/(admin)/stop-live-stream" />
+      <Tile label="End Auction" route="/(admin)/end-auction" />
+
+      <Text style={styles.section}>Finance</Text>
+      <Tile label="MoMo Payouts" route="/(admin)/momo-payouts" />
+      <Tile label="Revenue" route="/(admin)/revenue" />
+
+      <Text style={styles.section}>Analytics</Text>
+      <Tile label="Platform Stats" route="/(admin)/analytics" />
 
       <TouchableOpacity
-        style={styles.btn}
-        onPress={() => router.push("/ads")}
-      >
-        <Text style={styles.btnText}>📢 Manage Advertisements</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.btn}
-        onPress={() => router.push("/promoted")}
-      >
-        <Text style={styles.btnText}>⭐ Manage Promoted Items</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.btn}
-        onPress={() => router.push("/boost")}
-      >
-        <Text style={styles.btnText}>🚀 Manage Boost Requests</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.btn}
-        onPress={() => router.push("/users")}
-      >
-        <Text style={styles.btnText}>👥 View Users</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        style={styles.btn}
-        onPress={() => router.push("/banner")}
-      >
-        <Text style={styles.btnText}>♥️ Manager Banners</Text>
-      </TouchableOpacity>
-
-       <TouchableOpacity
-       onPress={() => router.push("/(admin)/analytics")}
-        style={styles.btn}
->
-      <Text style={styles.btnText}>📊 Analytics Dashboard</Text>
-        </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.btn, styles.secondary]}
+        style={styles.home}
         onPress={() => router.replace("/browse")}
       >
-        <Text style={styles.btnText}>⬅ Back to Home</Text>
+        <Text style={{ color: "white" }}>Back to Home</Text>
       </TouchableOpacity>
-      
 
-      <TouchableOpacity
-        style={[styles.btn, styles.danger]}
-        onPress={async () => {
-          await supabase.auth.signOut();
-          router.replace("/browse");
-        }}
-      >
-        <Text style={styles.btnText}>Logout 🚪</Text>
-      </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  title: { fontSize: 24, fontWeight: "bold", marginBottom: 24, textAlign: "center" },
-  denied: { fontSize: 18, fontWeight: "bold", color: "red", marginBottom: 20 },
-  btn: { backgroundColor: "#2563eb", padding: 16, borderRadius: 8, marginBottom: 12 },
-  secondary: { backgroundColor: "#6b7280" },
-  danger: { backgroundColor: "#ef4444" },
-  btnText: { color: "white", fontSize: 16, fontWeight: "bold", textAlign: "center" },
+  container:{ flex:1, padding:20 },
+
+  title:{
+    fontSize:26,
+    fontWeight:"bold",
+    marginBottom:20
+  },
+
+  section:{
+    marginTop:20,
+    fontWeight:"700",
+    fontSize:16
+  },
+
+  tile:{
+    backgroundColor:"#111827",
+    padding:16,
+    borderRadius:10,
+    marginTop:8
+  },
+
+  tileText:{
+    color:"white",
+    fontWeight:"600"
+  },
+
+  home:{
+    marginTop:40,
+    backgroundColor:"#2563eb",
+    padding:16,
+    borderRadius:10,
+    alignItems:"center"
+  }
 });

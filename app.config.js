@@ -8,23 +8,46 @@ export default {
 
     platforms: ["ios", "android", "web"],
 
-    // ✅ App Icon (FIXED PATH)
+    /* ✅ App Icon */
     icon: "./assets/images/icon.png",
 
-    // ✅ Splash Screen (FIXED PATH)
+    /* ✅ Splash Screen */
     splash: {
       image: "./assets/images/splash.png",
       resizeMode: "contain",
       backgroundColor: "#ffffff",
     },
 
-    plugins: ["expo-router", "expo-video"],
+    /* ===================================================== */
+    /* ✅ PLUGINS (FIXED) */
+    /* ===================================================== */
+    plugins: [
+      "expo-router",
+      "expo-video",
 
-    // ✅ Android Config + Permissions + Adaptive Icon
+      // ✅ REQUIRED FOR CAMERA + AUDIO RECORDING
+      [
+        "expo-camera",
+        {
+          cameraPermission: "Allow Nasara to access your camera",
+          microphonePermission: "Allow Nasara to record audio with videos"
+        }
+      ]
+    ],
+
+    /* ===================================================== */
+    /* ✅ ANDROID PERMISSIONS */
+    /* ===================================================== */
     android: {
       package: "com.nastipa.nasara",
 
-      permissions: ["CAMERA", "RECORD_AUDIO"],
+      permissions: [
+        "INTERNET",
+        "CAMERA",
+        "RECORD_AUDIO", // ✅ REQUIRED (FIXED ISSUE)
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
 
       adaptiveIcon: {
         foregroundImage: "./assets/images/adaptive-icon.png",
@@ -32,19 +55,27 @@ export default {
       },
     },
 
-    // ✅ iOS Config + Permissions
+    /* ===================================================== */
+    /* ✅ IOS PERMISSIONS */
+    /* ===================================================== */
     ios: {
       bundleIdentifier: "com.nastipa.nasara",
 
       infoPlist: {
         NSCameraUsageDescription:
-          "Nasara needs camera access for live selling broadcasts.",
+          "Nasara needs camera access to record reels.",
         NSMicrophoneUsageDescription:
-          "Nasara needs microphone access for live selling broadcasts.",
+          "Nasara needs microphone access to record audio in reels.",
+        NSPhotoLibraryUsageDescription:
+          "Nasara needs access to your gallery to upload videos.",
+        NSPhotoLibraryAddUsageDescription:
+          "Nasara needs permission to save media."
       },
     },
 
-    // ✅ Extra ENV + EAS Project ID
+    /* ===================================================== */
+    /* ✅ ENV + EAS PROJECT */
+    /* ===================================================== */
     extra: {
       supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
       supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,

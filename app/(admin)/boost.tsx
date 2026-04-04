@@ -1,163 +1,140 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
+  Alert,
   Image,
+  ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
-import { useAdmin } from "../../lib/useAdmin";
 
-export default function BoostAdmin() {
-  const isAdmin = useAdmin();
-  const router = useRouter();
-
-  const [requests, setRequests] = useState<any[]>([]);
+export default function AdminBoostApproval() {
+  const [boosts, setBoosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+   const router = useRouter();
 
-  useEffect(() => {
-    if (isAdmin) load();
-  }, [isAdmin]);
-
-  const load = async () => {
+  /* LOAD BOOST REQUESTS */
+  const loadBoosts = async () => {
     setLoading(true);
 
     const { data, error } = await supabase
-      .from("boost_requests")
-      .select(`
-        id,
-        amount,
-        created_at,
-        items_live (
-          id,
-          title,
-          image_url
-        ),
-        boost_plans (
-          label,
-          days
-        )
-      `)
+      .from("boost")
+      .select("*")
       .eq("status", "pending")
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.log("BOOST ADMIN LOAD ERROR:", error.message);
-      setRequests([]);
+      Alert.alert("Error", error.message);
     } else {
-      setRequests(data || []);
+      setBoosts(data ?? []);
     }
 
     setLoading(false);
   };
 
-  const approve = async (r: any) => {
-    const now = new Date();
-    const end = new Date(
-      now.getTime() + r.boost_plans.days * 24 * 60 * 60 * 1000
-    );
+  useEffect(() => {
+    loadBoosts();
+  }, []);
 
+  /* APPROVE BOOST */
+  const approveBoost = async (boost: any) => {
+    // Activate boost
+    await (supabase as any)
+      .from("boost")
+      .update({ status: "approved" })
+      .eq("id", boost.id);
+
+    // Mark item boosted
     await (supabase as any)
       .from("items_live")
       .update({
-        boosted_until: end.toISOString(),
+        is_boosted: true,
+        boosted_until: new Date(
+          Date.now() + boost.days * 86400000
+        ).toISOString(),
       })
-      .eq("id", r.items_live.id);
+      .eq("id", boost.live_item_id);
 
-    await (supabase as any)
-      .from("boost_requests")
-      .update({
-        status: "approved",
-        approved_at: new Date().toISOString(),
-      })
-      .eq("id", r.id);
-
-    // remove instantly from UI
-    setRequests((prev) => prev.filter((x) => x.id !== r.id));
+    Alert.alert("Approved ✅", "Boost activated successfully.");
+    loadBoosts();
   };
 
-  if (isAdmin === null || loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center" }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
-
-  if (!isAdmin) {
-    return <Text>Not authorized</Text>;
-  }
-
   return (
-    <View style={{ flex: 1, padding: 16 }}>
-      <Text style={{ fontSize: 22, fontWeight: "bold", marginBottom: 12 }}>
-        Boost Requests
+    <ScrollView style={{ padding: 16 }}>
+      <Text style={{ fontSize: 22, fontWeight: "bold" }}>
+        Boost Approvals
       </Text>
-
-      <FlatList
-        data={requests}
-        keyExtractor={(i) => String(i.id)}
-        ListEmptyComponent={
-          <Text style={{ textAlign: "center", marginTop: 40 }}>
-            No pending boost requests
+         /* ✅ BACK TO ADMIN DASHBOARD BUTTON ADDED */
+      ListHeaderComponent={
+        <TouchableOpacity
+          onPress={() => router.push("/(admin)")}
+          style={{
+            backgroundColor: "black",
+            padding: 10,
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>
+            ← Back to Admin Dashboard
           </Text>
-        }
-        renderItem={({ item }) => (
-          <View
+        </TouchableOpacity>
+      }
+
+      {loading && <Text>Loading...</Text>}
+
+      {boosts.map((b) => (
+        <View
+          key={b.id}
+          style={{
+            marginTop: 16,
+            padding: 14,
+            borderWidth: 1,
+            borderRadius: 10,
+          }}
+        >
+          
+          {/* IMAGE */}
+          {b.item_image_url && (
+            <Image
+              source={{ uri: b.item_image_url }}
+              style={{
+                width: "100%",
+                height: 180,
+                borderRadius: 10,
+              }}
+            />
+          )}
+
+          <Text style={{ fontWeight: "bold", marginTop: 10 }}>
+            {b.item_title}
+          </Text>
+
+          <Text>Amount: {b.amount} GHS</Text>
+          <Text>Network: {b.network}</Text>
+          <Text>Payment Code: {b.payment_code}</Text>
+
+          <TouchableOpacity
+            onPress={() => approveBoost(b)}
             style={{
-              borderWidth: 1,
-              borderRadius: 10,
+              backgroundColor: "green",
               padding: 12,
-              marginBottom: 12,
+              marginTop: 12,
+              borderRadius: 8,
             }}
           >
-            {/* IMAGE */}
-            {item.items_live.image_url && (
-              <Image
-                source={{ uri: item.items_live.image_url }}
-                style={{
-                  width: "100%",
-                  height: 160,
-                  borderRadius: 8,
-                  marginBottom: 8,
-                  backgroundColor: "#eee",
-                }}
-              />
-            )}
-
-            <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-              {item.items_live.title}
+            
+            <Text style={{ color: "white", textAlign: "center" }}>
+              Approve Boost
             </Text>
-
-            <Text>Plan: {item.boost_plans.label}</Text>
-            <Text>Days: {item.boost_plans.days}</Text>
-            <Text>Amount: {item.amount} GHS</Text>
-
-            <TouchableOpacity
-              onPress={() => approve(item)}
-              style={{
-                backgroundColor: "green",
-                padding: 10,
-                marginTop: 10,
-                borderRadius: 6,
-              }}
-            >
-              <Text style={{ color: "white", textAlign: "center" }}>
-                Approve Boost
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      />
-
-      <TouchableOpacity onPress={() => router.replace("/(admin)")}>
-        <Text style={{ textAlign: "center", color: "#2563eb", marginTop: 12 }}>
-          Back to Admin Dashboard
-        </Text>
-      </TouchableOpacity>
-    </View>
+            
+          </TouchableOpacity>
+          
+        </View>
+      ))}
+      
+    </ScrollView>
   );
 }

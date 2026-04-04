@@ -1,93 +1,129 @@
-import Constants from "expo-constants";
-import * as Notifications from "expo-notifications";
-import { Slot, usePathname, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { Platform } from "react-native";
-import { supabase } from "../lib/supabase";
+import { Session } from "@supabase/supabase-js"
+import { Stack, usePathname, useRouter } from "expo-router"
+import { useEffect, useState } from "react"
+import { AuthProvider } from "../lib/AuthContext"
+import { supabase } from "../lib/supabase"
 
 export default function RootLayout() {
-  const router = useRouter();
-  const pathname = usePathname();
+  const router = useRouter()
+  const pathname = usePathname()
 
-  const [session, setSession] = useState<any>(null);
-  const [ready, setReady] = useState(false);
+  const [session, setSession] = useState<Session | null>(null)
+  const [mounted, setMounted] = useState(false)
 
-  /* ===== PUSH NOTIFICATIONS ===== */
+  /* ================= LOAD SESSION ================= */
   useEffect(() => {
-    if (Platform.OS !== "web") {
-      if (Constants.appOwnership === "expo") return;
-      registerForPushNotifications();
-    }
-  }, []);
+    supabase.auth.getSession().then(({ data, error }) => {
 
-  /* ===== AUTH LISTENER ===== */
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setReady(true);
-    });
+      // ✅ ADDED: HANDLE EXPIRED SESSION
+      if (error || !data.session) {
+        console.log("⚠️ No session or expired")
+      }
+
+      setSession(data.session)
+      setMounted(true)
+    })
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
+      (event, session) => {
+
+        // ✅ ADDED: DEBUG EVENTS
+        console.log("Auth event:", event)
+
+        // ✅ ADDED: HANDLE TOKEN EXPIRED / SIGNED OUT
+        if (event === "SIGNED_OUT") {
+          console.log("User signed out → redirecting")
+          router.replace("/(auth)/login")
+        }
+
+        if (event === "TOKEN_REFRESHED") {
+          console.log("Token refreshed successfully")
+        }
+
+        setSession(session)
       }
-    );
+    )
 
     return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+      listener.subscription.unsubscribe()
+    }
+  }, [])
 
-  /* ===== ROUTE GUARD (FINAL & CORRECT) ===== */
+  /* ================= ROUTE GUARD ================= */
   useEffect(() => {
-    if (!ready) return;
+    if (!mounted) return
 
-    const isLoginPage = pathname === "/login";
+    const isAuthPage =
+      pathname?.startsWith("/(auth)/login") ||
+      pathname?.startsWith("/(auth)/signup")
 
-    // 🔒 NOT LOGGED IN → FORCE LOGIN
-    if (!session && !isLoginPage) {
-      router.replace("/login");
-      return;
+    const isProtectedPage =
+      pathname?.startsWith("/verify-phone") ||
+      pathname?.startsWith("/(admin)")
+
+    /* 🔒 Protect pages */
+    if (!session && isProtectedPage) {
+      router.replace("/(auth)/login")
+      return
     }
 
-    // ✅ LOGGED IN → GO TO ROOT (index.tsx decides real home)
-    if (session && isLoginPage) {
-      router.replace("/");
-      return;
+    /* ✅ Logged in users shouldn't see login/signup */
+    if (session && isAuthPage) {
+      router.replace("/")
+      return
     }
-  }, [session, ready, pathname]);
+  }, [session, mounted, pathname])
 
-  if (!ready) return null;
+  /* ================= DEBUG SESSION ================= */
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      console.log("Session:", data.session)
+    })
+  }, [])
 
-  return <Slot />;
+  /* ================= ADDED: FORCE CHECK SESSION EVERY TIME APP OPENS ================= */
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data, error } = await supabase.auth.getSession()
+
+      if (error || !data.session) {
+        console.log("❌ Session expired → logging out")
+
+        await supabase.auth.signOut()
+        router.replace("/(auth)/login")
+      }
+    }
+
+    checkSession()
+  }, [])
+
+  return (
+    <AuthProvider>
+      <Stack>
+         <Stack.Screen name="index" options={{ headerShown: false }} />
+        {/* Main app */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+        {/* Admin group */}
+        <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+
+        {/* Auth screens */}
+        <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)/signup" options={{ headerShown: false }} />
+
+        {/* Verification */}
+        <Stack.Screen name="verify-phone" options={{ headerShown: false }} />
+
+        {/* Comments modal */}
+        <Stack.Screen
+          name="comments"
+          options={{
+            headerShown: false,
+            presentation: "transparentModal"
+          }}
+        />
+
+      </Stack>
+    </AuthProvider>
+  )
 }
-
-/* ===== PUSH REGISTRATION ===== */
-const registerForPushNotifications = async () => {
-  try {
-    if (Platform.OS === "android") {
-      await Notifications.setNotificationChannelAsync("default", {
-        name: "default",
-        importance: Notifications.AndroidImportance.MAX,
-      });
-    }
-
-    const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== "granted") return;
-
-    const token = (await Notifications.getExpoPushTokenAsync()).data;
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user) {
-      await (supabase as any)
-        .from("profiles")
-        .update({ push_token: token })
-        .eq("id", user.id);
-    }
-  } catch (e) {
-    console.log("Push error:", e);
-  }
-};

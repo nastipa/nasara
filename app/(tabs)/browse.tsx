@@ -1,39 +1,32 @@
-import { useEvent } from "expo";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useVideoPlayer, VideoView } from "expo-video";
-import { useCallback, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  AppState,
+  Dimensions,
   FlatList,
-  Image,
+  Linking,
+  ScrollView,
+  StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+import SafeVideo from "../../components/SafeVideo";
 import { supabase } from "../../lib/supabase";
 
-/* ===== VIDEO WRAPPER ===== */
-function FeedVideo({
-  uri,
-  play,
-}: {
-  uri: string;
-  play: boolean;
-}) {
-  const player = useVideoPlayer(uri, (p) => {
-    p.loop = true;
-    play ? p.play() : p.pause();
-  });
+/* ================= ULTRA SCALE CONFIG ================= */
+const CACHE_KEY = "BROWSE_ULTRA_CACHE";
+const MAX_FEED_ITEMS = 60;
+let isRefreshing = false;
 
-  useEvent(player, "playingChange", { isPlaying: play });
-
-  return (
-    <VideoView
-      player={player}
-      style={{ width: "100%", height: 220 }}
-    />
-  );
-}
-
+/* ================= TYPES ================= */
 type Item = {
   id: string;
   title?: string;
@@ -41,328 +34,1082 @@ type Item = {
   image_url?: string | null;
   video_url?: string | null;
   location?: string | null;
-  user_id?: string | null;
-  is_promoted?: boolean | null;
-  is_boosted?: boolean | null;
-  is_negotiable?: boolean | null;
-  type?: "item" | "ad" | "banner";
+  category?: string | null;
+  negotiable?: boolean;
+    seller_phone?: string | null; // ✅ ADD THIS
+  url?: string | null;
+  type?: "item" | "ad" | "banner" | "promoted" | "boosted";
 };
 
 export default function BrowseScreen() {
   const router = useRouter();
+  
+  
 
+  /* ================= STATES ================= */
   const [items, setItems] = useState<Item[]>([]);
-  const [ads, setAds] = useState<any[]>([]);
-  const [topBanners, setTopBanners] = useState<any[]>([]);
-  const [topPromoted, setTopPromoted] = useState<Item[]>([]);
-  const [banners, setBanners] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [visibleId, setVisibleId] = useState<string | null>(null);
+  const [liveStreams, setLiveStreams] = useState<any[]>([]);
+  const [ads, setAds] = useState<Item[]>([]);
+  const [banners, setBanners] = useState<Item[]>([]);
+  const [promoted, setPromoted] = useState<Item[]>([]);
+  const [boosted, setBoosted] = useState<Item[]>([]);
+
+  const [searchText, setSearchText] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+
+  const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+   /* ================= LOAD CACHE FIRST ================= */
+useEffect(() => {
+  const loadCache = async () => {
+    try {
+      const cached = await AsyncStorage.getItem(CACHE_KEY);
+      if (cached) {
+        setItems(JSON.parse(cached));
+      }
+    } catch (e) {
+      console.log("Cache load error");
+    }
+  };
+
+  loadCache();
+}, []);
+  
+
+useEffect(() => {
+  const checkVerification = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    const { data: profile, error } = await (supabase as any)
+      .from("profiles")
+      .select("phone, phone_verified, role")
+      .eq("id", user.id)
+      .single();
+
+    if (error || !profile) return;
+
+    // ✅ ADMIN BYPASS
+    if (profile.role === "admin") return;
+
+    // ❗ ONLY redirect if phone is NOT submitted at all
+    if (!profile.phone) {
+      router.replace("/verify-phone");
+      return;
+    }
+
+    // ✅ If phone exists but not verified → allow browsing
+    // Do NOT redirect
+  };
+
+  checkVerification();
+}, []);
+  /* ================= CATEGORY LIST ================= */
+  const categories = [
+    "All",
+    "phones",
+    "electronics",
+    "fashion",
+    "cars",
+    "real estate",
+    "furniture",
+    "home Appliances",
+    "jobs",
+    "services",
+  ];
+
+  /* ================= PAGINATION ================= */
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageSize = 12;
+
+  /* ================= GRID ================= */
+  const screenWidth = Dimensions.get("window").width;
+  const numCols = screenWidth > 900 ? 4 : 2;
+  const cardWidth = screenWidth / numCols - 18;
+ 
+
+  /* ================= AUTH LISTENER ================= */
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setUser(session?.user ?? null);
+        setIsAdmin(session?.user?.email === "dinnanitipa@gmail.com");
+        refreshAll();
+      }
+    );
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  /* ================= LOGOUT ================= */
+  const logoutUser = async () => {
+    await supabase.auth.signOut();
+    Alert.alert("Logged Out", "You are now signed out.");
+    router.replace("/browse");
+  };
+
+  /* ================= ADMIN DELETE ================= */
+  const deleteItem = async (id: string) => {
+    Alert.alert("Delete Item?", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Yes Delete",
+        style: "destructive",
+        onPress: async () => {
+          setItems((prev) => prev.filter((x) => x.id !== id));
+
+          const { error } = await supabase
+            .from("items_live")
+            .delete()
+            .eq("id", id);
+
+          if (error) {
+            Alert.alert("Delete Failed", error.message);
+            refreshAll();
+            return;
+          }
+
+          Alert.alert("Deleted ✅", "Item removed successfully!");
+          refreshAll();
+        },
+      },
+    ]);
+  };
+   const deleteSpecialItem = async (item: Item) => {
+  let table = "";
+
+  if (item.type === "ad") table = "ads";
+  if (item.type === "banner") table = "banner";
+  if (item.type === "promoted") table = "promoted";
+  if (item.type === "boosted") table = "items_live";
+
+  Alert.alert("Delete?", "Remove this item?", [
+    { text: "Cancel", style: "cancel" },
+    {
+      text: "Delete",
+      style: "destructive",
+      onPress: async () => {
+        let query;
+
+        if (item.type === "boosted") {
+          query = (supabase as any)
+            .from("items_live")
+            .update({ is_boosted: false })
+            .eq("id", item.id);
+        } else if (item.type === "promoted") {
+          query = supabase
+            .from("promoted")
+            .delete()
+            .eq("id", item.id);
+        } else {
+          query = supabase
+            .from(table)
+            .delete()
+            .eq("id", item.id.replace(`${item.type}-`, ""));
+        }
+
+        const { error } = await query;
+
+        if (error) {
+          Alert.alert("Error", error.message);
+          return;
+        }
+
+        refreshAll();
+      },
+    },
+  ]);
+};
+  /* ================= LOAD LIVE STREAMS ================= */
+  const loadLiveStreams = async () => {
+    const { data, error } = await supabase
+      .from("live_streams")
+      .select(
+        `
+        id,
+        title,
+        youtube_url,
+        status,
+        user_id,
+        created_at
+        `
+      )
+      .eq("status", "live")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.log("❌ Live load error:", error.message);
+      return;
+    }
+
+    if (data) setLiveStreams(data ?? []);
+  };
+  useFocusEffect(
+  useCallback(() => {
+    loadLiveStreams();
+  }, [])
+);
+
+  /* ================= REFRESH ALL ================= */
+ const refreshAll = async () => {
+  if (isRefreshing) return;
+  isRefreshing = true;
+
+  setHasMore(true);
+  setPage(1);
+
+  try {
+    await Promise.all([
+      loadPromoted(),
+      loadBoosted(),
+      loadAds(),
+      loadBanners(),
+      loadLiveStreams(),
+      loadItems(1, true),
+    ]);
+  } catch (err) {
+    console.log("Refresh error:", err);
+  }
+
+  isRefreshing = false;
+};
 
   /* ================= LOAD ITEMS ================= */
-  const loadItems = async () => {
-    setLoading(true);
+  const loadItems = async (pageNumber: number, reset = false) => {
+    if (loadingMore) return;
+    setLoadingMore(true);
 
-    const today = new Date().toISOString();
-
-    const { data, error } = await supabase
+    let query = supabase
       .from("items_live")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(30);
+     .select("id,title,price,image_url,video_url,location,category,is_negotiable, seller_phone,created_at")
+      .eq("status", "active")
+      .order("created_at", { ascending: false });
 
-    if (error) {
-      console.log("ITEM LOAD ERROR:", error.message);
-      setLoading(false);
+    if (searchText.trim()) {
+      query = query.ilike("title", `%${searchText.trim()}%`);
+    }
+
+    if (selectedCategory !== "All") {
+      query = query.ilike("category", selectedCategory.trim().toLowerCase());
+    }
+
+    const from = (pageNumber - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error } = await query.range(from, to);
+
+    if (!data || error) {
+      setLoadingMore(false);
       return;
     }
 
-    if (data) {
-      const mapped = data.map((i: any) => ({
-        ...i,
-        id: String(i.id),
+    const mapped: Item[] = data.map((i: any) => ({
+      id: String(i.id),
+      title: i.title,
+      price: i.price,
+      image_url: i.image_url,
+      video_url: i.video_url,
+      location: i.location,
+      category: i.category,
+      negotiable: Boolean(i.is_negotiable),
+      seller_phone: i.seller_phone,
+      type: "item",
+    }));
 
-        // ✅ BOOST ACTIVE IF boosted_until IS FUTURE
-        is_boosted: i.boosted_until && i.boosted_until > today,
+const limited = mapped.slice(0, MAX_FEED_ITEMS);
 
-        // ✅ PROMO ACTIVE IF promoted_until IS FUTURE
-        is_promoted: i.promoted_until && i.promoted_until > today,
+/* ✅ SAVE CACHE */
+try {
+  await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(limited));
+} catch (e) {
+  console.log("Cache save error");
+}
 
-        type: "item",
+if (mapped.length < pageSize) setHasMore(false);
+
+if (reset) {
+  setItems(limited);
+} else {
+  setItems((prev) => {
+    const merged = [...prev, ...limited];
+    const unique = Array.from(
+      new Map(merged.map((i) => [i.id, i])).values()
+    );
+    return unique.slice(0, MAX_FEED_ITEMS);
+  });
+}
+
+setLoadingMore(false);
+  };
+  /* ================= LOAD PROMOTED ================= */
+  const loadPromoted = async () => {
+    const today = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("promoted")
+      .select(
+        `
+        id,
+        promoted_until,
+        items_live (
+          id,
+          title,
+          price,
+          image_url,
+          location,
+          category
+        )
+      `
+      )
+      .eq("status", "approved")
+      .gt("promoted_until", today);
+
+    if (error) {
+      console.log("Promoted Error:", error.message);
+      return;
+    }
+
+    if (!data) return;
+
+    const formatted: Item[] = data
+      .map((p: any) => p.items_live)
+      .filter(Boolean)
+      .map((item: any) => ({
+        id: String(item.id),
+        title: item.title,
+        price: item.price,
+        image_url: item.image_url,
+        location: item.location,
+        negotiable: false,
+        type: "promoted",
       }));
 
-      // ✅ Sort Boost first, Promo second
-      mapped.sort((a: any, b: any) => {
-        if (a.is_boosted && !b.is_boosted) return -1;
-        if (!a.is_boosted && b.is_boosted) return 1;
-
-        if (a.is_promoted && !b.is_promoted) return -1;
-        if (!a.is_promoted && b.is_promoted) return 1;
-
-        return 0;
-      });
-
-      setItems(mapped);
-    }
-
-    setLoading(false);
+    setPromoted(formatted);
   };
 
-  /* ================= LOAD FEED ADS (FINAL FIX) ================= */
-  const loadAds = async () => {
+  /* ================= LOAD BOOSTED ================= */
+  const loadBoosted = async () => {
     const today = new Date().toISOString();
 
-    console.log("LOADING ADS... TODAY:", today);
-
-    // ✅ CLEAN + PERFECT FILTER (NO OR BUG)
-    const { data, error } = await supabase
-      .from("ads")
+    let query = supabase
+      .from("items_live")
       .select("*")
-      .eq("status", "active")
-      .eq("is_active", true)
-      .eq("position", "feed")
+      .eq("is_boosted", true)
+      .gt("boosted_until", today)
+      .order("created_at", { ascending: false });
 
-      // ✅ MUST BE WITHIN ACTIVE DATE RANGE
-      .lte("starts_at", today)
-      .gte("ends_at", today)
+    if (selectedCategory !== "All") {
+      query = query.ilike("category", selectedCategory.trim());
+    }
 
-      // ✅ Latest approved ads first
-      .order("approved_at", { ascending: false });
+    const { data } = await query;
 
-    if (error) {
-      console.log("ADS LOAD ERROR:", error.message);
+    if (data) {
+      setBoosted(
+        data.map((b: any) => ({
+          id: String(b.id),
+          title: b.title,
+          price: b.price,
+          image_url: b.image_url,
+          location: b.location,
+          negotiable: false,
+          type: "boosted",
+        }))
+      );
+    }
+  };
+
+  /* ================= LOAD ADS ================= */
+ const loadAds = async () => {
+  const today = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("ads")
+    .select("*")
+    .eq("status", "approved")
+    .eq("is_active", true)
+    .or(`expires_at.gt.${today},expires_at.is.null`)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.log("Ads Load Error:", error.message);
+    return;
+  }
+
+  if (!data) {
+    setAds([]);
+    return;
+  }
+
+  const cleaned = data
+    .filter((ad: any) => ad.expires_at && ad.expires_at > today) // remove expired
+    .filter((ad: any) => ad.title && ad.title.trim() !== "") // remove empty title
+    .map((ad: any) => ({
+  id: "ad-" + ad.id,
+  title: ad.title,
+  image_url: ad.image_url,
+  url: ad.link,
+  expires_at: ad.expires_at, // ADD THIS
+  type: "ad" as const,
+}));
+  setAds(cleaned);
+};
+
+  /* ================= LOAD BANNERS ================= */
+const loadBanners = async () => {
+  const today = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("banner")
+    .select("*")
+    .eq("status", "approved")
+    .eq("is_active", true)
+    .or(`expires_at.gt.${today},expires_at.is.null`)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.log("Banner Load Error:", error.message);
+    return;
+  }
+
+  if (!data) {
+    setBanners([]);
+    return;
+  }
+
+  const cleaned = data
+    .filter((b: any) => b.expires_at && b.expires_at > today)
+    .filter((b: any) => b.title && b.title.trim() !== "")
+    .map((b: any) => ({
+      id: "banner-" + b.id,
+      title: b.title,
+      image_url: b.image_url,
+      url: b.url,
+       expires_at: b.expires_at, // ADD THIS
+      type: "banner" as const,
+    }));
+
+  setBanners(cleaned);
+};
+  /* ================= ULTRA REALTIME (FINAL SAFE VERSION) ================= */
+useEffect(() => {
+  const channel = (supabase as any)
+    .channel("browse-live")
+
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "items_live" },
+      (payload: any) => {
+        const item = payload.new || payload.old;
+        if (!item) return;
+
+        /* ================= INSERT ================= */
+        if (payload.eventType === "INSERT") {
+          console.log("✅ New Item Inserted:", item.title);
+
+          setItems((prev) => {
+  const exists = prev.some((x) => x.id === String(item.id));
+  if (exists) return prev;
+
+  return [
+    {
+      id: String(item.id),
+      title: item.title,
+      price: item.price,
+      image_url: item.image_url ?? null,
+      video_url: item.video_url ?? null,
+      location: item.location,
+      category: item.category,
+      negotiable: Boolean(item.is_negotiable),
+      seller_phone: item.seller_phone,
+      type: "item",
+    },
+    ...prev.slice(0, MAX_FEED_ITEMS),
+  ];
+});
+        }
+
+        /* ================= UPDATE ================= */
+        if (payload.eventType === "UPDATE") {
+          console.log("⭐ Item Updated:", item.title);
+
+          /* ✅ PROMOTED */
+          if (item.is_promoted) {
+            setPromoted((prev) => [
+              {
+                id: String(item.id),
+                title: item.title,
+                price: item.price,
+                image_url: item.image_url,
+                location: item.location,
+                type: "promoted",
+              },
+              ...prev.filter((x) => x.id !== String(item.id)),
+            ]);
+          } else {
+            setPromoted((prev) =>
+              prev.filter((x) => x.id !== String(item.id))
+            );
+          }
+
+          /* ✅ BOOSTED */
+          if (item.is_boosted) {
+            setBoosted((prev) => [
+              {
+                id: String(item.id),
+                title: item.title,
+                price: item.price,
+                image_url: item.image_url,
+                location: item.location,
+                type: "boosted",
+              },
+              ...prev.filter((x) => x.id !== String(item.id)),
+            ]);
+          } else {
+            setBoosted((prev) =>
+              prev.filter((x) => x.id !== String(item.id))
+            );
+          }
+
+          /* ✅ UPDATE MAIN LIST */
+          setItems((prev) =>
+            prev.map((x) =>
+              x.id === String(item.id)
+                ? {
+                    ...x,
+                    title: item.title,
+                    price: item.price,
+                    image_url: item.image_url ?? x.image_url,
+                    video_url: item.video_url ?? x.video_url,
+                  }
+                : x
+            )
+          );
+        }
+
+        /* ================= DELETE ================= */
+        if (payload.eventType === "DELETE") {
+          console.log("🗑 Item Deleted:", item.id);
+
+          setItems((prev) =>
+            prev.filter((x) => x.id !== String(item.id))
+          );
+
+          setPromoted((prev) =>
+            prev.filter((x) => x.id !== String(item.id))
+          );
+
+          setBoosted((prev) =>
+            prev.filter((x) => x.id !== String(item.id))
+          );
+        }
+      }
+    )
+
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+/* ================= REALTIME BANNERS ================= */
+useEffect(() => {
+  const channel = supabase
+    .channel("banner-live")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "banner" },
+      () => {
+        console.log("🎯 Banner changed → Refreshing banners...");
+        loadBanners();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+  /* ================= REALTIME ADS ================= */
+useEffect(() => {
+  const channel = supabase
+    .channel("ads-live")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "ads" },
+      () => {
+        console.log("📢 Ads changed → Refreshing ads...");
+        loadAds();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+useEffect(() => {
+  const interval = setInterval(() => {
+    const now = new Date().toISOString();
+
+    setAds((prev) =>
+      prev.filter((ad: any) => !ad.expires_at || ad.expires_at > now)
+    );
+
+    setBanners((prev) =>
+      prev.filter((b: any) => !b.expires_at || b.expires_at > now)
+    );
+
+    setPromoted((prev) =>
+      prev.filter((p: any) => !p.promoted_until || p.promoted_until > now)
+    );
+
+    setBoosted((prev) =>
+      prev.filter((b: any) => !b.boosted_until || b.boosted_until > now)
+    );
+
+  }, 15000); // faster = better UX
+
+  return () => clearInterval(interval);
+}, []);
+  /* ================= APP ALWAYS REFRESH ON RETURN ================= */
+useEffect(() => {
+  const subscription = AppState.addEventListener("change", (state) => {
+    if (state === "active") {
+      console.log("📱 App back active → Refreshing Browse...");
+      refreshAll();
+    }
+  });
+
+  return () => subscription.remove();
+}, []);
+  /* ================= REALTIME LIVE STREAMS ================= */
+  useEffect(() => {
+    const channel = supabase
+      .channel("live-streams-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "live_streams" },
+        () => {
+          console.log("🔴 Live stream changed → refreshing...");
+          loadLiveStreams();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  /* ================= INITIAL LOAD ================= */
+  useEffect(() => {
+    refreshAll();
+  }, []);
+  
+  
+  /* ================= CLEAN ITEMS ================= */
+  const cleanItems = useMemo(() => {
+    const specialIds = new Set([
+      ...promoted.map((x) => x.id),
+      ...boosted.map((x) => x.id),
+    ]);
+
+    return items.filter((x) => !specialIds.has(x.id));
+  }, [items, promoted, boosted]);
+
+  /* ================= FINAL FEED ================= */
+  const combined: Item[] =
+    selectedCategory === "All"
+      ? [...promoted, ...boosted, ...ads, ...banners, ...cleanItems]
+      : [...promoted, ...boosted, ...cleanItems];
+
+  const filteredCombined = useMemo(() => {
+    return combined.filter((item) => {
+      const matchesSearch =
+        searchText.trim() === "" ||
+        item.title?.toLowerCase().includes(searchText.toLowerCase()) ||
+        item.location?.toLowerCase().includes(searchText.toLowerCase());
+
+      const matchesCategory =
+        selectedCategory === "All" ||
+        item.type === "ad" ||
+        item.type === "banner" ||
+        item.category
+          ?.trim()
+          .toLowerCase()
+          .includes(selectedCategory.toLowerCase());
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [combined, searchText, selectedCategory]);
+
+  const loadMore = () => {
+    if (!hasMore || loadingMore) return;
+    const next = page + 1;
+    setPage(next);
+    loadItems(next);
+  };
+
+  const handlePress = (item: Item) => {
+    if (item.type === "ad" || item.type === "banner") {
+      if (item.url) Linking.openURL(item.url);
       return;
     }
 
-    console.log("ADS FOUND:", data?.length);
-
-    if (data) {
-      setAds(
-        data.map((ad: any) => ({
-          ...ad,
-          id: "ad-" + ad.id,
-          type: "ad",
-        }))
-      );
-    }
+    router.push("/itemdetail/" + item.id);
   };
-
-  /* ================= LOAD TOP BANNERS ================= */
-  const loadTopBanners = async () => {
-    const today = new Date().toISOString();
-
-    const { data } = await supabase
-      .from("banner")
-      .select("*")
-      .eq("status", "active")
-      .gt("ends_at", today)
-      .order("created_at", { ascending: false });
-
-    setTopBanners(data || []);
-  };
-
-  /* ================= LOAD INLINE BANNERS ================= */
-  const loadBanners = async () => {
-    const today = new Date().toISOString();
-
-    const { data } = await supabase
-      .from("banner")
-      .select("*")
-      .eq("status", "active")
-      .gt("ends_at", today)
-      .order("created_at", { ascending: false });
-
-    setBanners(data || []);
-  };
-
-  /* ================= LOAD PROMOTED ITEMS ================= */
-  const loadTopPromoted = async () => {
-    const today = new Date().toISOString();
-
-    const { data } = await supabase
-      .from("items_live")
-      .select("*")
-      .eq("is_promoted", true)
-      .gt("promoted_until", today)
-      .order("promoted_until", { ascending: false })
-      .limit(5);
-
-    if (data) {
-      setTopPromoted(
-        data.map((i: any) => ({
-          ...i,
-          id: "promo-" + i.id,
-          type: "item",
-        }))
-      );
-    }
-  };
-
-  /* ================= LOAD EVERYTHING ================= */
-  useFocusEffect(
-    useCallback(() => {
-      loadItems();
-      loadAds();
-      loadTopBanners();
-      loadTopPromoted();
-      loadBanners();
-    }, [])
-  );
-
-  /* ================= VIDEO VISIBILITY ================= */
-  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
-    if (viewableItems?.length > 0) {
-      setVisibleId(viewableItems[0].item.id);
-    }
-  }).current;
-
-  const viewConfig = useRef({
-    itemVisiblePercentThreshold: 70,
-  }).current;
-
-  /* ================= BUILD FEED ================= */
-  const combined: Item[] = [];
-
-  /* 🔝 TOP BANNERS */
-  topBanners.forEach((b) => {
-    combined.push({
-      id: "top-banner-" + b.id,
-      image_url: b.image_url,
-      type: "banner",
-    });
-  });
-
-  /* 🟡 PROMOTED STRIP */
-  topPromoted.forEach((p) => combined.push(p));
-
-  /* 📦 ITEMS + ADS + INLINE BANNERS */
-  items.forEach((item, index) => {
-    combined.push(item);
-
-    /* ✅ FEED ADS every 4 items (FIXED ROTATION) */
-    if ((index + 1) % 4 === 0 && ads.length > 0) {
-      const adIndex = Math.floor(index / 4) % ads.length;
-      const ad = ads[adIndex];
-
-      combined.push({
-        ...ad,
-        id: "feed-ad-" + ad.id + "-" + index,
-        type: "ad",
-      });
-    }
-
-    /* INLINE BANNER every 6 items */
-    if ((index + 1) % 6 === 0 && banners.length > 0) {
-      const banner = banners[index % banners.length];
-
-      combined.push({
-        id: "inline-banner-" + banner.id + "-" + index,
-        image_url: banner.image_url,
-        type: "banner",
-      });
-    }
-  });
+  const formatPhone = (phone: string) => {
+  if (phone.startsWith("0")) {
+    return "233" + phone.slice(1);
+  }
+  return phone;
+};
 
   /* ================= UI ================= */
   return (
     <FlatList
-      data={combined}
-      keyExtractor={(item) => item.id}
-      refreshing={loading}
-      onRefresh={() => {
-        loadItems();
-        loadAds();
-      }}
-      onViewableItemsChanged={onViewableItemsChanged}
-      viewabilityConfig={viewConfig}
-      contentContainerStyle={{ padding: 12 }}
-      renderItem={({ item }) => {
-        /* ===== BANNERS ===== */
-        if (item.type === "banner") {
-          return (
-            <Image
-              source={{ uri: item.image_url as string }}
+      data={filteredCombined}
+      keyExtractor={(item, index) => item.type + "-" + item.id + "-" + index}
+      numColumns={numCols}
+      columnWrapperStyle={{ gap: 12 }}
+      contentContainerStyle={{
+  padding: 12,
+  backgroundColor: "#0f172a",
+}}
+style={{ backgroundColor: "#0f172a" }}
+      onEndReached={loadMore}
+      onEndReachedThreshold={0.6}
+      ListFooterComponent={
+        loadingMore ? (
+          <View style={{ padding: 20 }}>
+            <ActivityIndicator size="large" />
+          </View>
+        ) : null
+      }
+      ListHeaderComponent={
+        <View style={{ marginBottom: 18 }}>
+          {/* 🔴 LIVE SELLERS SECTION */}
+          {liveStreams.length > 0 ? (
+            <View
               style={{
-                width: "100%",
-                height: 200,
-                marginBottom: 12,
-                borderRadius: 10,
+                padding: 14,
+                backgroundColor: "#fee2e2",
+                borderRadius: 14,
+                marginBottom: 15,
               }}
-            />
-          );
-        }
-
-        /* ===== ADS ===== */
-        if (item.type === "ad") {
-          return item.image_url ? (
-            <View style={{ marginBottom: 12 }}>
-              <Image
-                source={{ uri: item.image_url }}
-                style={{
-                  width: "100%",
-                  height: 200,
-                  borderRadius: 10,
-                }}
-              />
-            </View>
-          ) : null;
-        }
-
-        const isPlaying = visibleId === item.id;
-
-        /* ===== NORMAL ITEMS ===== */
-        return (
-          <TouchableOpacity
-            onPress={() => router.push("/itemdetail/" + item.id)}
-            style={{
-              backgroundColor: "#fff",
-              marginBottom: 12,
-              borderRadius: 10,
-              overflow: "hidden",
-            }}
-          >
-            <View>
-              {item.video_url ? (
-                <FeedVideo uri={item.video_url} play={isPlaying} />
-              ) : item.image_url ? (
-                <Image
-                  source={{ uri: item.image_url }}
-                  style={{ width: "100%", height: 220 }}
-                />
-              ) : (
-                <View
-                  style={{
-                    height: 220,
-                    backgroundColor: "#eee",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  <Text>No media</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={{ padding: 10 }}>
-              <Text style={{ fontWeight: "bold", fontSize: 16 }}>
-                {item.title}
+            >
+              <Text style={{ fontSize: 18, fontWeight: "bold", color: "red" }}>
+                🔴 Sellers Live Now
               </Text>
 
-              <Text>{item.price}</Text>
+              {liveStreams.map((live) => (
+                <TouchableOpacity
+                  key={live.id}
+                  onPress={() => router.push(`/watch-video/${live.id}`)}
+                  style={{
+                    marginTop: 10,
+                    padding: 12,
+                    backgroundColor: "white",
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: "#ddd",
+                  }}
+                >
+                  <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                    🔴 Seller is Live!
+                  </Text>
 
-              {item.location && <Text>{item.location}</Text>}
+                  <Text style={{ marginTop: 4 }}>{live.title}</Text>
 
-              {item.is_boosted && (
-                <Text style={{ fontWeight: "bold" }}>BOOSTED</Text>
-              )}
-
-              {item.is_promoted && (
-                <Text style={{ fontWeight: "bold" }}>PROMOTED</Text>
-              )}
+                  <Text style={{ marginTop: 4, color: "#444" }}>
+                    Tap to Watch 🎥
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </TouchableOpacity>
-        );
+          ) : (
+            <Text style={{ marginBottom: 15, color: "#cbd5e1" }}>
+              No sellers are live right now.
+            </Text>
+          )}
+            {/* TOP BAR */}
+<LinearGradient
+  colors={["#0f172a", "#1e293b"]}
+  style={{
+    padding: 16,
+    borderRadius: 18,
+    marginBottom: 12,
+  }}
+>
+  {/* Row 1: Logo */}
+  <Text
+    style={{
+      fontSize: 20,
+      fontWeight: "bold",
+      color: "white",
+      marginBottom: 10,
+    }}
+  >
+    ✨ Nasara
+  </Text>
+
+  {/* Row 2: Search */}
+  <TextInput
+    placeholder="Search anything..."
+    placeholderTextColor="#aaa"
+    value={searchText}
+    onChangeText={setSearchText}
+    style={{
+      width: "100%",
+      backgroundColor: "#1f2937",
+      color: "white",
+      borderRadius: 25,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      marginBottom: 12,
+    }}
+  />
+
+  {/* Row 3: Buttons */}
+  {!user ? (
+    <TouchableOpacity
+      onPress={() => router.push("/(auth)/login")}
+      style={{
+        backgroundColor: "#22c55e",
+        paddingVertical: 10,
+        borderRadius: 10,
+        alignItems: "center",
       }}
+    >
+      <Text style={{ color: "white", fontWeight: "bold" }}>Sign In</Text>
+    </TouchableOpacity>
+  ) : (
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 10,
+      }}
+    >
+      <TouchableOpacity
+        onPress={() => router.push("/profile")}
+        style={{
+          flex: 1,
+          backgroundColor: "#f97316",
+          paddingVertical: 10,
+          borderRadius: 10,
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "bold" }}>
+          Profile
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={logoutUser}
+        style={{
+          flex: 1,
+          backgroundColor: "#ef4444",
+          paddingVertical: 10,
+          borderRadius: 10,
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ color: "white", fontWeight: "bold" }}>
+          Logout
+        </Text>
+      </TouchableOpacity>
+    </View>
+  )}
+</LinearGradient>
+        
+
+         {/* CATEGORY BAR */}
+<ScrollView horizontal showsHorizontalScrollIndicator={false}>
+  {categories.map((cat) => (
+    <TouchableOpacity
+      key={cat}
+      onPress={() => {
+        setSelectedCategory(cat);
+       
+      }}
+      style={{
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        marginRight: 10,
+        borderRadius: 20,
+        backgroundColor:
+          selectedCategory === cat ? "black" : "#eee",
+      }}
+    >
+      <Text
+        style={{
+          fontWeight: "bold",
+          color: selectedCategory === cat ? "white" : "black",
+        }}
+      >
+        {cat === "All"
+          ? "All"
+          : cat
+              .split(" ")
+              .map(
+                (word) =>
+                  word.charAt(0).toUpperCase() + word.slice(1)
+              )
+              .join(" ")}
+      </Text>
+    </TouchableOpacity>
+  ))}
+</ScrollView>
+
+        </View>
+        
+      }
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          onPress={() => handlePress(item)}
+          style={{
+  width: cardWidth,
+  borderRadius: 18,
+  overflow: "hidden",
+  marginBottom: 16,
+  backgroundColor: "rgba(255,255,255,0.05)",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.08)",
+}}
+        >
+        {/* MEDIA */}
+{item.video_url ? (
+  <SafeVideo url={item.video_url} />
+) : item.image_url ? (
+  <Image
+    source={{ uri: item.image_url }}
+    style={styles.squareImage}
+    contentFit="cover"
+    transition={300}
+    cachePolicy="memory-disk"
+  />
+) : (
+  <View style={styles.noMedia}>
+    <Text style={{ color: "#9ca3af" }}>Loading media...</Text>
+  </View>
+)}
+          {/* BADGES */}
+          {item.type === "ad" && <Badge label="📢 AD" />}
+          {item.type === "banner" && <Badge label="🎯 BANNER" />}
+          {item.type === "promoted" && <Badge label="⭐ PROMOTED" />}
+          {item.type === "boosted" && <Badge label="🚀 BOOSTED" />}
+
+          {/* NEGOTIABLE */}
+          {item.type === "item" && item.negotiable && (
+            <Badge label="💬 Negotiable" />
+          )}
+
+          {/* ADMIN DELETE */}
+          {isAdmin && (
+  <TouchableOpacity
+    onPress={() =>
+      item.type === "item"
+        ? deleteItem(item.id)
+        : deleteSpecialItem(item)
+    }
+    style={{
+      position: "absolute",
+      top: 8,
+      right: 8,
+      backgroundColor: "red",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+    }}
+  >
+    <Text style={{ color: "white", fontWeight: "bold" }}>🗑</Text>
+  </TouchableOpacity>
+)}
+          
+          {/* DETAILS */}
+          <View style={{ padding: 8 }}>
+            <Text numberOfLines={1} style={{ fontWeight: "700", color: "white" }}>
+              {item.title}
+            </Text>
+
+            {item.price && (
+              <Text style={{ fontWeight: "bold", color: "#22c55e" }}>GH₵ {item.price}</Text>
+            )}
+
+            <Text style={{ fontSize: 12, color: "#9ca3af" }}>
+              {item.location}
+            </Text>
+            {/* WHATSAPP BUTTON */}
+{item.type === "item" && item.seller_phone && (
+  <TouchableOpacity
+    onPress={() =>
+      Linking.openURL(`https://wa.me/${item.seller_phone}`)
+    }
+    style={{
+      marginTop: 6,
+      backgroundColor: "#25D366",
+      paddingVertical: 6,
+      borderRadius: 6,
+      alignItems: "center",
+    }}
+  >
+    <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>
+      💬 WhatsApp Seller
+    </Text>
+  </TouchableOpacity>
+)}
+            
+          </View>
+        </TouchableOpacity>
+        
+      )}
     />
+    
   );
 }
+
+/* ================= BADGE ================= */
+function Badge({ label }: { label: string }) {
+  return (
+    <View
+      style={{
+        position: "absolute",
+        top: 8,
+        left: 8,
+        backgroundColor: "black",
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+      }}
+    >
+      <Text style={{ color: "white", fontSize: 11, fontWeight: "bold" }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+const styles = StyleSheet.create({
+  squareImage: {
+    width: "100%",
+    aspectRatio: 1,
+  },
+  noMedia: {
+    width: "100%",
+    aspectRatio: 1,
+    backgroundColor: "#f1f1f1",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+});

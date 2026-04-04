@@ -1,12 +1,12 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -26,7 +26,7 @@ export default function ItemEdit() {
     if (!itemId) return;
 
     const loadItem = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("items_live")
         .select("title, price")
         .eq("id", itemId)
@@ -51,7 +51,7 @@ export default function ItemEdit() {
 
   /* ===== SAVE CHANGES ===== */
   const saveItem = async () => {
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from("items_live")
       .update({
         title,

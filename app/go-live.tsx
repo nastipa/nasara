@@ -5,12 +5,17 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+
+const CLOUD_NAME = "ajars";
+const UPLOAD_PRESET_IMAGES = "ajars_images";
+const UPLOAD_PRESET_VIDEOS = "ajars_videos";
 
 type LiveSession = {
   id: number;
@@ -34,7 +39,7 @@ export default function GoLiveScreen() {
   /* ================= PICK IMAGE ================= */
   const pickImage = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
+     mediaTypes: ["images", "videos"],
       quality: 0.8,
       base64: true,
     });
@@ -48,7 +53,8 @@ export default function GoLiveScreen() {
   /* ================= PICK VIDEO ================= */
   const pickVideo = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["videos"],
+      mediaTypes: ["images", "videos"],
+      quality: 1,
     });
 
     if (!res.canceled) {
@@ -56,50 +62,65 @@ export default function GoLiveScreen() {
     }
   };
 
-  /* ================= SAFE IMAGE UPLOAD (BASE64 FIX) ================= */
+  /* ================= CLOUDINARY IMAGE UPLOAD ================= */
   const uploadLiveImage = async () => {
     if (!imageBase64) throw new Error("No image selected");
 
-    const fileName = "live_" + Date.now() + ".jpg";
+    const formData = new FormData();
 
-    // ✅ Convert base64 → bytes
-    const bytes = Uint8Array.from(atob(imageBase64), (c) =>
-      c.charCodeAt(0)
+    formData.append("file", `data:image/jpeg;base64,${imageBase64}`);
+    formData.append("upload_preset", UPLOAD_PRESET_IMAGES);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
     );
 
-    const { error } = await supabase.storage
-      .from("live-items")
-      .upload("images/" + fileName, bytes, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+    const data = await res.json();
 
-    if (error) throw error;
+    if (!data.secure_url) {
+      throw new Error("Image upload failed");
+    }
 
-    return supabase.storage
-      .from("live-items")
-      .getPublicUrl("images/" + fileName).data.publicUrl;
+    return data.secure_url;
   };
 
-  /* ================= VIDEO UPLOAD (BLOB SAFE) ================= */
+  /* ================= CLOUDINARY VIDEO UPLOAD ================= */
   const uploadLiveVideo = async (uri: string) => {
-    const fileName = "videos/" + Date.now() + ".mp4";
+    const formData = new FormData();
 
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    if (Platform.OS === "web") {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      formData.append("file", blob);
+    } else {
+      formData.append("file", {
+        uri: uri,
+        type: "video/mp4",
+        name: "upload.mp4",
+      } as any);
+    }
 
-    const { error } = await supabase.storage
-      .from("live-items")
-      .upload(fileName, blob, {
-        contentType: "video/mp4",
-        upsert: true,
-      });
+    formData.append("upload_preset", UPLOAD_PRESET_VIDEOS);
 
-    if (error) throw error;
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`,
+      {
+        method: "POST",
+        body: formData,
+    }
+    );
 
-    return supabase.storage
-      .from("live-items")
-      .getPublicUrl(fileName).data.publicUrl;
+    const data = await res.json();
+
+    if (!data.secure_url) {
+      throw new Error("Video upload failed");
+    }
+
+    return data.secure_url;
   };
 
   /* ================= START LIVE ================= */
@@ -110,6 +131,7 @@ export default function GoLiveScreen() {
     }
 
     setLoading(true);
+
     const auth = await supabase.auth.getUser();
 
     if (!auth.data.user) {
@@ -173,17 +195,14 @@ export default function GoLiveScreen() {
       let imageUrl: string | null = null;
       let videoUrl: string | null = null;
 
-      /* ✅ Upload Image */
       if (imageUri) {
         imageUrl = await uploadLiveImage();
       }
 
-      /* ✅ Upload Video */
       if (videoUri) {
         videoUrl = await uploadLiveVideo(videoUri);
       }
 
-      /* ✅ Save Live Item */
       const res = await (supabase as any).from("live_items").insert({
         live_session_id: live.id,
         title: itemTitle.trim(),
@@ -194,7 +213,6 @@ export default function GoLiveScreen() {
 
       if (res.error) throw res.error;
 
-      /* RESET */
       setItemTitle("");
       setPrice("");
       setImageUri(null);
@@ -224,20 +242,36 @@ export default function GoLiveScreen() {
 
   /* ================= UI ================= */
   return (
-    <View style={{ flex: 1, padding: 20 }}>
-      <Text style={{ fontSize: 22, fontWeight: "600" }}>Go Live</Text>
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        backgroundColor: "#ffffff",
+      }}
+    >
+      <Text style={{ fontSize: 22, fontWeight: "600", color: "#000" }}>
+        Go Live
+      </Text>
 
       {!live && (
         <>
-          <Text style={{ marginTop: 12, fontWeight: "bold" }}>
+          <Text style={{ marginTop: 12, fontWeight: "bold", color: "#000" }}>
             Live Title
           </Text>
 
           <TextInput
             placeholder="Enter live title"
+            placeholderTextColor="#888"
             value={title}
             onChangeText={setTitle}
-            style={{ borderWidth: 1, padding: 12, marginVertical: 12 }}
+            style={{
+              borderWidth: 1,
+              borderColor: "#ddd",
+              padding: 12,
+              marginVertical: 12,
+              backgroundColor: "#fff",
+              color: "#000",
+            }}
           />
 
           <TouchableOpacity
@@ -258,33 +292,45 @@ export default function GoLiveScreen() {
 
       {live && (
         <>
-          {/* ITEM TITLE */}
-          <Text style={{ marginTop: 20, fontWeight: "bold" }}>
+          <Text style={{ marginTop: 20, fontWeight: "bold", color: "#000" }}>
             Item Title
           </Text>
 
           <TextInput
             placeholder="Enter item title"
+            placeholderTextColor="#888"
             value={itemTitle}
             onChangeText={setItemTitle}
-            style={{ borderWidth: 1, padding: 12, marginVertical: 8 }}
+            style={{
+              borderWidth: 1,
+              borderColor: "#ddd",
+              padding: 12,
+              marginVertical: 8,
+              backgroundColor: "#fff",
+              color: "#000",
+            }}
           />
 
-          {/* PRICE */}
-          <Text style={{ marginTop: 10, fontWeight: "bold" }}>
+          <Text style={{ marginTop: 10, fontWeight: "bold", color: "#000" }}>
             Price
           </Text>
 
           <TextInput
             placeholder="Enter price"
+            placeholderTextColor="#888"
             keyboardType="numeric"
             value={price}
             onChangeText={setPrice}
-            style={{ borderWidth: 1, padding: 12 }}
+            style={{
+              borderWidth: 1,
+              borderColor: "#ddd",
+              padding: 12,
+              backgroundColor: "#fff",
+              color: "#000",
+            }}
           />
 
-          {/* IMAGE PICK */}
-          <Text style={{ marginTop: 14, fontWeight: "bold" }}>
+          <Text style={{ marginTop: 14, fontWeight: "bold", color: "#000" }}>
             Item Image
           </Text>
 
@@ -298,8 +344,7 @@ export default function GoLiveScreen() {
             <Image source={{ uri: imageUri }} style={{ height: 120 }} />
           )}
 
-          {/* VIDEO PICK */}
-          <Text style={{ marginTop: 14, fontWeight: "bold" }}>
+          <Text style={{ marginTop: 14, fontWeight: "bold", color: "#000" }}>
             Item Video (Optional)
           </Text>
 
@@ -310,12 +355,11 @@ export default function GoLiveScreen() {
           </TouchableOpacity>
 
           {videoUri && (
-            <Text style={{ marginTop: 4, fontSize: 12 }}>
+            <Text style={{ marginTop: 4, fontSize: 12, color: "#000" }}>
               Video Selected ✅
             </Text>
           )}
 
-          {/* ADD ITEM */}
           <TouchableOpacity
             onPress={addItem}
             disabled={loading}
@@ -334,7 +378,6 @@ export default function GoLiveScreen() {
             )}
           </TouchableOpacity>
 
-          {/* END LIVE */}
           <TouchableOpacity
             onPress={endLive}
             style={{

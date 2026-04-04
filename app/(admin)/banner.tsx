@@ -4,141 +4,148 @@ import {
   Alert,
   Image,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
-import { useAdmin } from "../../lib/useAdmin";
 
-const showAlert = (title: string, message: string) => {
-  if (typeof window !== "undefined") {
-    window.alert(title + "\n\n" + message);
-  } else {
-    Alert.alert(title, message);
-  }
-};
-
-export default function AdminBanner() {
+export default function AdminBannerApproval() {
   const router = useRouter();
-  const isAdmin = useAdmin();
-
   const [banners, setBanners] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
 
-  /* ===== LOAD PENDING BANNERS ===== */
-  const loadPending = async () => {
-    setLoading(true);
-
+  const loadBanners = async () => {
     const { data, error } = await supabase
       .from("banner")
       .select("*")
-      .eq("is_active", false) // admin approves inactive
+      .eq("status", "pending")
       .order("created_at", { ascending: false });
 
     if (error) {
-      showAlert("Error", error.message);
-      setBanners([]);
-    } else {
-      setBanners(data || []);
+      Alert.alert("Error", error.message);
+      return;
     }
 
-    setLoading(false);
+    setBanners(data ?? []);
   };
 
   useEffect(() => {
-    if (isAdmin) loadPending();
-  }, [isAdmin]);
+    loadBanners();
+  }, []);
 
-  /* ===== APPROVE ===== */
   const approveBanner = async (banner: any) => {
-    if (!banner?.id) {
-      showAlert("Error", "Banner ID missing");
-      return;
+    try {
+      /* calculate expiration */
+      const days = Number(banner.days) || 1;
+
+      const expireDate = new Date();
+      expireDate.setDate(expireDate.getDate() + days);
+
+      const expires_at = expireDate.toISOString();
+
+      /* fix empty title */
+      let title = banner.title;
+
+      if (!title || title.trim() === "") {
+        title = "Sponsored Banner";
+      }
+
+      const { error } = await (supabase as any)
+        .from("banner")
+        .update({
+          status: "approved",
+          is_active: true,
+          title: title,
+          expires_at: expires_at,
+        })
+        .eq("id", banner.id);
+
+      if (error) {
+        Alert.alert("Error", error.message);
+        return;
+      }
+
+      Alert.alert("Approved ✅", "Banner is now live on Browse.");
+
+      loadBanners();
+    } catch (err) {
+      console.log(err);
+      Alert.alert("Error", "Approval failed");
     }
-
-    const { error } = await (supabase as any)
-      .from("banner")
-      .update({
-        is_active: true,
-        status: "active",
-      })
-      .eq("id", banner.id);
-
-    if (error) {
-      showAlert("Approval Failed", error.message);
-      return;
-    }
-
-    showAlert("Approved", "Banner is now live");
-
-    // remove immediately from list
-    setBanners((prev) => prev.filter((b) => b.id !== banner.id));
   };
 
-  if (!isAdmin) {
-    return <Text style={styles.center}>Not authorized</Text>;
-  }
-
-  if (loading) {
-    return <Text style={styles.center}>Loading...</Text>;
-  }
-
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.header}>Pending Banners</Text>
+    <ScrollView style={{ padding: 16 }}>
+      {/* BACK BUTTON */}
+      <TouchableOpacity
+        onPress={() => router.push("/(admin)")}
+        style={{
+          backgroundColor: "black",
+          padding: 12,
+          borderRadius: 10,
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ color: "white", textAlign: "center" }}>
+          ← Back to Admin Dashboard
+        </Text>
+      </TouchableOpacity>
+
+      <Text style={{ fontSize: 22, fontWeight: "bold" }}>
+        🎯 Banner Approvals
+      </Text>
 
       {banners.length === 0 && (
-        <Text style={styles.center}>No pending banners</Text>
+        <Text style={{ marginTop: 20 }}>No pending banners</Text>
       )}
 
       {banners.map((b) => (
-        <View key={String(b.id)} style={styles.card}>
-          {b.image_url ? (
-            <Image source={{ uri: b.image_url }} style={styles.image} />
-          ) : (
-            <Text>No image</Text>
+        <View
+          key={b.id}
+          style={{
+            marginTop: 16,
+            borderWidth: 1,
+            padding: 14,
+            borderRadius: 12,
+            borderColor: "#ddd",
+          }}
+        >
+          {b.image_url && (
+            <Image
+              source={{ uri: b.image_url }}
+              style={{
+                width: "100%",
+                height: 200,
+                borderRadius: 12,
+                resizeMode: "contain",
+                backgroundColor: "#f3f4f6",
+              }}
+            />
           )}
 
-          <Text style={styles.title}>{b.title}</Text>
-          <Text>
-            {b.amount} GHS · {b.days} days
+          <Text style={{ fontWeight: "bold", marginTop: 10 }}>
+            {b.title || "Sponsored Banner"}
           </Text>
 
+          <Text>Days: {b.days}</Text>
+          <Text>Amount: GH₵ {b.amount}</Text>
+          <Text>Link: {b.link}</Text>
+
           <TouchableOpacity
-            style={styles.approveBtn}
             onPress={() => approveBanner(b)}
+            style={{
+              backgroundColor: "green",
+              padding: 14,
+              borderRadius: 10,
+              marginTop: 12,
+            }}
           >
-            <Text style={styles.approveText}>Approve</Text>
+            <Text style={{ color: "white", textAlign: "center" }}>
+              Approve Banner
+            </Text>
           </TouchableOpacity>
         </View>
       ))}
-
-      <TouchableOpacity
-        style={styles.backBtn}
-        onPress={() => router.replace("/(admin)")}
-      >
-        <Text style={styles.backText}>Back to Admin Dashboard</Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 16 },
-  center: { textAlign: "center", marginTop: 40 },
-  header: { fontSize: 22, fontWeight: "bold", marginBottom: 12 },
-  card: { backgroundColor: "#fff", padding: 12, marginTop: 12 },
-  image: { height: 140, marginBottom: 8 },
-  title: { fontWeight: "bold", marginBottom: 4 },
-  approveBtn: { backgroundColor: "green", padding: 10, marginTop: 8 },
-  approveText: { color: "white", textAlign: "center" },
-  backBtn: {
-    backgroundColor: "#111827",
-    padding: 14,
-    marginTop: 24,
-    borderRadius: 8,
-  },
-  backText: { color: "white", textAlign: "center" },
-});

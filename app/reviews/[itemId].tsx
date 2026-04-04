@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -58,11 +58,22 @@ export default function Reviews() {
     loadReviews();
   }, [itemId]);
 
+  /* ================= CALCULATE AVERAGE ================= */
+
+  const averageRating = useMemo(() => {
+    if (reviews.length === 0) return 0;
+
+    const total = reviews.reduce((sum, r) => sum + r.rating, 0);
+    return (total / reviews.length).toFixed(1);
+  }, [reviews]);
+
   /* ================= HELPERS ================= */
 
   const renderStars = (rating: number) => {
     let stars = "";
-    for (let i = 0; i < rating; i++) stars += "⭐";
+    for (let i = 1; i <= 5; i++) {
+      stars += i <= rating ? "⭐" : "☆";
+    }
     return stars;
   };
 
@@ -70,7 +81,9 @@ export default function Reviews() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+      >
         <ActivityIndicator size="large" />
       </View>
     );
@@ -80,10 +93,23 @@ export default function Reviews() {
 
   return (
     <View style={{ flex: 1, padding: 16 }}>
-      <Text style={{ fontSize: 20, fontWeight: "bold", marginBottom: 12 }}>
+      {/* HEADER */}
+      <Text style={{ fontSize: 20, fontWeight: "bold" }}>
         Reviews
       </Text>
 
+      {reviews.length > 0 && (
+        <View style={{ marginVertical: 12 }}>
+          <Text style={{ fontSize: 18, fontWeight: "bold" }}>
+            ⭐ {averageRating} / 5
+          </Text>
+          <Text style={{ color: "#666" }}>
+            {reviews.length} review{reviews.length > 1 ? "s" : ""}
+          </Text>
+        </View>
+      )}
+
+      {/* NO REVIEWS */}
       {reviews.length === 0 ? (
         <Text style={{ textAlign: "center", marginTop: 40 }}>
           No reviews yet
@@ -116,12 +142,24 @@ export default function Reviews() {
               )}
 
               {/* REVIEWER */}
-              <Text style={{ marginTop: 6, color: "#555", fontSize: 12 }}>
+              <Text
+                style={{
+                  marginTop: 6,
+                  color: "#555",
+                  fontSize: 12,
+                }}
+              >
                 By {item.reviewer_email || "Anonymous"}
               </Text>
 
               {/* DATE */}
-              <Text style={{ color: "#999", fontSize: 11, marginTop: 2 }}>
+              <Text
+                style={{
+                  color: "#999",
+                  fontSize: 11,
+                  marginTop: 2,
+                }}
+              >
                 {new Date(item.created_at).toLocaleDateString()}
               </Text>
             </View>

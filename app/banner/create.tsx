@@ -1,20 +1,25 @@
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Alert,
   Image,
+  Modal,
+  Platform,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  View
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
-const DAILY_RATE = 5;
+const pricePerDay = 30;
 
-/* ===== SAFE ALERT ===== */
+const CLOUD_NAME = "ajars";
+const UPLOAD_PRESET = "ajars_images";
+
+/* ================= ALERT FIX ================= */
 const showAlert = (title: string, message: string) => {
   if (typeof window !== "undefined") {
     window.alert(title + "\n\n" + message);
@@ -24,231 +29,367 @@ const showAlert = (title: string, message: string) => {
 };
 
 export default function CreateBanner() {
+
   const router = useRouter();
-  const today = new Date().toISOString().slice(0, 10);
 
   const [title, setTitle] = useState("");
   const [link, setLink] = useState("");
-  const [endsAt, setEndsAt] = useState("");
-
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
-
+  const [days, setDays] = useState("3");
+  const [image, setImage] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  /* ===== DAYS + AMOUNT ===== */
-  const days = useMemo(() => {
-    if (!endsAt) return 0;
+  const [payVisible, setPayVisible] = useState(false);
+  const [bannerData, setBannerData] = useState<any>(null);
 
-    const diff =
-      (new Date(endsAt).getTime() - new Date(today).getTime()) /
-      (1000 * 60 * 60 * 24);
+  const momoName = "NASARA MARKET";
+  const momoNumber = "0539703374";
+  const momoNetwork = "MTN";
 
-    return diff > 0 ? Math.ceil(diff) : 0;
-  }, [endsAt]);
+  const totalAmount = Number(days || 0) * pricePerDay;
 
-  const amount = days * DAILY_RATE;
+  /* ================= PICK IMAGE ================= */
 
-  /* ===== PICK IMAGE ===== */
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.9,
-      base64: true,
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images", "videos"],
+      quality: 0.8
     });
 
-    if (!res.canceled) {
-      setImageUri(res.assets[0].uri);
-      setImageBase64(res.assets[0].base64 || null);
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+
+    if (Platform.OS === "web") {
+      setImage(asset.file);
+    } else {
+      setImage(asset.uri);
     }
+
   };
 
-  /* ===== SAFE EXPO UPLOAD (BASE64 FIX) ===== */
+  /* ================= UPLOAD IMAGE CLOUDINARY ================= */
+
   const uploadImage = async () => {
-    if (!imageBase64) throw new Error("No image selected");
 
-    const fileName = "banner_" + Date.now() + ".jpg";
+    if (!image) return null;
 
-    // ✅ Convert base64 → bytes
-    const bytes = Uint8Array.from(atob(imageBase64), (c) =>
-      c.charCodeAt(0)
+    const formData = new FormData();
+
+    if (Platform.OS === "web") {
+
+      formData.append("file", image);
+
+    } else {
+
+      formData.append("file", {
+        uri: image,
+        type: "image/jpeg",
+        name: "banner.jpg"
+      } as any);
+
+    }
+
+    formData.append("upload_preset", UPLOAD_PRESET);
+
+    const res = await fetch(
+      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+      {
+        method: "POST",
+        body: formData
+      }
     );
 
-    const { error } = await supabase.storage
-      .from("banner")
-      .upload(fileName, bytes, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+    const data = await res.json();
 
-    if (error) throw error;
+    if (!data.secure_url) {
 
-    const publicUrl = supabase.storage
-      .from("banner")
-      .getPublicUrl(fileName).data.publicUrl;
+      console.log(data);
 
-    return publicUrl;
+      showAlert("Upload Error", "Image upload failed");
+
+      return null;
+
+    }
+
+    return data.secure_url;
+
   };
 
-  /* ===== SUBMIT BANNER ===== */
-  const submitBanner = async () => {
-    if (loading) return;
+  /* ================= SUBMIT BANNER ================= */
 
-    if (!title || !imageUri || days === 0) {
-      showAlert("Error", "Fill all fields correctly");
+  const submitBanner = async () => {
+
+    if (!title.trim() || !link.trim() || !days.trim() || !image) {
+
+      showAlert("Error", "Fill all fields and select image");
+
       return;
+
     }
 
     setLoading(true);
 
-    try {
-      const auth = await supabase.auth.getUser();
-      if (!auth.data.user) throw new Error("Not logged in");
+    const image_url = await uploadImage();
 
-      /* ===== ADMIN MOMO ===== */
-      const { data: admins } = await (supabase as any)
-        .from("profiles")
-        .select("momo_name, momo_number")
-        .eq("is_admin", true)
-        .limit(1);
+    if (!image_url) {
 
-      if (!admins || admins.length === 0) {
-        throw new Error("Admin MoMo not configured");
-      }
+      setLoading(false);
 
-      const admin = admins[0];
+      return;
 
-      /* ===== SHOW PAYMENT INFO FIRST ===== */
-      showAlert(
-        "Pay for Banner",
-        "Send payment to:\n\n" +
-          admin.momo_name +
-          "\n" +
-          admin.momo_number +
-          "\n\nAmount: " +
-          amount +
-          " GHS\n\nAfter payment, wait for admin approval."
-      );
-
-      /* ===== UPLOAD IMAGE ===== */
-      const imageUrl = await uploadImage();
-
-      /* ===== SAVE BANNER REQUEST ===== */
-      const { error } = await (supabase as any).from("banner").insert({
-        user_id: auth.data.user.id,
-        title,
-        link,
-        image_url: imageUrl,
-        starts_at: today,
-        ends_at: endsAt,
-        days,
-        amount,
-        status: "pending",
-        is_active: false,
-      });
-
-      if (error) throw error;
-
-      showAlert("Submitted", "Banner submitted successfully!");
-
-      /* RESET */
-      setTitle("");
-      setLink("");
-      setEndsAt("");
-      setImageUri(null);
-      setImageBase64(null);
-
-      router.replace("/(tabs)/browse");
-    } catch (e: any) {
-      showAlert("Error", e.message);
     }
 
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+
+      showAlert("Login Required", "Please login first");
+
+      setLoading(false);
+
+      return;
+
+    }
+
+    const { data, error } = await (supabase as any)
+      .from("banner")
+      .insert({
+        user_id: user.id,
+        title,
+        link,
+        image_url,
+        days: Number(days),
+        amount: totalAmount,
+        status: "pending",
+        is_active: false
+      })
+      .select()
+      .single();
+
+   if (error) {
+  setLoading(false);
+
+  /* 🔥 HANDLE JWT EXPIRED */
+  if (error?.message?.includes("JWT expired")) {
+    await supabase.auth.signOut();
+    router.replace("/(auth)/login");
+    return;
+  }
+
+  showAlert("Error", error.message);
+  return;
+}
+    setBannerData({ user, bannerId: data.id });
+
+    setPayVisible(true);
+
     setLoading(false);
+
   };
 
-  /* ===== UI ===== */
+  /* ================= SEND PAYMENT ================= */
+
+  const sendPayment = async () => {
+
+    if (!bannerData) return;
+
+    const code = "BANNER-" + Date.now();
+
+    const { error: payError } = await (supabase as any)
+      .from("payments")
+      .insert({
+        user_id: bannerData.user.id,
+        product_type: "banner",
+        amount: totalAmount,
+        momo_name: momoName,
+        momo_number: momoNumber,
+        network: momoNetwork,
+        code,
+        status: "pending"
+      });
+
+    if (payError) {
+
+      showAlert("Error", payError.message);
+
+      return;
+
+    }
+
+    showAlert(
+      "Request Sent ✅",
+      `Banner Request Submitted!\n\nPay GH₵${totalAmount} to:\n${momoName}\n${momoNumber} (${momoNetwork})\n\nCode: ${code}`
+    );
+
+    setPayVisible(false);
+
+    router.replace("/banner/my-banner");
+
+  };
+
+  /* ================= UI ================= */
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.header}>Create Banner</Text>
+    <>
+      <ScrollView style={{ padding: 16 }}>
 
-      {/* TITLE */}
-      <Text style={styles.label}>Banner Title</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter banner title"
-        value={title}
-        onChangeText={setTitle}
-      />
-
-      {/* LINK */}
-      <Text style={styles.label}>Target Link</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter link (optional)"
-        value={link}
-        onChangeText={setLink}
-      />
-
-      {/* END DATE */}
-      <Text style={styles.label}>End Date</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="YYYY-MM-DD"
-        value={endsAt}
-        onChangeText={setEndsAt}
-      />
-
-      <Text style={styles.info}>
-        Days: {days} | Amount: {amount} GHS
-      </Text>
-
-      {/* IMAGE */}
-      <Text style={styles.label}>Banner Image</Text>
-      <TouchableOpacity style={styles.pickBtn} onPress={pickImage}>
-        <Text>Select Image</Text>
-      </TouchableOpacity>
-
-      {imageUri && (
-        <Image source={{ uri: imageUri }} style={styles.image} />
-      )}
-
-      {/* SUBMIT */}
-      <TouchableOpacity
-        style={styles.submitBtn}
-        onPress={submitBanner}
-        disabled={loading}
-      >
-        <Text style={styles.submitText}>
-          {loading ? "Submitting..." : "Submit Banner"}
+        <Text style={{ fontSize: 22, fontWeight: "bold" }}>
+          ♥️ Create Banner
         </Text>
-      </TouchableOpacity>
 
-      {/* BACK */}
-      <TouchableOpacity
-        style={styles.backBtn}
-        onPress={() => router.replace("/")}
-      >
-        <Text style={styles.backText}>Back to Home</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Text style={{ marginTop: 12 }}>Banner Title</Text>
+
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Enter banner title"
+          style={{
+            borderWidth: 1,
+            padding: 12,
+            borderRadius: 10,
+            marginBottom: 12
+          }}
+        />
+
+        <Text>Website Link</Text>
+
+        <TextInput
+          value={link}
+          onChangeText={setLink}
+          placeholder="https://yourwebsite.com"
+          style={{
+            borderWidth: 1,
+            padding: 12,
+            borderRadius: 10,
+            marginBottom: 12
+          }}
+        />
+
+        <Text>Number of Days</Text>
+
+        <TextInput
+          value={days}
+          onChangeText={setDays}
+          keyboardType="numeric"
+          style={{
+            borderWidth: 1,
+            padding: 12,
+            borderRadius: 10,
+            marginBottom: 12
+          }}
+        />
+
+        <Text style={{ fontWeight: "bold", marginBottom: 10 }}>
+          Total Cost: GH₵ {totalAmount}
+        </Text>
+
+        <TouchableOpacity
+          onPress={pickImage}
+          style={{
+            backgroundColor: "#ddd",
+            padding: 14,
+            borderRadius: 10
+          }}
+        >
+          <Text>Select Banner Image</Text>
+        </TouchableOpacity>
+
+        {image && (
+          <Image
+            source={{
+              uri: Platform.OS === "web"
+                ? URL.createObjectURL(image)
+                : image
+            }}
+            style={{
+              width: "100%",
+              height: 200,
+              borderRadius: 14,
+              marginTop: 12,
+              resizeMode: "contain",
+              backgroundColor: "#f3f4f6"
+            }}
+          />
+        )}
+
+        <TouchableOpacity
+          onPress={submitBanner}
+          disabled={loading}
+          style={{
+            backgroundColor: "green",
+            padding: 16,
+            borderRadius: 12,
+            marginTop: 20
+          }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>
+            {loading ? "Submitting..." : "Submit Banner"}
+          </Text>
+        </TouchableOpacity>
+
+      </ScrollView>
+
+      <Modal transparent visible={payVisible}>
+
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#0007",
+            justifyContent: "center",
+            padding: 20
+          }}
+        >
+
+          <View style={{ backgroundColor: "white", padding: 20 }}>
+
+            <Text style={{ fontSize: 18, fontWeight: "bold" }}>
+              Banner Payment
+            </Text>
+
+            <Text style={{ marginTop: 10 }}>Pay To:</Text>
+
+            <Text style={{ fontWeight: "bold" }}>
+              {momoName} - {momoNumber}
+            </Text>
+
+            <Text style={{ marginTop: 12, fontWeight: "bold" }}>
+              Total Amount: GH₵ {totalAmount}
+            </Text>
+
+            <TouchableOpacity
+              onPress={sendPayment}
+              style={{
+                backgroundColor: "#2563eb",
+                padding: 14,
+                marginTop: 15
+              }}
+            >
+              <Text style={{ color: "white", textAlign: "center" }}>
+                Generate Payment Code
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setPayVisible(false)}>
+              <Text
+                style={{
+                  textAlign: "center",
+                  marginTop: 10,
+                  color: "red"
+                }}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+
+          </View>
+
+        </View>
+
+      </Modal>
+    </>
   );
-}
 
-/* ===== STYLES ===== */
-const styles = StyleSheet.create({
-  container: { padding: 16 },
-  header: { fontSize: 22, fontWeight: "bold", marginBottom: 12 },
-  label: { marginTop: 10, fontWeight: "bold" },
-  input: { borderWidth: 1, padding: 10, marginVertical: 6 },
-  info: { fontWeight: "bold", marginVertical: 10 },
-  pickBtn: { backgroundColor: "#eee", padding: 12, marginTop: 10 },
-  image: { height: 180, marginTop: 10 },
-  submitBtn: { backgroundColor: "green", padding: 14, marginTop: 20 },
-  submitText: {
-    color: "white",
-    textAlign: "center",
-    fontWeight: "bold",
-  },
-  backBtn: { marginTop: 14, padding: 12, backgroundColor: "#111827" },
-  backText: { color: "white", textAlign: "center" },
-});
+}

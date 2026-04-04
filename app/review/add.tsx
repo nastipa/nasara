@@ -21,6 +21,7 @@ export default function AddReview() {
   const [comment, setComment] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   // ===== LOAD LOGGED USER =====
   useEffect(() => {
@@ -49,26 +50,68 @@ export default function AddReview() {
     const r = Number(rating);
 
     if (r < 1 || r > 5) {
-      Alert.alert("Rating must be 1–5");
+      Alert.alert("Rating must be between 1 and 5");
       return;
     }
 
-    const { error } = await (supabase as any).from("seller_reviews").insert({
-      seller_id: seller_id,
-      item_id: item_id,
-      reviewer_id: userId,
-      reviewer_email: email,
-      rating: r,
-      comment: comment,
-    });
+    setLoading(true);
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
+    try {
+      // ✅ 1. CHECK COMPLETED ORDER
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("buyer_id", userId)
+        .eq("item_id", item_id)
+        .eq("status", "completed")
+        .single();
+
+      if (orderError || !order) {
+        Alert.alert(
+          "Not Allowed",
+          "You can only review after completing this purchase."
+        );
+        setLoading(false);
+        return;
+      }
+
+      // ✅ 2. PREVENT DUPLICATE REVIEW
+      const { data: existing } = await supabase
+        .from("seller_reviews")
+        .select("id")
+        .eq("reviewer_id", userId)
+        .eq("item_id", item_id)
+        .single();
+
+      if (existing) {
+        Alert.alert("Already Reviewed", "You already reviewed this item.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ 3. INSERT REVIEW
+      const { error } = await (supabase as any).from("seller_reviews").insert({
+        seller_id: seller_id,
+        item_id: item_id,
+        reviewer_id: userId,
+        reviewer_email: email,
+        rating: r,
+        comment: comment,
+      });
+
+      if (error) {
+        Alert.alert("Error", error.message);
+        setLoading(false);
+        return;
+      }
+
+      Alert.alert("Success", "Review submitted successfully!");
+      router.back();
+    } catch (err) {
+      Alert.alert("Error", "Something went wrong");
     }
 
-    Alert.alert("Success", "Review submitted");
-    router.back();
+    setLoading(false);
   }
 
   return (
@@ -104,8 +147,9 @@ export default function AddReview() {
 
       <TouchableOpacity
         onPress={submitReview}
+        disabled={loading}
         style={{
-          backgroundColor: "#2563eb",
+          backgroundColor: loading ? "#94a3b8" : "#2563eb",
           padding: 14,
           borderRadius: 8,
           marginTop: 16,
@@ -113,7 +157,7 @@ export default function AddReview() {
         }}
       >
         <Text style={{ color: "#fff", fontWeight: "bold" }}>
-          Submit Review
+          {loading ? "Submitting..." : "Submit Review"}
         </Text>
       </TouchableOpacity>
     </View>
