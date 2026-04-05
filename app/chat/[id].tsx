@@ -368,7 +368,7 @@ export default function ChatRoom() {
 
                     {/* REACTIONS */}
                     <View style={{ flexDirection: "row", marginTop: 6 }}>
-                      {["❤️", "😂", "👍"].map((e) => (
+                      {["❤️", "😂", "👍",  "😮", "😢", "🙏",].map((e) => (
                         <TouchableOpacity key={e} onPress={() => addReaction(item.id, e)}>
                           <Text style={{ marginRight: 8 }}>{e}</Text>
                         </TouchableOpacity>
