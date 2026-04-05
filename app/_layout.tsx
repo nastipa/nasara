@@ -1,6 +1,7 @@
 import { Session } from "@supabase/supabase-js";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { AppState } from "react-native"; // ✅ ADDED
 import { AuthProvider } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -34,6 +35,42 @@ export default function RootLayout() {
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  /* ================= 🟢 ONLINE STATUS (ADDED) ================= */
+  useEffect(() => {
+    if (!session?.user) return;
+
+    const userId = session.user.id;
+
+    const updateStatus = async (online: boolean) => {
+      await (supabase as any)
+        .from("profiles")
+        .update({
+          is_online: online,
+          last_seen: new Date().toISOString(),
+        })
+        .eq("id", userId);
+    };
+
+    // 🟢 when app opens
+    updateStatus(true);
+
+    // 🔄 listen app state
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        updateStatus(true);
+      } else {
+        updateStatus(false);
+      }
+    });
+
+    // ⚪ when app closes
+    return () => {
+      updateStatus(false);
+      sub.remove();
+    };
+  }, [session]);
+  /* ================= END ONLINE STATUS ================= */
 
   /* ================= ROUTE GUARD ================= */
   useEffect(() => {
