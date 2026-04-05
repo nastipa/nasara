@@ -1,88 +1,38 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Platform,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { supabase } from "../lib/supabase";
 
 export default function Home() {
   const router = useRouter();
-  const [device, setDevice] = useState<"android" | "ios" | "desktop">("desktop");
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<any>(null);
 
-  /* ================= DEVICE DETECTION ================= */
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      const ua = navigator.userAgent || "";
-
-      if (/android/i.test(ua)) setDevice("android");
-      else if (/iPhone|iPad|iPod/i.test(ua)) setDevice("ios");
-      else setDevice("desktop");
-
-      // track visit
-      (supabase as any).from("analytics_events").insert({ event: "visit", device: ua });
-    }
-  }, []);
-
-  /* ================= FETCH USER ================= */
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user);
-    })();
-  }, []);
-
-  /* ================= SAFE NAVIGATION ================= */
-  const handleEnterApp = async () => {
+  const handleEnterApp = () => {
     if (loading) return;
+
     setLoading(true);
 
-    try {
-      if (Platform.OS === "web") {
-        (supabase as any).from("analytics_events").insert({
-          event: "enter_app",
-          device: navigator.userAgent,
-        });
-      }
+    // ✅ ALWAYS go to login first
+    router.push("/(auth)/login");
 
-      if (!user) {
-        router.push("/(auth)/login");
-      } else {
-        router.push("/app");
-      }
-    } catch (error) {
-      console.log("Navigation error:", error);
-    } finally {
-      setLoading(false);
-    }
+    setTimeout(() => setLoading(false), 1000);
   };
 
-  /* ================= DOWNLOAD APK ================= */
   const handleDownload = () => {
-    const url = "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk";
-
-    if (Platform.OS === "web") {
-      window.open(url, "_blank");
-      (supabase as any).from("analytics_events").insert({
-        event: "download_apk",
-        device: navigator.userAgent,
-      });
-    } else {
-      Linking.openURL(url);
-    }
+    Linking.openURL(
+      "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk"
+    );
   };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: "#020617" }}>
-      {/* HERO */}
       <LinearGradient
         colors={["#020617", "#0f172a", "#020617"]}
         style={{ padding: 30, alignItems: "center", marginTop: 80 }}
@@ -91,21 +41,25 @@ export default function Home() {
           NASARA
         </Text>
 
-        <Text style={{ color: "#cbd5f5", textAlign: "center", marginTop: 10 }}>
+        <Text
+          style={{
+            color: "#cbd5f5",
+            textAlign: "center",
+            marginTop: 10,
+          }}
+        >
           Buy, Sell, Chat, Go Viral & Earn Money
         </Text>
 
         {/* ENTER APP */}
         <TouchableOpacity
           onPress={handleEnterApp}
-          disabled={loading}
           style={{
             backgroundColor: "#22c55e",
             padding: 15,
             borderRadius: 30,
             marginTop: 20,
             width: 220,
-            opacity: loading ? 0.7 : 1,
           }}
         >
           {loading ? (
@@ -117,41 +71,21 @@ export default function Home() {
           )}
         </TouchableOpacity>
 
-        {/* ANDROID ONLY */}
-        {device === "android" && (
-          <TouchableOpacity
-            onPress={handleDownload}
-            style={{
-              backgroundColor: "#16a34a",
-              padding: 15,
-              borderRadius: 30,
-              marginTop: 10,
-              width: 220,
-            }}
-          >
-            <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-              Download for Android 📱
-            </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* IOS ONLY */}
-        {device === "ios" && (
-          <View
-            style={{
-              marginTop: 10,
-              padding: 15,
-              borderRadius: 30,
-              borderWidth: 1,
-              borderColor: "#fff",
-              width: 220,
-            }}
-          >
-            <Text style={{ textAlign: "center", color: "#fff" }}>
-              iOS App Coming Soon 🍎
-            </Text>
-          </View>
-        )}
+        {/* DOWNLOAD */}
+        <TouchableOpacity
+          onPress={handleDownload}
+          style={{
+            backgroundColor: "#16a34a",
+            padding: 15,
+            borderRadius: 30,
+            marginTop: 10,
+            width: 220,
+          }}
+        >
+          <Text style={{ fontWeight: "bold", textAlign: "center" }}>
+            Download Android APK 📱
+          </Text>
+        </TouchableOpacity>
       </LinearGradient>
 
       {/* FEATURES */}
@@ -175,25 +109,6 @@ export default function Home() {
             <Text style={{ color: "#fff" }}>{item}</Text>
           </View>
         ))}
-      </View>
-
-      {/* CTA */}
-      <View style={{ alignItems: "center", marginBottom: 40 }}>
-        <TouchableOpacity
-          onPress={handleEnterApp}
-          disabled={loading}
-          style={{
-            backgroundColor: "#22c55e",
-            padding: 15,
-            borderRadius: 30,
-            width: 220,
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-            Start Now
-          </Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );
