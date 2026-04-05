@@ -3,81 +3,80 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   ScrollView,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
 
 export default function Home() {
   const router = useRouter();
-
   const [device, setDevice] = useState<"android" | "ios" | "desktop">("desktop");
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   /* ================= DEVICE DETECTION ================= */
   useEffect(() => {
     if (Platform.OS === "web") {
       const ua = navigator.userAgent || "";
 
-      if (/android/i.test(ua)) {
-        setDevice("android");
-      } else if (/iPhone|iPad|iPod/i.test(ua)) {
-        setDevice("ios");
-      } else {
-        setDevice("desktop");
-      }
+      if (/android/i.test(ua)) setDevice("android");
+      else if (/iPhone|iPad|iPod/i.test(ua)) setDevice("ios");
+      else setDevice("desktop");
 
-      // analytics safe (no crash)
-      try {
-        (supabase as any).from("analytics_events").insert({
-          event: "visit",
-          device: ua,
-        });
-      } catch {}
+      // track visit
+      (supabase as any).from("analytics_events").insert({ event: "visit", device: ua });
     }
   }, []);
 
-  /* ================= ENTER APP ================= */
+  /* ================= FETCH USER ================= */
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
+    })();
+  }, []);
+
+  /* ================= SAFE NAVIGATION ================= */
   const handleEnterApp = async () => {
     if (loading) return;
     setLoading(true);
 
     try {
-      const { data } = await (supabase as any).auth.getSession();
+      if (Platform.OS === "web") {
+        (supabase as any).from("analytics_events").insert({
+          event: "enter_app",
+          device: navigator.userAgent,
+        });
+      }
 
-      if (!data.session) {
-        // ❌ New user → go to login
-        router.replace("/(auth)/login");
+      if (!user) {
+        router.push("/(auth)/login");
       } else {
-        // ✅ Logged in → go to app
-        router.replace("/(tabs)");
+        router.push("/app");
       }
     } catch (error) {
       console.log("Navigation error:", error);
+    } finally {
       setLoading(false);
     }
   };
 
   /* ================= DOWNLOAD APK ================= */
-  const handleDownload = async () => {
-    try {
-      if (Platform.OS === "web") {
-        await (supabase as any).from("analytics_events").insert({
-          event: "download_apk",
-          device: navigator.userAgent,
-        });
-      }
+  const handleDownload = () => {
+    const url = "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk";
 
-      // ✅ FORCE DOWNLOAD FIX (works on web)
-      window.open(
-        "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk",
-        "_blank"
-      );
-    } catch (error) {
-      console.log("Download error:", error);
+    if (Platform.OS === "web") {
+      window.open(url, "_blank");
+      (supabase as any).from("analytics_events").insert({
+        event: "download_apk",
+        device: navigator.userAgent,
+      });
+    } else {
+      Linking.openURL(url);
     }
   };
 
@@ -92,13 +91,7 @@ export default function Home() {
           NASARA
         </Text>
 
-        <Text
-          style={{
-            color: "#cbd5f5",
-            textAlign: "center",
-            marginTop: 10,
-          }}
-        >
+        <Text style={{ color: "#cbd5f5", textAlign: "center", marginTop: 10 }}>
           Buy, Sell, Chat, Go Viral & Earn Money
         </Text>
 
@@ -124,7 +117,7 @@ export default function Home() {
           )}
         </TouchableOpacity>
 
-        {/* ANDROID DOWNLOAD */}
+        {/* ANDROID ONLY */}
         {device === "android" && (
           <TouchableOpacity
             onPress={handleDownload}
@@ -142,7 +135,7 @@ export default function Home() {
           </TouchableOpacity>
         )}
 
-        {/* IOS */}
+        {/* IOS ONLY */}
         {device === "ios" && (
           <View
             style={{
@@ -171,7 +164,7 @@ export default function Home() {
           "💬 Real-time Chat",
         ].map((item, i) => (
           <View
-            key={i.toString()}
+            key={i}
             style={{
               backgroundColor: "#0f172a",
               padding: 15,
