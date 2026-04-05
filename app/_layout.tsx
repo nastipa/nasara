@@ -1,129 +1,99 @@
-import { Session } from "@supabase/supabase-js"
-import { Stack, usePathname, useRouter } from "expo-router"
-import { useEffect, useState } from "react"
-import { AuthProvider } from "../lib/AuthContext"
-import { supabase } from "../lib/supabase"
+import { Session } from "@supabase/supabase-js";
+import { Stack, usePathname, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import { AuthProvider } from "../lib/AuthContext";
+import { supabase } from "../lib/supabase";
 
 export default function RootLayout() {
-  const router = useRouter()
-  const pathname = usePathname()
+  const router = useRouter();
+  const pathname = usePathname();
 
-  const [session, setSession] = useState<Session | null>(null)
-  const [mounted, setMounted] = useState(false)
+  const [session, setSession] = useState<Session | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   /* ================= LOAD SESSION ================= */
   useEffect(() => {
-    supabase.auth.getSession().then(({ data, error }) => {
-
-      // ✅ ADDED: HANDLE EXPIRED SESSION
-      if (error || !data.session) {
-        console.log("⚠️ No session or expired")
-      }
-
-      setSession(data.session)
-      setMounted(true)
-    })
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setMounted(true);
+    });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log("Auth event:", event);
+        setSession(session);
 
-        // ✅ ADDED: DEBUG EVENTS
-        console.log("Auth event:", event)
-
-        // ✅ ADDED: HANDLE TOKEN EXPIRED / SIGNED OUT
+        // ✅ ONLY redirect on logout (safe)
         if (event === "SIGNED_OUT") {
-          console.log("User signed out → redirecting")
-          router.replace("/(auth)/login")
+          router.replace("/(auth)/login");
         }
-
-        if (event === "TOKEN_REFRESHED") {
-          console.log("Token refreshed successfully")
-        }
-
-        setSession(session)
       }
-    )
+    );
 
     return () => {
-      listener.subscription.unsubscribe()
-    }
-  }, [])
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
   /* ================= ROUTE GUARD ================= */
   useEffect(() => {
-    if (!mounted) return
+    if (!mounted) return;
 
     const isAuthPage =
       pathname?.startsWith("/(auth)/login") ||
-      pathname?.startsWith("/(auth)/signup")
+      pathname?.startsWith("/(auth)/signup");
+
+    const isLandingPage = pathname === "/";
 
     const isProtectedPage =
-      pathname?.startsWith("/verify-phone") ||
-      pathname?.startsWith("/(admin)")
+      pathname?.startsWith("/(tabs)") ||
+      pathname?.startsWith("/(admin)") ||
+      pathname?.startsWith("/verify-phone");
 
-    /* 🔒 Protect pages */
+    // ✅ ALLOW landing page always
+    if (isLandingPage) return;
+
+    // 🔒 Protect app pages
     if (!session && isProtectedPage) {
-      router.replace("/(auth)/login")
-      return
+      router.replace("/(auth)/login");
+      return;
     }
 
-    /* ✅ Logged in users shouldn't see login/signup */
+    // ✅ Prevent logged-in users from seeing auth pages
     if (session && isAuthPage) {
-      router.replace("/")
-      return
+      router.replace("/(tabs)/browse");
+      return;
     }
-  }, [session, mounted, pathname])
+  }, [session, mounted, pathname]);
 
-  /* ================= DEBUG SESSION ================= */
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      console.log("Session:", data.session)
-    })
-  }, [])
-
-  /* ================= ADDED: FORCE CHECK SESSION EVERY TIME APP OPENS ================= */
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data, error } = await supabase.auth.getSession()
-
-      if (error || !data.session) {
-        console.log("❌ Session expired → logging out")
-
-        await supabase.auth.signOut()
-        router.replace("/(auth)/login")
-      }
-    }
-
-    checkSession()
-  }, [])
-
+  /* ================= UI ================= */
   return (
     <AuthProvider>
-      <Stack>
-         <Stack.Screen name="index" options={{ headerShown: false }} />
-        {/* Main app */}
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        {/* 🌍 Landing Page */}
+        <Stack.Screen name="index" />
 
-        {/* Admin group */}
-        <Stack.Screen name="(admin)" options={{ headerShown: false }} />
+        {/* 📱 Main App */}
+        <Stack.Screen name="(tabs)" />
 
-        {/* Auth screens */}
-        <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)/signup" options={{ headerShown: false }} />
+        {/* 👑 Admin */}
+        <Stack.Screen name="(admin)" />
 
-        {/* Verification */}
-        <Stack.Screen name="verify-phone" options={{ headerShown: false }} />
+        {/* 🔐 Auth */}
+        <Stack.Screen name="(auth)/login" />
+        <Stack.Screen name="(auth)/signup" />
 
-        {/* Comments modal */}
+        {/* 📞 Verification */}
+        <Stack.Screen name="verify-phone" />
+
+        {/* 💬 Modal */}
         <Stack.Screen
           name="comments"
           options={{
-            headerShown: false,
-            presentation: "transparentModal"
+            presentation: "transparentModal",
           }}
         />
-
       </Stack>
     </AuthProvider>
-  )
+  );
 }

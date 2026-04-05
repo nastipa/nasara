@@ -19,20 +19,29 @@ export default {
     },
 
     /* ===================================================== */
-    /* ✅ PLUGINS (FIXED) */
+    /* ✅ WEB (PWA SUPPORT ADDED 🔥) */
+    /* ===================================================== */
+    web: {
+      bundler: "metro",
+      output: "static",
+      favicon: "./assets/images/icon.png"
+    },
+
+    /* ===================================================== */
+    /* ✅ PLUGINS */
     /* ===================================================== */
     plugins: [
       "expo-router",
       "expo-video",
 
-      // ✅ REQUIRED FOR CAMERA + AUDIO RECORDING
       [
         "expo-camera",
         {
           cameraPermission: "Allow Nasara to access your camera",
-          microphonePermission: "Allow Nasara to record audio with videos"
-        }
-      ]
+          microphonePermission:
+            "Allow Nasara to record audio with videos",
+        },
+      ],
     ],
 
     /* ===================================================== */
@@ -44,9 +53,9 @@ export default {
       permissions: [
         "INTERNET",
         "CAMERA",
-        "RECORD_AUDIO", // ✅ REQUIRED (FIXED ISSUE)
+        "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
       ],
 
       adaptiveIcon: {
@@ -69,7 +78,7 @@ export default {
         NSPhotoLibraryUsageDescription:
           "Nasara needs access to your gallery to upload videos.",
         NSPhotoLibraryAddUsageDescription:
-          "Nasara needs permission to save media."
+          "Nasara needs permission to save media.",
       },
     },
 
