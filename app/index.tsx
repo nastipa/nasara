@@ -3,12 +3,11 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Platform,
   ScrollView,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { supabase } from "../lib/supabase";
 
@@ -31,39 +30,30 @@ export default function Home() {
         setDevice("desktop");
       }
 
-      // analytics (non-blocking)
-      (supabase as any)
-        .from("analytics_events")
-        .insert({
+      // analytics safe (no crash)
+      try {
+        (supabase as any).from("analytics_events").insert({
           event: "visit",
           device: ua,
-        })
-        .catch(() => {});
+        });
+      } catch {}
     }
   }, []);
 
-  /* ================= FIXED NAVIGATION ================= */
+  /* ================= ENTER APP ================= */
   const handleEnterApp = async () => {
     if (loading) return;
-
     setLoading(true);
 
     try {
-      if (Platform.OS === "web") {
-        await (supabase as any)
-          .from("analytics_events")
-          .insert({
-            event: "enter_app",
-            device: navigator.userAgent,
-          })
-          .catch(() => {});
-      }
+      const { data } = await (supabase as any).auth.getSession();
 
-      // ✅ FIX: use replace for web (prevents Vercel stuck)
-      if (Platform.OS === "web") {
-        window.location.href = "/app";
+      if (!data.session) {
+        // ❌ New user → go to login
+        router.replace("/(auth)/login");
       } else {
-        router.replace("/app");
+        // ✅ Logged in → go to app
+        router.replace("/(tabs)");
       }
     } catch (error) {
       console.log("Navigation error:", error);
@@ -71,28 +61,21 @@ export default function Home() {
     }
   };
 
-  /* ================= FIXED DOWNLOAD ================= */
+  /* ================= DOWNLOAD APK ================= */
   const handleDownload = async () => {
     try {
       if (Platform.OS === "web") {
-        await (supabase as any)
-          .from("analytics_events")
-          .insert({
-            event: "download_apk",
-            device: navigator.userAgent,
-          })
-          .catch(() => {});
+        await (supabase as any).from("analytics_events").insert({
+          event: "download_apk",
+          device: navigator.userAgent,
+        });
       }
 
-      const url =
-        "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk";
-
-      // ✅ FIX: force browser download
-      if (Platform.OS === "web") {
-        window.open(url, "_blank");
-      } else {
-        Linking.openURL(url);
-      }
+      // ✅ FORCE DOWNLOAD FIX (works on web)
+      window.open(
+        "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk",
+        "_blank"
+      );
     } catch (error) {
       console.log("Download error:", error);
     }
@@ -100,7 +83,6 @@ export default function Home() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: "#020617" }}>
-      
       {/* HERO */}
       <LinearGradient
         colors={["#020617", "#0f172a", "#020617"]}
@@ -142,8 +124,8 @@ export default function Home() {
           )}
         </TouchableOpacity>
 
-        {/* ✅ SHOW DOWNLOAD FOR ANDROID + DESKTOP */}
-        {(device === "android" || device === "desktop") && (
+        {/* ANDROID DOWNLOAD */}
+        {device === "android" && (
           <TouchableOpacity
             onPress={handleDownload}
             style={{
@@ -189,7 +171,7 @@ export default function Home() {
           "💬 Real-time Chat",
         ].map((item, i) => (
           <View
-            key={i}
+            key={i.toString()}
             style={{
               backgroundColor: "#0f172a",
               padding: 15,

@@ -20,10 +20,11 @@ export default function RootLayout() {
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        setSession(session);
+
         if (event === "SIGNED_OUT") {
           router.replace("/(auth)/login");
         }
-        setSession(session);
       }
     );
 
@@ -41,16 +42,19 @@ export default function RootLayout() {
       pathname?.startsWith("/(auth)/signup");
 
     const isProtectedPage =
+      pathname?.startsWith("/(tabs)") ||
       pathname?.startsWith("/verify-phone") ||
       pathname?.startsWith("/(admin)");
 
+    // ❌ Not logged in → block protected pages
     if (!session && isProtectedPage) {
       router.replace("/(auth)/login");
       return;
     }
 
+    // ✅ Logged in → block auth pages
     if (session && isAuthPage) {
-      router.replace("/");
+      router.replace("/(tabs)");
       return;
     }
   }, [session, mounted, pathname]);
