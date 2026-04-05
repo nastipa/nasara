@@ -54,9 +54,9 @@ export default function Home() {
       }
 
       // ✅ SAFE navigation
-      router.replace("/(tabs)/browse");
+      router.replace("/browse");
     } catch (error) {
-      console.log("Navigation error:", error);
+      console.log(error);
       setLoading(false);
     }
   };
