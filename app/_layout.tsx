@@ -1,7 +1,6 @@
 import { Session } from "@supabase/supabase-js";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { AppState } from "react-native"; // ✅ ADDED
 import { AuthProvider } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -14,7 +13,11 @@ export default function RootLayout() {
 
   /* ================= LOAD SESSION ================= */
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error || !data.session) {
+        console.log("⚠️ No session or expired");
+      }
+
       setSession(data.session);
       setMounted(true);
     });
@@ -22,12 +25,12 @@ export default function RootLayout() {
     const { data: listener } = supabase.auth.onAuthStateChange(
       (event, session) => {
         console.log("Auth event:", event);
-        setSession(session);
 
-        // ✅ ONLY redirect on logout (safe)
         if (event === "SIGNED_OUT") {
           router.replace("/(auth)/login");
         }
+
+        setSession(session);
       }
     );
 
@@ -35,42 +38,6 @@ export default function RootLayout() {
       listener.subscription.unsubscribe();
     };
   }, []);
-
-  /* ================= 🟢 ONLINE STATUS (ADDED) ================= */
-  useEffect(() => {
-    if (!session?.user) return;
-
-    const userId = session.user.id;
-
-    const updateStatus = async (online: boolean) => {
-      await (supabase as any)
-        .from("profiles")
-        .update({
-          is_online: online,
-          last_seen: new Date().toISOString(),
-        })
-        .eq("id", userId);
-    };
-
-    // 🟢 when app opens
-    updateStatus(true);
-
-    // 🔄 listen app state
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active") {
-        updateStatus(true);
-      } else {
-        updateStatus(false);
-      }
-    });
-
-    // ⚪ when app closes
-    return () => {
-      updateStatus(false);
-      sub.remove();
-    };
-  }, [session]);
-  /* ================= END ONLINE STATUS ================= */
 
   /* ================= ROUTE GUARD ================= */
   useEffect(() => {
@@ -80,53 +47,74 @@ export default function RootLayout() {
       pathname?.startsWith("/(auth)/login") ||
       pathname?.startsWith("/(auth)/signup");
 
-    const isLandingPage = pathname === "/";
-
     const isProtectedPage =
-      pathname?.startsWith("/(tabs)") ||
-      pathname?.startsWith("/(admin)") ||
-      pathname?.startsWith("/verify-phone");
+      pathname?.startsWith("/verify-phone") ||
+      pathname?.startsWith("/(admin)");
 
-    // ✅ ALLOW landing page always
-    if (isLandingPage) return;
-
-    // 🔒 Protect app pages
     if (!session && isProtectedPage) {
       router.replace("/(auth)/login");
       return;
     }
 
-    // ✅ Prevent logged-in users from seeing auth pages
     if (session && isAuthPage) {
-      router.replace("/(tabs)/browse");
+      router.replace("/");
       return;
     }
   }, [session, mounted, pathname]);
 
-  /* ================= UI ================= */
+  /* ================= ✅ FIX WHITE SCREEN ON BACK ================= */
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const handlePopState = () => {
+        // If route becomes invalid, recover safely
+        const path = window.location.pathname;
+
+        if (!path || path === "/") {
+          router.replace("/"); // home
+        } else {
+          router.replace(path); // reload current route properly
+        }
+      };
+
+      window.addEventListener("popstate", handlePopState);
+
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    }
+  }, []);
+
+  /* ================= SESSION DEBUG ================= */
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      console.log("Session:", data.session);
+    });
+  }, []);
+
   return (
     <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* 🌍 Landing Page */}
-        <Stack.Screen name="index" />
+      <Stack>
+        {/* HOME */}
+        <Stack.Screen name="index" options={{ headerShown: false }} />
 
-        {/* 📱 Main App */}
-        <Stack.Screen name="(tabs)" />
+        {/* MAIN APP */}
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 
-        {/* 👑 Admin */}
-        <Stack.Screen name="(admin)" />
+        {/* ADMIN */}
+        <Stack.Screen name="(admin)" options={{ headerShown: false }} />
 
-        {/* 🔐 Auth */}
-        <Stack.Screen name="(auth)/login" />
-        <Stack.Screen name="(auth)/signup" />
+        {/* AUTH */}
+        <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)/signup" options={{ headerShown: false }} />
 
-        {/* 📞 Verification */}
-        <Stack.Screen name="verify-phone" />
+        {/* VERIFY */}
+        <Stack.Screen name="verify-phone" options={{ headerShown: false }} />
 
-        {/* 💬 Modal */}
+        {/* MODAL */}
         <Stack.Screen
           name="comments"
           options={{
+            headerShown: false,
             presentation: "transparentModal",
           }}
         />
