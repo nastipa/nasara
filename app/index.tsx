@@ -1,9 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
 import {
-  ActivityIndicator,
-  Linking,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -12,27 +9,11 @@ import {
 
 export default function Home() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-
-  const handleEnterApp = () => {
-    if (loading) return;
-
-    setLoading(true);
-
-    // ✅ ALWAYS go to login first
-    router.push("/(auth)/login");
-
-    setTimeout(() => setLoading(false), 1000);
-  };
-
-  const handleDownload = () => {
-    Linking.openURL(
-      "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk"
-    );
-  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: "#020617" }}>
+      
+      {/* HERO */}
       <LinearGradient
         colors={["#020617", "#0f172a", "#020617"]}
         style={{ padding: 30, alignItems: "center", marginTop: 80 }}
@@ -51,40 +32,16 @@ export default function Home() {
           Buy, Sell, Chat, Go Viral & Earn Money
         </Text>
 
-        {/* ENTER APP */}
         <TouchableOpacity
-          onPress={handleEnterApp}
+          onPress={() => router.push("/app")}
           style={{
             backgroundColor: "#22c55e",
             padding: 15,
             borderRadius: 30,
             marginTop: 20,
-            width: 220,
           }}
         >
-          {loading ? (
-            <ActivityIndicator color="#000" />
-          ) : (
-            <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-              Enter App
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        {/* DOWNLOAD */}
-        <TouchableOpacity
-          onPress={handleDownload}
-          style={{
-            backgroundColor: "#16a34a",
-            padding: 15,
-            borderRadius: 30,
-            marginTop: 10,
-            width: 220,
-          }}
-        >
-          <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-            Download Android APK 📱
-          </Text>
+          <Text style={{ fontWeight: "bold" }}>Enter App</Text>
         </TouchableOpacity>
       </LinearGradient>
 
@@ -109,6 +66,20 @@ export default function Home() {
             <Text style={{ color: "#fff" }}>{item}</Text>
           </View>
         ))}
+      </View>
+
+      {/* CTA */}
+      <View style={{ alignItems: "center", marginBottom: 40 }}>
+        <TouchableOpacity
+          onPress={() => router.push("/app")}
+          style={{
+            backgroundColor: "#22c55e",
+            padding: 15,
+            borderRadius: 30,
+          }}
+        >
+          <Text style={{ fontWeight: "bold" }}>Start Now</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
