@@ -2,6 +2,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Linking,
   Platform,
   ScrollView,
@@ -15,6 +16,7 @@ export default function Home() {
   const router = useRouter();
 
   const [device, setDevice] = useState<"android" | "ios" | "desktop">("desktop");
+  const [loading, setLoading] = useState(false);
 
   /* ================= DEVICE DETECTION + ANALYTICS ================= */
   useEffect(() => {
@@ -37,30 +39,43 @@ export default function Home() {
     }
   }, []);
 
-  /* ================= ACTIONS ================= */
-
+  /* ================= SAFE NAVIGATION ================= */
   const handleEnterApp = async () => {
-    if (Platform.OS === "web") {
-      await (supabase as any).from("analytics_events").insert({
-        event: "enter_app",
-        device: navigator.userAgent,
-      });
-    }
+    if (loading) return; // ✅ prevent double click
 
-    router.replace("/(tabs)/browse");
+    setLoading(true);
+
+    try {
+      if (Platform.OS === "web") {
+        await (supabase as any).from("analytics_events").insert({
+          event: "enter_app",
+          device: navigator.userAgent,
+        });
+      }
+
+      // ✅ SAFE navigation
+      router.replace("/(tabs)/browse");
+    } catch (error) {
+      console.log("Navigation error:", error);
+      setLoading(false);
+    }
   };
 
   const handleDownload = async () => {
-    if (Platform.OS === "web") {
-      await (supabase as any).from("analytics_events").insert({
-        event: "download_apk",
-        device: navigator.userAgent,
-      });
-    }
+    try {
+      if (Platform.OS === "web") {
+        await (supabase as any).from("analytics_events").insert({
+          event: "download_apk",
+          device: navigator.userAgent,
+        });
+      }
 
-    Linking.openURL(
-      "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk"
-    );
+      Linking.openURL(
+        "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk"
+      );
+    } catch (error) {
+      console.log("Download error:", error);
+    }
   };
 
   return (
@@ -88,17 +103,23 @@ export default function Home() {
         {/* ENTER APP */}
         <TouchableOpacity
           onPress={handleEnterApp}
+          disabled={loading}
           style={{
             backgroundColor: "#22c55e",
             padding: 15,
             borderRadius: 30,
             marginTop: 20,
             width: 220,
+            opacity: loading ? 0.7 : 1,
           }}
         >
-          <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-            Enter App
-          </Text>
+          {loading ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <Text style={{ fontWeight: "bold", textAlign: "center" }}>
+              Enter App
+            </Text>
+          )}
         </TouchableOpacity>
 
         {/* ANDROID ONLY */}
@@ -165,11 +186,13 @@ export default function Home() {
       <View style={{ alignItems: "center", marginBottom: 40 }}>
         <TouchableOpacity
           onPress={handleEnterApp}
+          disabled={loading}
           style={{
             backgroundColor: "#22c55e",
             padding: 15,
             borderRadius: 30,
             width: 220,
+            opacity: loading ? 0.7 : 1,
           }}
         >
           <Text style={{ fontWeight: "bold", textAlign: "center" }}>
