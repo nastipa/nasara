@@ -30,7 +30,7 @@ export default function Home() {
     setLoading(true);
 
     // ✅ Always go to login first
-    router.replace("/app");
+    router.replace("/login");
   };
 
   /* ================= DOWNLOAD ================= */

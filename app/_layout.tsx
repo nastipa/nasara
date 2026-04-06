@@ -38,35 +38,32 @@ export default function RootLayout() {
     };
   }, []);
 
-  /* ================= ROUTE GUARD (FIXED) ================= */
+  /* ================= ROUTE GUARD ================= */
   useEffect(() => {
     if (!mounted) return;
 
     const isAuthPage =
       pathname === "/login" || pathname === "/signup";
 
-    const isInsideApp =
-      pathname?.startsWith("/(tabs)") ||
+    const isProtectedPage =
       pathname?.startsWith("/browse") ||
-      pathname?.startsWith("/profile") ||
-      pathname?.startsWith("/sell");
+      pathname?.startsWith("/sell") ||
+      pathname?.startsWith("/profile");
 
-    // 🚫 Not logged in → force login ONLY if inside app
-    if (!session && isInsideApp) {
-      if (pathname !== "/login") {
-        router.replace("/login");
-      }
+    // ❌ Not logged in → go to login
+    if (!session && isProtectedPage) {
+      router.replace("/login");
       return;
     }
 
-    // ✅ Logged in → prevent staying on login/signup
+    // ✅ Logged in → prevent going back to login
     if (session && isAuthPage) {
-      router.replace("/(tabs)/browse");
+      router.replace("/browse");
       return;
     }
   }, [session, mounted, pathname]);
 
-  /* ================= LOADING SCREEN ================= */
+  /* ================= LOADING ================= */
   if (!mounted) {
     return (
       <View
@@ -88,14 +85,8 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="(admin)" />
         <Stack.Screen name="(auth)/login" />
         <Stack.Screen name="(auth)/signup" />
-        <Stack.Screen name="verify-phone" />
-        <Stack.Screen
-          name="comments"
-          options={{ presentation: "transparentModal" }}
-        />
       </Stack>
     </AuthProvider>
   );
