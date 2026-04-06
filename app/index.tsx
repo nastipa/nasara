@@ -3,11 +3,12 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
-  Platform,
   ScrollView,
   Text,
-  TouchableOpacity
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 export default function Home() {
@@ -16,6 +17,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  /* ================= RESET STATES ================= */
   useFocusEffect(
     useCallback(() => {
       setLoading(false);
@@ -29,89 +31,164 @@ export default function Home() {
 
     setLoading(true);
 
-    // ✅ Always go to login first
-    router.replace("/login");
+    try {
+      router.replace("/login"); // ✅ correct for web
+    } catch (err) {
+      Alert.alert("Error", "Failed to open app");
+      setLoading(false);
+    }
   };
 
-  /* ================= DOWNLOAD ================= */
-  const handleDownload = () => {
+  /* ================= DOWNLOAD APK ================= */
+  const handleDownload = async () => {
     if (downloading) return;
 
     const url =
       "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk";
 
-    setDownloading(true);
+    try {
+      setDownloading(true);
 
-    if (Platform.OS === "web") {
-      window.open(url, "_blank"); // ✅ FIXED for web
-    } else {
-      Linking.openURL(url);
+      const supported = await Linking.canOpenURL(url);
+
+      if (!supported) {
+        Alert.alert("Error", "Cannot open download link");
+        return;
+      }
+
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert("Download Failed", "Please try again.");
+    } finally {
+      setDownloading(false);
     }
-
-    setTimeout(() => setDownloading(false), 1000);
   };
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: "#020617" }}
       contentContainerStyle={{ paddingBottom: 40 }}
+      showsVerticalScrollIndicator={false}
     >
+      {/* HERO */}
       <LinearGradient
         colors={["#020617", "#0f172a", "#020617"]}
         style={{
           padding: 30,
           alignItems: "center",
           marginTop: 80,
+          borderBottomLeftRadius: 30,
+          borderBottomRightRadius: 30,
         }}
       >
-        <Text style={{ fontSize: 44, fontWeight: "bold", color: "#22c55e" }}>
+        <Text
+          style={{
+            fontSize: 44,
+            fontWeight: "bold",
+            color: "#22c55e",
+          }}
+        >
           NASARA
         </Text>
 
-        <Text style={{ color: "#cbd5f5", textAlign: "center", marginTop: 10 }}>
+        <Text
+          style={{
+            color: "#cbd5f5",
+            textAlign: "center",
+            marginTop: 10,
+          }}
+        >
           Buy, Sell, Chat, Go Viral & Earn Money
         </Text>
 
-        {/* ENTER */}
+        {/* ENTER APP */}
         <TouchableOpacity
           onPress={handleEnterApp}
+          activeOpacity={0.8}
           style={{
             backgroundColor: "#22c55e",
             padding: 15,
             borderRadius: 30,
             marginTop: 25,
             width: 220,
+            opacity: loading ? 0.7 : 1,
           }}
         >
           {loading ? (
             <ActivityIndicator color="#000" />
           ) : (
-            <Text style={{ textAlign: "center", fontWeight: "bold" }}>
+            <Text style={{ fontWeight: "bold", textAlign: "center" }}>
               Enter App
             </Text>
           )}
         </TouchableOpacity>
 
-        {/* DOWNLOAD */}
+        {/* DOWNLOAD APK */}
         <TouchableOpacity
           onPress={handleDownload}
+          activeOpacity={0.8}
           style={{
             backgroundColor: "#16a34a",
             padding: 15,
             borderRadius: 30,
             marginTop: 12,
             width: 220,
+            opacity: downloading ? 0.7 : 1,
           }}
         >
           {downloading ? (
             <ActivityIndicator color="#000" />
           ) : (
-            <Text style={{ textAlign: "center", fontWeight: "bold" }}>
+            <Text style={{ fontWeight: "bold", textAlign: "center" }}>
               Download Android APK 📱
             </Text>
           )}
         </TouchableOpacity>
       </LinearGradient>
+
+      {/* FEATURES */}
+      <View style={{ padding: 20 }}>
+        {[
+          "🛒 Sell Anything Fast",
+          "📢 Promote Ads",
+          "🎥 Viral Reels",
+          "⚔️ Battles & Voting",
+          "💬 Real-time Chat",
+        ].map((item, i) => (
+          <View
+            key={i}
+            style={{
+              backgroundColor: "#0f172a",
+              padding: 15,
+              borderRadius: 12,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ color: "#fff", fontSize: 15 }}>
+              {item}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {/* CTA */}
+      <View style={{ alignItems: "center", marginBottom: 40 }}>
+        <TouchableOpacity
+          onPress={handleEnterApp}
+          disabled={loading}
+          style={{
+            backgroundColor: "#22c55e",
+            padding: 15,
+            borderRadius: 30,
+            width: 220,
+            opacity: loading ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ fontWeight: "bold", textAlign: "center" }}>
+            Start Now
+          </Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
