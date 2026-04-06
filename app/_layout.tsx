@@ -11,7 +11,6 @@ export default function RootLayout() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [redirecting, setRedirecting] = useState(false);
 
   /* ================= LOAD SESSION ================= */
   useEffect(() => {
@@ -41,39 +40,34 @@ export default function RootLayout() {
 
   /* ================= ROUTE GUARD ================= */
   useEffect(() => {
-    if (!mounted || redirecting) return;
+    if (!mounted) return;
 
+    // ✅ IMPORTANT: DO NOT USE /(auth) IN PATH
     const isAuthPage =
-      pathname?.startsWith("/(auth)/login") ||
-      pathname?.startsWith("/(auth)/signup");
+      pathname === "/login" || pathname === "/signup";
 
     const isProtectedPage =
-      pathname?.startsWith("/(tabs)") ||
+      pathname?.startsWith("/browse") ||
+      pathname?.startsWith("/sell") ||
+      pathname?.startsWith("/profile") ||
+      pathname?.startsWith("/(tabs)") || // still allow internal match
       pathname?.startsWith("/verify-phone") ||
       pathname?.startsWith("/(admin)");
 
     // 🚫 Not logged in → go to login
     if (!session && isProtectedPage) {
-      setRedirecting(true);
-      setTimeout(() => {
-        router.replace("/(auth)/login");
-        setRedirecting(false);
-      }, 50);
+      router.replace("/login");
       return;
     }
 
-    // ✅ Logged in → go to app
+    // ✅ Logged in → go to main app
     if (session && isAuthPage) {
-      setRedirecting(true);
-      setTimeout(() => {
-        router.replace("/(tabs)");
-        setRedirecting(false);
-      }, 50);
+      router.replace("/(tabs)/browse");
       return;
     }
   }, [session, mounted, pathname]);
 
-  /* ================= LOADING SCREEN ================= */
+  /* ================= LOADING ================= */
   if (!mounted) {
     return (
       <View
@@ -89,6 +83,7 @@ export default function RootLayout() {
     );
   }
 
+  /* ================= NAVIGATION ================= */
   return (
     <AuthProvider>
       <Stack screenOptions={{ headerShown: false }}>

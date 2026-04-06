@@ -8,33 +8,31 @@ import {
   ScrollView,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 export default function Home() {
   const router = useRouter();
+
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  // ✅ ENTER APP (FIXED)
-  const handleEnterApp = async () => {
+  /* ================= ENTER APP ================= */
+  const handleEnterApp = () => {
     if (loading) return;
 
-    try {
-      setLoading(true);
+    setLoading(true);
 
-      // Small delay prevents UI freeze on web
-      setTimeout(() => {
-        router.replace("/(auth)/login"); // better than push
-      }, 100);
+    try {
+      // ✅ USE PUBLIC ROUTE (NOT /(auth)/login)
+      router.push("/login");
     } catch (err) {
       Alert.alert("Error", "Failed to open app");
-    } finally {
-      setTimeout(() => setLoading(false), 800);
+      setLoading(false);
     }
   };
 
-  // ✅ DOWNLOAD APK (SAFE)
+  /* ================= DOWNLOAD APK ================= */
   const handleDownload = async () => {
     if (downloading) return;
 
@@ -65,6 +63,7 @@ export default function Home() {
       contentContainerStyle={{ paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
     >
+      {/* HERO */}
       <LinearGradient
         colors={["#020617", "#0f172a", "#020617"]}
         style={{
@@ -105,6 +104,7 @@ export default function Home() {
             borderRadius: 30,
             marginTop: 25,
             width: 220,
+            opacity: loading ? 0.7 : 1,
           }}
         >
           {loading ? (
@@ -116,7 +116,7 @@ export default function Home() {
           )}
         </TouchableOpacity>
 
-        {/* DOWNLOAD */}
+        {/* DOWNLOAD APK */}
         <TouchableOpacity
           onPress={handleDownload}
           activeOpacity={0.8}
@@ -126,6 +126,7 @@ export default function Home() {
             borderRadius: 30,
             marginTop: 12,
             width: 220,
+            opacity: downloading ? 0.7 : 1,
           }}
         >
           {downloading ? (
