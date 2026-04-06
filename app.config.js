@@ -22,7 +22,7 @@ export default {
     /* ✅ WEB (PWA SUPPORT ADDED 🔥) */
     /* ===================================================== */
     web: {
-      bundler: "webpack",
+      bundler: "metro",
       output: "static",
       favicon: "./assets/images/icon.png"
     },
