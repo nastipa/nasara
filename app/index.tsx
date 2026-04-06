@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -32,8 +33,8 @@ export default function Home() {
     setLoading(true);
 
     try {
-      // Navigate to main app tab
-      router.replace("/(tabs)/browse");
+      // ✅ FIX: use push instead of replace (prevents white screen loop)
+      router.push("/(auth)/login");
     } catch (err) {
       Alert.alert("Error", "Failed to open app");
       setLoading(false);
@@ -50,14 +51,19 @@ export default function Home() {
     try {
       setDownloading(true);
 
-      const supported = await Linking.canOpenURL(url);
+      if (Platform.OS === "web") {
+        // ✅ FIX: web must use window.open
+        window.open(url, "_blank");
+      } else {
+        const supported = await Linking.canOpenURL(url);
 
-      if (!supported) {
-        Alert.alert("Error", "Cannot open download link");
-        return;
+        if (!supported) {
+          Alert.alert("Error", "Cannot open download link");
+          return;
+        }
+
+        await Linking.openURL(url);
       }
-
-      await Linking.openURL(url);
     } catch (error) {
       Alert.alert("Download Failed", "Please try again.");
     } finally {
