@@ -38,36 +38,35 @@ export default function RootLayout() {
     };
   }, []);
 
-  /* ================= ROUTE GUARD ================= */
+  /* ================= ROUTE GUARD (FIXED) ================= */
   useEffect(() => {
     if (!mounted) return;
 
-    // ✅ IMPORTANT: DO NOT USE /(auth) IN PATH
     const isAuthPage =
       pathname === "/login" || pathname === "/signup";
 
-    const isProtectedPage =
+    const isInsideApp =
+      pathname?.startsWith("/(tabs)") ||
       pathname?.startsWith("/browse") ||
-      pathname?.startsWith("/sell") ||
       pathname?.startsWith("/profile") ||
-      pathname?.startsWith("/(tabs)") || // still allow internal match
-      pathname?.startsWith("/verify-phone") ||
-      pathname?.startsWith("/(admin)");
+      pathname?.startsWith("/sell");
 
-    // 🚫 Not logged in → go to login
-    if (!session && isProtectedPage) {
-      router.replace("/login");
+    // 🚫 Not logged in → force login ONLY if inside app
+    if (!session && isInsideApp) {
+      if (pathname !== "/login") {
+        router.replace("/login");
+      }
       return;
     }
 
-    // ✅ Logged in → go to main app
+    // ✅ Logged in → prevent staying on login/signup
     if (session && isAuthPage) {
       router.replace("/(tabs)/browse");
       return;
     }
   }, [session, mounted, pathname]);
 
-  /* ================= LOADING ================= */
+  /* ================= LOADING SCREEN ================= */
   if (!mounted) {
     return (
       <View
@@ -83,7 +82,7 @@ export default function RootLayout() {
     );
   }
 
-  /* ================= NAVIGATION ================= */
+  /* ================= NAV ================= */
   return (
     <AuthProvider>
       <Stack screenOptions={{ headerShown: false }}>
