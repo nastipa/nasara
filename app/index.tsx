@@ -1,94 +1,87 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
+  Alert,
+  Linking,
   ScrollView,
   Text,
   TouchableOpacity,
   View
 } from "react-native";
-import { supabase } from "../lib/supabase";
 
 export default function Home() {
   const router = useRouter();
-
-  const [device, setDevice] = useState<"android" | "ios" | "desktop">("desktop");
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  /* ================= DEVICE DETECTION ================= */
-  useEffect(() => {
-    if (Platform.OS === "web") {
-      const ua = navigator.userAgent || "";
-
-      if (/android/i.test(ua)) {
-        setDevice("android");
-      } else if (/iPhone|iPad|iPod/i.test(ua)) {
-        setDevice("ios");
-      } else {
-        setDevice("desktop");
-      }
-
-      // analytics safe (no crash)
-      try {
-        (supabase as any).from("analytics_events").insert({
-          event: "visit",
-          device: ua,
-        });
-      } catch {}
-    }
-  }, []);
-
-  /* ================= ENTER APP ================= */
+  // ✅ ENTER APP (FIXED)
   const handleEnterApp = async () => {
     if (loading) return;
-    setLoading(true);
 
     try {
-      const { data } = await (supabase as any).auth.getSession();
+      setLoading(true);
 
-      if (!data.session) {
-        // ❌ New user → go to login
-        router.replace("/(auth)/login");
-      } else {
-        // ✅ Logged in → go to app
-        router.replace("/(tabs)");
-      }
-    } catch (error) {
-      console.log("Navigation error:", error);
-      setLoading(false);
+      // Small delay prevents UI freeze on web
+      setTimeout(() => {
+        router.replace("/(auth)/login"); // better than push
+      }, 100);
+    } catch (err) {
+      Alert.alert("Error", "Failed to open app");
+    } finally {
+      setTimeout(() => setLoading(false), 800);
     }
   };
 
-  /* ================= DOWNLOAD APK ================= */
+  // ✅ DOWNLOAD APK (SAFE)
   const handleDownload = async () => {
+    if (downloading) return;
+
+    const url =
+      "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk";
+
     try {
-      if (Platform.OS === "web") {
-        await (supabase as any).from("analytics_events").insert({
-          event: "download_apk",
-          device: navigator.userAgent,
-        });
+      setDownloading(true);
+
+      const supported = await Linking.canOpenURL(url);
+
+      if (!supported) {
+        Alert.alert("Error", "Cannot open download link");
+        return;
       }
 
-      // ✅ FORCE DOWNLOAD FIX (works on web)
-      window.open(
-        "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk",
-        "_blank"
-      );
+      await Linking.openURL(url);
     } catch (error) {
-      console.log("Download error:", error);
+      Alert.alert("Download Failed", "Please try again.");
+    } finally {
+      setDownloading(false);
     }
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#020617" }}>
-      {/* HERO */}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: "#020617" }}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      showsVerticalScrollIndicator={false}
+    >
       <LinearGradient
         colors={["#020617", "#0f172a", "#020617"]}
-        style={{ padding: 30, alignItems: "center", marginTop: 80 }}
+        style={{
+          padding: 30,
+          alignItems: "center",
+          marginTop: 80,
+          borderBottomLeftRadius: 30,
+          borderBottomRightRadius: 30,
+        }}
       >
-        <Text style={{ fontSize: 44, fontWeight: "bold", color: "#22c55e" }}>
+        <Text
+          style={{
+            fontSize: 44,
+            fontWeight: "bold",
+            color: "#22c55e",
+          }}
+        >
           NASARA
         </Text>
 
@@ -105,14 +98,13 @@ export default function Home() {
         {/* ENTER APP */}
         <TouchableOpacity
           onPress={handleEnterApp}
-          disabled={loading}
+          activeOpacity={0.8}
           style={{
             backgroundColor: "#22c55e",
             padding: 15,
             borderRadius: 30,
-            marginTop: 20,
+            marginTop: 25,
             width: 220,
-            opacity: loading ? 0.7 : 1,
           }}
         >
           {loading ? (
@@ -124,41 +116,26 @@ export default function Home() {
           )}
         </TouchableOpacity>
 
-        {/* ANDROID DOWNLOAD */}
-        {device === "android" && (
-          <TouchableOpacity
-            onPress={handleDownload}
-            style={{
-              backgroundColor: "#16a34a",
-              padding: 15,
-              borderRadius: 30,
-              marginTop: 10,
-              width: 220,
-            }}
-          >
+        {/* DOWNLOAD */}
+        <TouchableOpacity
+          onPress={handleDownload}
+          activeOpacity={0.8}
+          style={{
+            backgroundColor: "#16a34a",
+            padding: 15,
+            borderRadius: 30,
+            marginTop: 12,
+            width: 220,
+          }}
+        >
+          {downloading ? (
+            <ActivityIndicator color="#000" />
+          ) : (
             <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-              Download for Android 📱
+              Download Android APK 📱
             </Text>
-          </TouchableOpacity>
-        )}
-
-        {/* IOS */}
-        {device === "ios" && (
-          <View
-            style={{
-              marginTop: 10,
-              padding: 15,
-              borderRadius: 30,
-              borderWidth: 1,
-              borderColor: "#fff",
-              width: 220,
-            }}
-          >
-            <Text style={{ textAlign: "center", color: "#fff" }}>
-              iOS App Coming Soon 🍎
-            </Text>
-          </View>
-        )}
+          )}
+        </TouchableOpacity>
       </LinearGradient>
 
       {/* FEATURES */}
@@ -171,7 +148,7 @@ export default function Home() {
           "💬 Real-time Chat",
         ].map((item, i) => (
           <View
-            key={i.toString()}
+            key={i}
             style={{
               backgroundColor: "#0f172a",
               padding: 15,
@@ -182,25 +159,6 @@ export default function Home() {
             <Text style={{ color: "#fff" }}>{item}</Text>
           </View>
         ))}
-      </View>
-
-      {/* CTA */}
-      <View style={{ alignItems: "center", marginBottom: 40 }}>
-        <TouchableOpacity
-          onPress={handleEnterApp}
-          disabled={loading}
-          style={{
-            backgroundColor: "#22c55e",
-            padding: 15,
-            borderRadius: 30,
-            width: 220,
-            opacity: loading ? 0.7 : 1,
-          }}
-        >
-          <Text style={{ fontWeight: "bold", textAlign: "center" }}>
-            Start Now
-          </Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );

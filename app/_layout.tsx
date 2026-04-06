@@ -1,6 +1,7 @@
 import { Session } from "@supabase/supabase-js";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { AuthProvider } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
 
@@ -10,32 +11,37 @@ export default function RootLayout() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   /* ================= LOAD SESSION ================= */
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setMounted(true);
-    });
+    let isMounted = true;
+
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (isMounted) {
+        setSession(data.session);
+        setMounted(true);
+      }
+    };
+
+    loadSession();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      (_event, session) => {
         setSession(session);
-
-        if (event === "SIGNED_OUT") {
-          router.replace("/(auth)/login");
-        }
       }
     );
 
     return () => {
+      isMounted = false;
       listener.subscription.unsubscribe();
     };
   }, []);
 
   /* ================= ROUTE GUARD ================= */
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || redirecting) return;
 
     const isAuthPage =
       pathname?.startsWith("/(auth)/login") ||
@@ -46,34 +52,55 @@ export default function RootLayout() {
       pathname?.startsWith("/verify-phone") ||
       pathname?.startsWith("/(admin)");
 
-    // ❌ Not logged in → block protected pages
+    // 🚫 Not logged in → go to login
     if (!session && isProtectedPage) {
-      router.replace("/(auth)/login");
+      setRedirecting(true);
+      setTimeout(() => {
+        router.replace("/(auth)/login");
+        setRedirecting(false);
+      }, 50);
       return;
     }
 
-    // ✅ Logged in → block auth pages
+    // ✅ Logged in → go to app
     if (session && isAuthPage) {
-      router.replace("/(tabs)");
+      setRedirecting(true);
+      setTimeout(() => {
+        router.replace("/(tabs)");
+        setRedirecting(false);
+      }, 50);
       return;
     }
   }, [session, mounted, pathname]);
 
+  /* ================= LOADING SCREEN ================= */
+  if (!mounted) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#020617",
+        }}
+      >
+        <ActivityIndicator size="large" color="#22c55e" />
+      </View>
+    );
+  }
+
   return (
     <AuthProvider>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="(admin)" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)/signup" options={{ headerShown: false }} />
-        <Stack.Screen name="verify-phone" options={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(admin)" />
+        <Stack.Screen name="(auth)/login" />
+        <Stack.Screen name="(auth)/signup" />
+        <Stack.Screen name="verify-phone" />
         <Stack.Screen
           name="comments"
-          options={{
-            headerShown: false,
-            presentation: "transparentModal",
-          }}
+          options={{ presentation: "transparentModal" }}
         />
       </Stack>
     </AuthProvider>
