@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,14 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  /* ================= RESET LOADING WHEN SCREEN FOCUSED ================= */
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(false);
+      setDownloading(false);
+    }, [])
+  );
+
   /* ================= ENTER APP ================= */
   const handleEnterApp = () => {
     if (loading) return;
@@ -24,8 +32,8 @@ export default function Home() {
     setLoading(true);
 
     try {
-      // ✅ USE PUBLIC ROUTE (NOT /(auth)/login)
-      router.push("/login");
+      // Navigate to main app tab
+      router.replace("/(tabs)/browse");
     } catch (err) {
       Alert.alert("Error", "Failed to open app");
       setLoading(false);
