@@ -367,13 +367,23 @@ export default function ChatRoom() {
                     )}
 
                     {/* REACTIONS */}
-                    <View style={{ flexDirection: "row", marginTop: 6 }}>
-                      {["❤️", "😂", "👍",  "😮", "😢", "🙏",].map((e) => (
-                        <TouchableOpacity key={e} onPress={() => addReaction(item.id, e)}>
-                          <Text style={{ marginRight: 8 }}>{e}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+<View style={{ flexDirection: "row", marginTop: 6 }}>
+  {["❤️", "😂", "👍", "😮", "😢", "🙏"].map((e) => (
+    <TouchableOpacity 
+      key={e} 
+      onPress={async () => {
+        if (!userId) return;
+        await (supabase as any).from("messages").insert({
+          room_id: roomId,
+          sender_id: userId,
+          text: e,  // send the emoji as a message
+        });
+      }}
+    >
+      <Text style={{ marginRight: 8 }}>{e}</Text>
+    </TouchableOpacity>
+  ))}
+</View>
 
                     {/* EDIT & DELETE BUTTONS */}
                     {isMe && !item.deleted_for_everyone && (
