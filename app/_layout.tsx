@@ -10,21 +10,17 @@ export default function RootLayout() {
   const pathname = usePathname();
 
   const [session, setSession] = useState<Session | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [ready, setReady] = useState(false); // 🔥 NEW
 
   /* ================= LOAD SESSION ================= */
   useEffect(() => {
-    let isMounted = true;
-
-    const loadSession = async () => {
+    const init = async () => {
       const { data } = await supabase.auth.getSession();
-      if (isMounted) {
-        setSession(data.session);
-        setMounted(true);
-      }
+      setSession(data.session);
+      setReady(true); // ✅ ONLY READY AFTER SESSION LOADS
     };
 
-    loadSession();
+    init();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
@@ -33,38 +29,47 @@ export default function RootLayout() {
     );
 
     return () => {
-      isMounted = false;
       listener.subscription.unsubscribe();
     };
   }, []);
 
-  /* ================= ROUTE GUARD ================= */
+  /* ================= ROUTING ================= */
   useEffect(() => {
-    if (!mounted) return;
+    if (!ready) return; // 🔥 WAIT FIRST
 
-    const isAuthPage =
-      pathname === "/login" || pathname === "/signup";
+    const path = pathname || "";
 
-    const isProtectedPage =
-      pathname?.startsWith("/browse") ||
-      pathname?.startsWith("/sell") ||
-      pathname?.startsWith("/profile");
+    const isAuth =
+      path.includes("/login") || path.includes("/signup");
 
-    // ❌ Not logged in → go to login
-    if (!session && isProtectedPage) {
-      router.replace("/login");
+    const isProtected =
+      path.includes("/sell") ||
+      path.includes("/profile") ||
+      path.includes("/verify-phone") ||
+      path.includes("(admin)");
+
+    // ✅ FORCE ROOT → BROWSE
+    if (path === "/") {
+      router.replace("/(tabs)/browse");
       return;
     }
 
-    // ✅ Logged in → prevent going back to login
-    if (session && isAuthPage) {
-      router.replace("/browse");
+    // 🔒 ONLY PROTECT PRIVATE PAGES
+    if (!session && isProtected) {
+      router.replace("/(auth)/login");
       return;
     }
-  }, [session, mounted, pathname]);
+
+    // 🔁 PREVENT LOGIN AFTER LOGIN
+    if (session && isAuth) {
+      router.replace("/(tabs)/browse");
+      return;
+    }
+
+  }, [pathname, session, ready]);
 
   /* ================= LOADING ================= */
-  if (!mounted) {
+  if (!ready) {
     return (
       <View
         style={{
@@ -87,6 +92,8 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="(auth)/login" />
         <Stack.Screen name="(auth)/signup" />
+        <Stack.Screen name="verify-phone" />
+        <Stack.Screen name="(admin)" />
       </Stack>
     </AuthProvider>
   );

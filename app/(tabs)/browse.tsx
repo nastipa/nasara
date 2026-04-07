@@ -12,6 +12,7 @@ import {
   FlatList,
   Linking,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -43,6 +44,18 @@ type Item = {
 
 export default function BrowseScreen() {
   const router = useRouter();
+   /* ================= SHARE FUNCTION ================= */
+  const shareItem = async (item: Item) => {
+    try {
+      const link =` https://nasara-six.vercel.app/item/${item.id}`;
+
+      await Share.share({
+        message: `🔥 Check this on Nasara:\n${item.title}\n${link}`,
+      });
+    } catch (error) {
+      console.log("Share error:", error);
+    }
+  };
   
   
 
@@ -84,10 +97,8 @@ useEffect(() => {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      router.replace("/login");
-      return;
-    }
+    // ✅ IMPORTANT: DO NOT block guest users
+    if (!user) return;
 
     const { data: profile, error } = await (supabase as any)
       .from("profiles")
@@ -100,14 +111,11 @@ useEffect(() => {
     // ✅ ADMIN BYPASS
     if (profile.role === "admin") return;
 
-    // ❗ ONLY redirect if phone is NOT submitted at all
+    // ❗ Only redirect logged-in users without phone
     if (!profile.phone) {
       router.replace("/verify-phone");
       return;
     }
-
-    // ✅ If phone exists but not verified → allow browsing
-    // Do NOT redirect
   };
 
   checkVerification();
@@ -863,6 +871,24 @@ style={{ backgroundColor: "#0f172a" }}
   >
     ✨ Nasara
   </Text>
+  <TouchableOpacity
+  onPress={() =>
+    Linking.openURL(
+      "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk"
+    )
+  }
+  style={{
+    backgroundColor: "#16a34a",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 10,
+  }}
+>
+  <Text style={{ color: "white", fontWeight: "bold" }}>
+    📱 Download Android App
+  </Text>
+</TouchableOpacity>
 
   {/* Row 2: Search */}
   <TextInput
@@ -1051,6 +1077,20 @@ style={{ backgroundColor: "#0f172a" }}
             <Text style={{ fontSize: 12, color: "#9ca3af" }}>
               {item.location}
             </Text>
+            <TouchableOpacity
+  onPress={() => shareItem(item)}
+  style={{
+    marginTop: 6,
+    backgroundColor: "#3b82f6",
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: "center",
+  }}
+>
+  <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>
+    🔗 Share
+  </Text>
+</TouchableOpacity>
             {/* WHATSAPP BUTTON */}
 {item.type === "item" && item.seller_phone && (
   <TouchableOpacity

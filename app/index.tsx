@@ -1,6 +1,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,8 +16,20 @@ export default function Home() {
 
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [showBanner, setShowBanner] = useState(true);
 
-  /* ================= RESET LOADING WHEN SCREEN FOCUSED ================= */
+  /* ================= SMART REDIRECT ================= */
+  useEffect(() => {
+    // Optional: delay so page doesn't flash
+    const timer = setTimeout(() => {
+      // You can disable this if you want full landing always
+      // router.replace("/(tabs)/browse");
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  /* ================= RESET LOADING ================= */
   useFocusEffect(
     useCallback(() => {
       setLoading(false);
@@ -29,8 +41,9 @@ export default function Home() {
   const handleEnterApp = () => {
     if (loading) return;
     setLoading(true);
+
     try {
-      router.replace("/(tabs)/browse");
+      router.replace("/(tabs)/browse"); // ✅ REQUIRED
     } catch (err) {
       Alert.alert("Error", "Failed to open app");
       setLoading(false);
@@ -40,16 +53,19 @@ export default function Home() {
   /* ================= DOWNLOAD APK ================= */
   const handleDownload = async () => {
     if (downloading) return;
+
     const url =
       "https://expo.dev/artifacts/eas/9kr2QqpqQSJ8C5dV4xT8kL.apk";
 
     try {
       setDownloading(true);
+
       const supported = await Linking.canOpenURL(url);
       if (!supported) {
         Alert.alert("Error", "Cannot open download link");
         return;
       }
+
       await Linking.openURL(url);
     } catch (error) {
       Alert.alert("Download Failed", "Please try again.");
@@ -64,13 +80,33 @@ export default function Home() {
       contentContainerStyle={{ paddingBottom: 60 }}
       showsVerticalScrollIndicator={false}
     >
+
+      {/* 🔥 OPTIONAL UX BANNER */}
+      {showBanner && (
+        <View
+          style={{
+            backgroundColor: "#111827",
+            padding: 10,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#fff", marginBottom: 5 }}>
+            🔥 Browse items instantly — no signup needed
+          </Text>
+
+          <TouchableOpacity onPress={() => setShowBanner(false)}>
+            <Text style={{ color: "#22c55e" }}>Got it</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* HERO SECTION */}
       <LinearGradient
         colors={["#020617", "#0f172a", "#020617"]}
         style={{
           padding: 30,
           alignItems: "center",
-          marginTop: 80,
+          marginTop: 40,
           borderBottomLeftRadius: 30,
           borderBottomRightRadius: 30,
         }}
@@ -78,6 +114,7 @@ export default function Home() {
         <Text style={{ fontSize: 48, fontWeight: "bold", color: "#22c55e" }}>
           NASARA
         </Text>
+
         <Text
           style={{
             color: "#cbd5f5",
@@ -89,7 +126,7 @@ export default function Home() {
           Buy, Sell, Chat, Go Viral & Earn Money
         </Text>
 
-        {/* ENTER APP BUTTON */}
+        {/* ENTER APP */}
         <TouchableOpacity
           onPress={handleEnterApp}
           activeOpacity={0.8}
@@ -111,7 +148,7 @@ export default function Home() {
           )}
         </TouchableOpacity>
 
-        {/* DOWNLOAD APK BUTTON */}
+        {/* DOWNLOAD */}
         <TouchableOpacity
           onPress={handleDownload}
           activeOpacity={0.8}
@@ -134,7 +171,7 @@ export default function Home() {
         </TouchableOpacity>
       </LinearGradient>
 
-      {/* FEATURES SECTION */}
+      {/* FEATURES */}
       <View style={{ padding: 20 }}>
         <Text
           style={{
@@ -172,11 +209,12 @@ export default function Home() {
         ))}
       </View>
 
-      {/* CALL TO ACTION */}
+      {/* CTA */}
       <View style={{ alignItems: "center", marginBottom: 40 }}>
         <Text style={{ color: "#cbd5f5", marginBottom: 10 }}>
           Start your journey with NASARA today
         </Text>
+
         <TouchableOpacity
           onPress={handleEnterApp}
           activeOpacity={0.8}
@@ -197,7 +235,7 @@ export default function Home() {
       {/* FOOTER */}
       <View style={{ alignItems: "center", padding: 20 }}>
         <Text style={{ color: "#9ca3af", fontSize: 12 }}>
-          © 2026 NASARA. All rights reserved.
+          ©️ 2026 NASARA. All rights reserved.
         </Text>
       </View>
     </ScrollView>
