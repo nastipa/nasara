@@ -4,10 +4,12 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Share,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+
 import { supabase } from "../lib/supabase";
 
 export default function BattleScreen() {
@@ -20,6 +22,19 @@ export default function BattleScreen() {
 
   // ✅ NEW: BOOST STATE
   const [boostedIds, setBoostedIds] = useState<string[]>([]);
+
+  /* ================= SHARE FUNCTION ================= */
+  const shareBattle = async (battle: any) => {
+    try {
+      const link = `https://nasara-six.vercel.app/battle-room?id=${battle.id}`;
+
+      await Share.share({
+        message: `⚔️ Vote in this battle on Nasara!\n${battle.title}\n${link}`,
+      });
+    } catch (error) {
+      console.log("Share error:", error);
+    }
+  };
 
   /* ================= GET USER ================= */
   useEffect(() => {
@@ -56,34 +71,33 @@ export default function BattleScreen() {
     if (!error && data) {
       const now = Date.now();
 
-      // ✅ ATTACH BOOST
       const updated = data.map((b: any) => ({
         ...b,
         is_boosted: boostedIds.includes(b.id),
       }));
 
-let filtered: any[] = [];
+      let filtered: any[] = [];
 
-if (tab === "all") {
-  filtered = updated.filter((b: any) => {
-    const end = new Date(b.end_time).getTime() || 0;
-    return end > now;
-  });
-}
+      if (tab === "all") {
+        filtered = updated.filter((b: any) => {
+          const end = new Date(b.end_time).getTime() || 0;
+          return end > now;
+        });
+      }
 
-if (tab === "my") {
-  filtered = updated.filter((b: any) => {
-    return b.creator_id === userId; // ✅ show ALL your battles
-  });
-}
+      if (tab === "my") {
+        filtered = updated.filter((b: any) => {
+          return b.creator_id === userId;
+        });
+      }
 
-if (tab === "history") {
-  filtered = updated.filter((b: any) => {
-    const end = new Date(b.end_time).getTime() || 0;
-    return end <= now;
-  });
-}
-      // ✅ SORT (BOOST FIRST)
+      if (tab === "history") {
+        filtered = updated.filter((b: any) => {
+          const end = new Date(b.end_time).getTime() || 0;
+          return end <= now;
+        });
+      }
+
       filtered.sort((a: any, b: any) => {
         if (a.is_boosted === b.is_boosted) {
           return (
@@ -100,18 +114,15 @@ if (tab === "history") {
     setLoading(false);
   };
 
-  /* ================= LOAD ON TAB ================= */
   useEffect(() => {
     if (!userId) return;
     loadBattles();
-  }, [tab, userId, boostedIds]); // ✅ important
+  }, [tab, userId, boostedIds]);
 
-  /* ================= INITIAL LOAD ================= */
   useEffect(() => {
     loadBoosts();
   }, []);
 
-  /* ================= REALTIME BOOST ================= */
   useEffect(() => {
     const channel = supabase
       .channel("boost-live")
@@ -129,7 +140,6 @@ if (tab === "history") {
     };
   }, []);
 
-  /* ================= AUTO REFRESH ================= */
   useEffect(() => {
     const interval = setInterval(() => {
       loadBattles();
@@ -138,7 +148,6 @@ if (tab === "history") {
     return () => clearInterval(interval);
   }, [tab, userId, boostedIds]);
 
-  /* ================= TIMER ================= */
   const renderCountdown = (endTime: string) => {
     const diff = new Date(endTime).getTime() - Date.now();
 
@@ -150,7 +159,6 @@ if (tab === "history") {
     return `${m}m ${s}s`;
   };
 
-  /* ================= DELETE ================= */
   const deleteBattle = async (id: string) => {
     Alert.alert("Delete?", "This cannot be undone", [
       {
@@ -223,19 +231,31 @@ if (tab === "history") {
 
               <Text>{item.compare_text}</Text>
 
-              {/* ✅ BOOST SHOWS HERE */}
               {item.is_boosted && (
                 <Text style={{ color: "green", marginTop: 5 }}>
                   🚀 Boosted
                 </Text>
               )}
 
-              {/* ⏱ TIMER */}
               <Text style={{ marginTop: 5, color: "orange" }}>
                 ⏱ {renderCountdown(item.end_time)}
               </Text>
 
-              {/* ENTER */}
+              {/* 🔥 SHARE BUTTON (NEW) */}
+              <TouchableOpacity
+                onPress={() => shareBattle(item)}
+                style={{
+                  backgroundColor: "#22c55e",
+                  padding: 10,
+                  borderRadius: 8,
+                  marginTop: 10,
+                }}
+              >
+                <Text style={{ color: "#fff", textAlign: "center" }}>
+                  🔗 Share Battle
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={() =>
                   router.push(`/battle-room?id=${item.id}`)
@@ -252,7 +272,6 @@ if (tab === "history") {
                 </Text>
               </TouchableOpacity>
 
-              {/* LEADERBOARD */}
               <TouchableOpacity
                 onPress={() =>
                   router.push(`/battle-leaderboard?id=${item.id}`)
@@ -269,7 +288,6 @@ if (tab === "history") {
                 </Text>
               </TouchableOpacity>
 
-              {/* 🚀 BOOST */}
               {tab === "my" && isActive && (
                 <TouchableOpacity
                   onPress={() =>
@@ -288,7 +306,6 @@ if (tab === "history") {
                 </TouchableOpacity>
               )}
 
-              {/* 🗑 DELETE */}
               {tab === "my" && (
                 <TouchableOpacity
                   onPress={() => deleteBattle(item.id)}
