@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,7 +14,7 @@ import { supabase } from "../lib/supabase";
 
 export default function BattleRoom() {
   const { id } = useLocalSearchParams();
-
+  const router = useRouter();
   const [battle, setBattle] = useState<any>(null);
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -25,6 +25,7 @@ export default function BattleRoom() {
   const [balance, setBalance] = useState(0);
 
   const [timeLeft, setTimeLeft] = useState("");
+  const [userId, setUserId] = useState<string | null>(null);
 
   const momoName = "NASARA MARKET";
   const momoNumber = "0539703374";
@@ -144,6 +145,27 @@ export default function BattleRoom() {
   /* ================= VOTE ================= */
   async function vote(candidateId: string) {
     try {
+      const vote = async (candidateId: string) => {
+
+  // ✅ ADD THIS BLOCK HERE
+  if (!userId) {
+    Alert.alert("Login Required", "Sign up to vote", [
+      {
+        text: "Login",
+        onPress: () =>
+          router.push(`/login?redirect=battle-room&id=${id}`),
+      },
+      { text: "Cancel" },
+    ]);
+    return;
+  }
+
+  // existing vote logic continues...
+  await (supabase as any).rpc("increment_vote", {
+    candidate_id_input: candidateId,
+    amount: 1,
+  });
+};
       const { data: authData } = await (supabase as any).auth.getUser();
       const user = authData?.user;
       if (!user) {

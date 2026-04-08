@@ -10,14 +10,20 @@ export default function RootLayout() {
   const pathname = usePathname();
 
   const [session, setSession] = useState<Session | null>(null);
-  const [ready, setReady] = useState(false); // 🔥 NEW
+  const [ready, setReady] = useState(false);
+  const [mounted, setMounted] = useState(false); // ✅ NEW FIX
+
+  /* ================= MOUNT ================= */
+  useEffect(() => {
+    setMounted(true); // ✅ ensures navigation is safe
+  }, []);
 
   /* ================= LOAD SESSION ================= */
   useEffect(() => {
     const init = async () => {
       const { data } = await supabase.auth.getSession();
       setSession(data.session);
-      setReady(true); // ✅ ONLY READY AFTER SESSION LOADS
+      setReady(true);
     };
 
     init();
@@ -35,7 +41,7 @@ export default function RootLayout() {
 
   /* ================= ROUTING ================= */
   useEffect(() => {
-    if (!ready) return; // 🔥 WAIT FIRST
+    if (!ready || !mounted) return; // 🔥 CRITICAL FIX
 
     const path = pathname || "";
 
@@ -48,25 +54,30 @@ export default function RootLayout() {
       path.includes("/verify-phone") ||
       path.includes("(admin)");
 
-    // ✅ FORCE ROOT → BROWSE
+    // ✅ FORCE ROOT → BROWSE (SAFE)
     if (path === "/") {
-      router.replace("/(tabs)/browse");
+      setTimeout(() => {
+        router.replace("/(tabs)/browse");
+      }, 0);
       return;
     }
 
-    // 🔒 ONLY PROTECT PRIVATE PAGES
+    // 🔒 PROTECT PRIVATE ROUTES
     if (!session && isProtected) {
-      router.replace("/(auth)/login");
+      setTimeout(() => {
+        router.replace("/(auth)/login");
+      }, 0);
       return;
     }
 
     // 🔁 PREVENT LOGIN AFTER LOGIN
     if (session && isAuth) {
-      router.replace("/(tabs)/browse");
+      setTimeout(() => {
+        router.replace("/(tabs)/browse");
+      }, 0);
       return;
     }
-
-  }, [pathname, session, ready]);
+  }, [pathname, session, ready, mounted]);
 
   /* ================= LOADING ================= */
   if (!ready) {

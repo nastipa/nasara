@@ -509,10 +509,10 @@ const loadBanners = async () => {
 
   setBanners(cleaned);
 };
-  /* ================= ULTRA REALTIME (FINAL SAFE VERSION) ================= */
+ /* ================= ULTRA REALTIME FIXED ================= */
 useEffect(() => {
-  const channel = (supabase as any)
-    .channel("browse-live")
+  const channel = supabase
+    .channel("browse-live-items-" + Math.random()) // ✅ UNIQUE
 
     .on(
       "postgres_changes",
@@ -521,75 +521,30 @@ useEffect(() => {
         const item = payload.new || payload.old;
         if (!item) return;
 
-        /* ================= INSERT ================= */
         if (payload.eventType === "INSERT") {
-          console.log("✅ New Item Inserted:", item.title);
-
           setItems((prev) => {
-  const exists = prev.some((x) => x.id === String(item.id));
-  if (exists) return prev;
+            const exists = prev.some((x) => x.id === String(item.id));
+            if (exists) return prev;
 
-  return [
-    {
-      id: String(item.id),
-      title: item.title,
-      price: item.price,
-      image_url: item.image_url ?? null,
-      video_url: item.video_url ?? null,
-      location: item.location,
-      category: item.category,
-      negotiable: Boolean(item.is_negotiable),
-      seller_phone: item.seller_phone,
-      type: "item",
-    },
-    ...prev.slice(0, MAX_FEED_ITEMS),
-  ];
-});
+            return [
+              {
+                id: String(item.id),
+                title: item.title,
+                price: item.price,
+                image_url: item.image_url ?? null,
+                video_url: item.video_url ?? null,
+                location: item.location,
+                category: item.category,
+                negotiable: Boolean(item.is_negotiable),
+                seller_phone: item.seller_phone,
+                type: "item",
+              },
+              ...prev.slice(0, MAX_FEED_ITEMS),
+            ];
+          });
         }
 
-        /* ================= UPDATE ================= */
         if (payload.eventType === "UPDATE") {
-          console.log("⭐ Item Updated:", item.title);
-
-          /* ✅ PROMOTED */
-          if (item.is_promoted) {
-            setPromoted((prev) => [
-              {
-                id: String(item.id),
-                title: item.title,
-                price: item.price,
-                image_url: item.image_url,
-                location: item.location,
-                type: "promoted",
-              },
-              ...prev.filter((x) => x.id !== String(item.id)),
-            ]);
-          } else {
-            setPromoted((prev) =>
-              prev.filter((x) => x.id !== String(item.id))
-            );
-          }
-
-          /* ✅ BOOSTED */
-          if (item.is_boosted) {
-            setBoosted((prev) => [
-              {
-                id: String(item.id),
-                title: item.title,
-                price: item.price,
-                image_url: item.image_url,
-                location: item.location,
-                type: "boosted",
-              },
-              ...prev.filter((x) => x.id !== String(item.id)),
-            ]);
-          } else {
-            setBoosted((prev) =>
-              prev.filter((x) => x.id !== String(item.id))
-            );
-          }
-
-          /* ✅ UPDATE MAIN LIST */
           setItems((prev) =>
             prev.map((x) =>
               x.id === String(item.id)
@@ -605,19 +560,8 @@ useEffect(() => {
           );
         }
 
-        /* ================= DELETE ================= */
         if (payload.eventType === "DELETE") {
-          console.log("🗑 Item Deleted:", item.id);
-
           setItems((prev) =>
-            prev.filter((x) => x.id !== String(item.id))
-          );
-
-          setPromoted((prev) =>
-            prev.filter((x) => x.id !== String(item.id))
-          );
-
-          setBoosted((prev) =>
             prev.filter((x) => x.id !== String(item.id))
           );
         }
@@ -633,7 +577,7 @@ useEffect(() => {
 /* ================= REALTIME BANNERS ================= */
 useEffect(() => {
   const channel = supabase
-    .channel("banner-live")
+   .channel("banner-live-" + Math.random())
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "banner" },
@@ -651,7 +595,7 @@ useEffect(() => {
   /* ================= REALTIME ADS ================= */
 useEffect(() => {
   const channel = supabase
-    .channel("ads-live")
+    .channel("ads-live-" + Math.random())
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "ads" },
@@ -704,7 +648,7 @@ useEffect(() => {
   /* ================= REALTIME LIVE STREAMS ================= */
   useEffect(() => {
     const channel = supabase
-      .channel("live-streams-live")
+      .channel("live-streams-live-" + Math.random())
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "live_streams" },
