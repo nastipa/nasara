@@ -11,11 +11,11 @@ export default function RootLayout() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const [mounted, setMounted] = useState(false); // ✅ NEW FIX
+  const [mounted, setMounted] = useState(false);
 
   /* ================= MOUNT ================= */
   useEffect(() => {
-    setMounted(true); // ✅ ensures navigation is safe
+    setMounted(true);
   }, []);
 
   /* ================= LOAD SESSION ================= */
@@ -39,44 +39,36 @@ export default function RootLayout() {
     };
   }, []);
 
-  /* ================= ROUTING ================= */
+  /* ================= SAFE ROUTING ================= */
   useEffect(() => {
-    if (!ready || !mounted) return; // 🔥 CRITICAL FIX
+    if (!ready || !mounted) return;
 
     const path = pathname || "";
 
-    const isAuth =
-      path.includes("/login") || path.includes("/signup");
-
+    const isAdminRoute = path.startsWith("/(admin)");
     const isProtected =
-      path.includes("/sell") ||
-      path.includes("/profile") ||
-      path.includes("/verify-phone") ||
-      path.includes("(admin)");
+      path.startsWith("/(tabs)/sell") ||
+      path.startsWith("/(tabs)/profile") ||
+      path.startsWith("/verify-phone") ||
+      isAdminRoute;
 
-    // ✅ FORCE ROOT → BROWSE (SAFE)
-    if (path === "/") {
-      setTimeout(() => {
-        router.replace("/(tabs)/browse");
-      }, 0);
-      return;
-    }
+    const isAdmin =
+      session?.user?.user_metadata?.role === "admin";
 
-    // 🔒 PROTECT PRIVATE ROUTES
+    // 🔒 If NOT logged in → go to login
     if (!session && isProtected) {
-      setTimeout(() => {
-        router.replace("/(auth)/login");
-      }, 0);
+      router.replace("/(auth)/login");
       return;
     }
 
-    // 🔁 PREVENT LOGIN AFTER LOGIN
-    if (session && isAuth) {
-      setTimeout(() => {
-        router.replace("/(tabs)/browse");
-      }, 0);
+    // 🔐 If NOT admin → block admin routes
+    if (isAdminRoute && !isAdmin) {
+      router.replace("/(tabs)/browse");
       return;
     }
+
+    // ❌ NO other redirects here (IMPORTANT)
+
   }, [pathname, session, ready, mounted]);
 
   /* ================= LOADING ================= */

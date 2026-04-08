@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Share,
   Text,
   TouchableOpacity,
   View,
@@ -19,27 +18,8 @@ export default function BattleScreen() {
   const [tab, setTab] = useState<"all" | "my" | "history">("all");
   const [loading, setLoading] = useState(true);
 
+  // ✅ NEW: BOOST STATE
   const [boostedIds, setBoostedIds] = useState<string[]>([]);
-
-  /* ================= ✅ NEW: AUTH GUARD ================= */
-  const requireAuth = (battleId?: string) => {
-    if (!userId) {
-      Alert.alert(
-        "Login Required",
-        "Sign up or login to vote",
-        [
-          {
-            text: "Login",
-            onPress: () =>
-              router.push(`/login?redirect=battle-room&id=${battleId || ""}`),
-          },
-          { text: "Cancel" },
-        ]
-      );
-      return false;
-    }
-    return true;
-  };
 
   /* ================= GET USER ================= */
   useEffect(() => {
@@ -76,33 +56,34 @@ export default function BattleScreen() {
     if (!error && data) {
       const now = Date.now();
 
+      // ✅ ATTACH BOOST
       const updated = data.map((b: any) => ({
         ...b,
         is_boosted: boostedIds.includes(b.id),
       }));
 
-      let filtered: any[] = [];
+let filtered: any[] = [];
 
-      if (tab === "all") {
-        filtered = updated.filter((b: any) => {
-          const end = new Date(b.end_time).getTime() || 0;
-          return end > now;
-        });
-      }
+if (tab === "all") {
+  filtered = updated.filter((b: any) => {
+    const end = new Date(b.end_time).getTime() || 0;
+    return end > now;
+  });
+}
 
-      if (tab === "my") {
-        filtered = updated.filter((b: any) => {
-          return b.creator_id === userId;
-        });
-      }
+if (tab === "my") {
+  filtered = updated.filter((b: any) => {
+    return b.creator_id === userId; // ✅ show ALL your battles
+  });
+}
 
-      if (tab === "history") {
-        filtered = updated.filter((b: any) => {
-          const end = new Date(b.end_time).getTime() || 0;
-          return end <= now;
-        });
-      }
-
+if (tab === "history") {
+  filtered = updated.filter((b: any) => {
+    const end = new Date(b.end_time).getTime() || 0;
+    return end <= now;
+  });
+}
+      // ✅ SORT (BOOST FIRST)
       filtered.sort((a: any, b: any) => {
         if (a.is_boosted === b.is_boosted) {
           return (
@@ -119,15 +100,18 @@ export default function BattleScreen() {
     setLoading(false);
   };
 
+  /* ================= LOAD ON TAB ================= */
   useEffect(() => {
     if (!userId) return;
     loadBattles();
-  }, [tab, userId, boostedIds]);
+  }, [tab, userId, boostedIds]); // ✅ important
 
+  /* ================= INITIAL LOAD ================= */
   useEffect(() => {
     loadBoosts();
   }, []);
 
+  /* ================= REALTIME BOOST ================= */
   useEffect(() => {
     const channel = supabase
       .channel("boost-live")
@@ -145,6 +129,7 @@ export default function BattleScreen() {
     };
   }, []);
 
+  /* ================= AUTO REFRESH ================= */
   useEffect(() => {
     const interval = setInterval(() => {
       loadBattles();
@@ -153,6 +138,7 @@ export default function BattleScreen() {
     return () => clearInterval(interval);
   }, [tab, userId, boostedIds]);
 
+  /* ================= TIMER ================= */
   const renderCountdown = (endTime: string) => {
     const diff = new Date(endTime).getTime() - Date.now();
 
@@ -164,6 +150,7 @@ export default function BattleScreen() {
     return `${m}m ${s}s`;
   };
 
+  /* ================= DELETE ================= */
   const deleteBattle = async (id: string) => {
     Alert.alert("Delete?", "This cannot be undone", [
       {
@@ -175,20 +162,6 @@ export default function BattleScreen() {
       },
       { text: "Cancel" },
     ]);
-  };
-
-  /* ================= SHARE FUNCTION ================= */
-  const shareBattle = async (item: any) => {
-    try {
-      const link = `https://nasara-six.vercel.app/battle-room?id=${item.id}`;
-
-      await Share.share({
-        message: `🔥 Join this battle on Nasara!\n\n${item.title}\n\nVote now 👉 ${link}`,
-        url: link,
-      });
-    } catch (error) {
-      Alert.alert("Error", "Failed to share");
-    }
   };
 
   /* ================= UI ================= */
@@ -250,12 +223,14 @@ export default function BattleScreen() {
 
               <Text>{item.compare_text}</Text>
 
+              {/* ✅ BOOST SHOWS HERE */}
               {item.is_boosted && (
                 <Text style={{ color: "green", marginTop: 5 }}>
                   🚀 Boosted
                 </Text>
               )}
 
+              {/* ⏱ TIMER */}
               <Text style={{ marginTop: 5, color: "orange" }}>
                 ⏱ {renderCountdown(item.end_time)}
               </Text>
@@ -277,21 +252,6 @@ export default function BattleScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {/* SHARE */}
-              <TouchableOpacity
-                onPress={() => shareBattle(item)}
-                style={{
-                  backgroundColor: "#22c55e",
-                  padding: 10,
-                  borderRadius: 8,
-                  marginTop: 10,
-                }}
-              >
-                <Text style={{ color: "#fff", textAlign: "center" }}>
-                  Share Battle 🔗
-                </Text>
-              </TouchableOpacity>
-
               {/* LEADERBOARD */}
               <TouchableOpacity
                 onPress={() =>
@@ -309,7 +269,7 @@ export default function BattleScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {/* BOOST */}
+              {/* 🚀 BOOST */}
               {tab === "my" && isActive && (
                 <TouchableOpacity
                   onPress={() =>
@@ -328,7 +288,7 @@ export default function BattleScreen() {
                 </TouchableOpacity>
               )}
 
-              {/* DELETE */}
+              {/* 🗑 DELETE */}
               {tab === "my" && (
                 <TouchableOpacity
                   onPress={() => deleteBattle(item.id)}
