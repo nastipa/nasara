@@ -444,7 +444,7 @@ setLoadingMore(false);
   const { data, error } = await supabase
     .from("ads")
     .select("*")
-    .eq("status", "approved")
+    .in("status", ["approved", "active"])
     .eq("is_active", true)
     .or(`expires_at.gt.${today},expires_at.is.null`)
     .order("created_at", { ascending: false });
@@ -460,16 +460,16 @@ setLoadingMore(false);
   }
 
   const cleaned = data
-    .filter((ad: any) => ad.expires_at && ad.expires_at > today) // remove expired
-    .filter((ad: any) => ad.title && ad.title.trim() !== "") // remove empty title
-    .map((ad: any) => ({
-  id: "ad-" + ad.id,
-  title: ad.title,
-  image_url: ad.image_url,
-  url: ad.link,
-  expires_at: ad.expires_at, // ADD THIS
-  type: "ad" as const,
-}));
+  .filter((ad: any) => !ad.expires_at || ad.expires_at > today)
+  .filter((ad: any) => ad.title && ad.title.trim() !== "")
+  .map((ad: any) => ({
+    id: "ad-" + ad.id,
+    title: ad.title,
+    image_url: ad.image_url,
+    url: ad.link || ad.url,
+    expires_at: ad.expires_at,
+    type: "ad" as const,
+  }));
   setAds(cleaned);
 };
 
@@ -480,7 +480,7 @@ const loadBanners = async () => {
   const { data, error } = await supabase
     .from("banner")
     .select("*")
-    .eq("status", "approved")
+    .in("status", ["approved", "active"])
     .eq("is_active", true)
     .or(`expires_at.gt.${today},expires_at.is.null`)
     .order("created_at", { ascending: false });
@@ -496,7 +496,7 @@ const loadBanners = async () => {
   }
 
   const cleaned = data
-    .filter((b: any) => b.expires_at && b.expires_at > today)
+    .filter((b: any) => !b.expires_at || b.expires_at > today)
     .filter((b: any) => b.title && b.title.trim() !== "")
     .map((b: any) => ({
       id: "banner-" + b.id,
@@ -574,6 +574,45 @@ useEffect(() => {
     supabase.removeChannel(channel);
   };
 }, []);
+
+/* REALTIME PROMOTED */
+useEffect(() => {
+  const channel = supabase
+    .channel("promoted-live" + Math.random()) // ✅ NO Math.random()
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "promoted" },
+      () => {
+        console.log("⭐ Promoted updated → refreshing...");
+        loadPromoted();
+      }
+    )
+    .subscribe();
+
+  // ✅ IMPORTANT: NOT async
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+/* REALTIME BOOSTED*/
+useEffect(() => {
+  const channel = supabase
+    .channel("boosted-live" + Math.random()) // ✅ NO Math.random()
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "items_live" },
+      () => {
+        console.log("🚀 Boosted updated → refreshing...");
+        loadBoosted();
+      }
+    )
+    .subscribe();
+
+  // ✅ IMPORTANT: NOT async
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
 /* ================= REALTIME BANNERS ================= */
 useEffect(() => {
   const channel = supabase
@@ -633,7 +672,9 @@ useEffect(() => {
   }, 15000); // faster = better UX
 
   return () => clearInterval(interval);
+
 }, []);
+
   /* ================= APP ALWAYS REFRESH ON RETURN ================= */
 useEffect(() => {
   const subscription = AppState.addEventListener("change", (state) => {
@@ -734,6 +775,10 @@ useEffect(() => {
       data={filteredCombined}
       keyExtractor={(item, index) => item.type + "-" + item.id + "-" + index}
       numColumns={numCols}
+      initialNumToRender={10}
+      maxToRenderPerBatch={10}
+      windowSize={5}
+      removeClippedSubviews={true}
       columnWrapperStyle={{ gap: 12 }}
       contentContainerStyle={{
   padding: 12,
