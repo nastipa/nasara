@@ -361,49 +361,62 @@ setLoadingMore(false);
   };
   /* ================= LOAD PROMOTED ================= */
   const loadPromoted = async () => {
-    const today = new Date().toISOString();
+  const today = new Date().toISOString();
 
-    const { data, error } = await supabase
-      .from("promoted")
-      .select(
-        `
-        id,
-        promoted_until,
-        items_live (
-          id,
-          title,
-          price,
-          image_url,
-          location,
-          category
-        )
+  const { data, error } = await supabase
+    .from("promoted")
+    .select(
       `
+      id,
+      promoted_until,
+      created_at,
+      items_live (
+        id,
+        title,
+        price,
+        image_url,
+        location,
+        category
       )
-      .eq("status", "approved")
-      .gt("promoted_until", today);
+    `
+    )
+    .eq("status", "approved")
+    .gt("promoted_until", today)
+    .order("created_at", { ascending: false });
 
-    if (error) {
-      console.log("Promoted Error:", error.message);
-      return;
-    }
+  if (error) {
+    console.log("Promoted Error:", error.message);
+    return;
+  }
 
-    if (!data) return;
+  if (!data) return;
 
-    const formatted: Item[] = data
-      .map((p: any) => p.items_live)
-      .filter(Boolean)
-      .map((item: any) => ({
-        id: String(item.id),
-        title: item.title,
-        price: item.price,
-        image_url: item.image_url,
-        location: item.location,
-        negotiable: false,
-        type: "promoted",
-      }));
+  const formatted: any[] = data
+    .map((p: any) => ({
+      ...p.items_live,
+      created_at: p.created_at,
+    }))
+    .filter(Boolean)
+    .map((item: any) => ({
+      id: String(item.id),
+      title: item.title,
+      price: item.price,
+      image_url: item.image_url,
+      location: item.location,
+      negotiable: false,
+      created_at: item.created_at,
+      type: "promoted",
+    }));
 
-    setPromoted(formatted);
-  };
+  // 🔥 ENSURE LATEST FIRST
+  formatted.sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() -
+      new Date(a.created_at).getTime()
+  );
+
+  setPromoted(formatted);
+};
 
   /* ================= LOAD BOOSTED ================= */
   const loadBoosted = async () => {
@@ -863,7 +876,7 @@ style={{ backgroundColor: "#0f172a" }}
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/NtsjKDPmg1unXZdexS2J6.apk"
+      "https://expo.dev/artifacts/eas/wUWWvKgvs3HiHC3ko8hcBN.apk"
     )
   }
   style={{
