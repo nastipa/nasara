@@ -1,5 +1,4 @@
 import * as Linking from "expo-linking";
-import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -11,106 +10,118 @@ import {
 import { supabase } from "../lib/supabase";
 
 export default function ResetPassword() {
-  const router = useRouter();
-
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
 
   /* ================= HANDLE DEEP LINK ================= */
-  useEffect(() => {
-    const handleDeepLink = async () => {
-      try {
-        const url = await Linking.getInitialURL();
+ useEffect(() => {
+  const handleDeepLink = async () => {
+    const url = await Linking.getInitialURL();
 
-        if (!url) return;
+    if (!url) return;
 
-        const { queryParams } = Linking.parse(url);
+    console.log("RESET URL:", url);
 
-        // 🔥 FIX TYPES
-        const access_token = Array.isArray(queryParams?.access_token)
-          ? queryParams?.access_token[0]
-          : queryParams?.access_token;
+    // 👇 HANDLE HASH (#) PARAMS
+    const hash = url.split("#")[1];
 
-        const refresh_token = Array.isArray(queryParams?.refresh_token)
-          ? queryParams?.refresh_token[0]
-          : queryParams?.refresh_token;
+    if (!hash) {
+      Alert.alert("Invalid or expired link");
+      return;
+    }
 
-        // 🔐 SET SESSION
-        if (
-          typeof access_token === "string" &&
-          typeof refresh_token === "string"
-        ) {
-          await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
-        }
-      } catch (err) {
-        console.log("Deep link error:", err);
+    const params = Object.fromEntries(
+      hash.split("&").map((param) => {
+        const [key, value] = param.split("=");
+        return [key, value];
+      })
+    );
+
+    const access_token = params.access_token;
+    const refresh_token = params.refresh_token;
+
+    if (access_token && refresh_token) {
+      const { error } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+
+      if (error) {
+        Alert.alert("Session Error", error.message);
       }
-    };
+    } else {
+      Alert.alert("Invalid reset link");
+    }
+  };
 
-    handleDeepLink();
-  }, []);
+  handleDeepLink();
+}, []);
+  /* ================= RESET PASSWORD ================= */
+  const handleReset = async () => {
+    if (!password || !confirm) {
+      Alert.alert("Enter all fields");
+      return;
+    }
 
-  /* ================= UPDATE PASSWORD ================= */
-  const updatePassword = async () => {
-    if (!password) {
-      Alert.alert("Error", "Enter new password");
+    if (password !== confirm) {
+      Alert.alert("Passwords do not match");
       return;
     }
 
     setLoading(true);
 
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: password.trim(),
-      });
-
-      if (error) {
-        Alert.alert("Error", error.message);
-        setLoading(false);
-        return;
-      }
-
-      Alert.alert("Success ✅", "Password updated successfully!");
-
-      // 🔁 Redirect to login
-      router.replace("/(auth)/login");
-
-    } catch (err: any) {
-      Alert.alert("Error", err.message);
-    }
+    const { error } = await supabase.auth.updateUser({
+      password: password.trim(),
+    });
 
     setLoading(false);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    Alert.alert("Success", "Password updated! You can login now.");
   };
 
-  /* ================= UI ================= */
   return (
     <View style={{ flex: 1, justifyContent: "center", padding: 20 }}>
       <Text style={{ fontSize: 22, fontWeight: "bold", marginBottom: 20 }}>
-        🔑 Reset Password
+        Reset Password
       </Text>
 
       <TextInput
-        placeholder="Enter new password"
+        placeholder="New password"
         secureTextEntry
         value={password}
         onChangeText={setPassword}
         style={{
           borderWidth: 1,
-          borderColor: "#ccc",
           padding: 12,
+          marginBottom: 10,
           borderRadius: 10,
-          marginBottom: 15,
+        }}
+      />
+
+      <TextInput
+        placeholder="Confirm password"
+        secureTextEntry
+        value={confirm}
+        onChangeText={setConfirm}
+        style={{
+          borderWidth: 1,
+          padding: 12,
+          marginBottom: 20,
+          borderRadius: 10,
         }}
       />
 
       <TouchableOpacity
-        onPress={updatePassword}
+        onPress={handleReset}
         style={{
           backgroundColor: "green",
-          padding: 14,
+          padding: 15,
           borderRadius: 10,
         }}
       >

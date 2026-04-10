@@ -18,6 +18,10 @@ export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   /* ================= SIGNUP ================= */
   const signUp = async () => {
@@ -110,14 +114,26 @@ export default function SignupScreen() {
           onChangeText={setEmail}
         />
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter password"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+       <View style={{ position: "relative" }}>
+         <TextInput
+           style={styles.input}
+           placeholder="Enter password"
+           secureTextEntry={!showPassword}
+           value={password}
+           onChangeText={setPassword}
+         />
+       
+         <TouchableOpacity
+           onPress={() => setShowPassword(!showPassword)}
+           style={{
+             position: "absolute",
+             right: 15,
+             top: 18,
+           }}
+         >
+           <Text>{showPassword ? "🙈" : "👁️"}</Text>
+         </TouchableOpacity>
+       </View>
 
         <TouchableOpacity style={styles.button} onPress={signUp}>
           <Text style={styles.buttonText}>

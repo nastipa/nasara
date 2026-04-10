@@ -19,18 +19,23 @@ export default function BattleScreen() {
   const [battles, setBattles] = useState<any[]>([]);
   const [tab, setTab] = useState<"all" | "my" | "history">("all");
   const [loading, setLoading] = useState(true);
-
+  const [showAuthNotice, setShowAuthNotice] = useState(false);
   // ✅ NEW: BOOST STATE
   const [boostedIds, setBoostedIds] = useState<string[]>([]);
 
   /* ================= SHARE FUNCTION ================= */
   const shareBattle = async (battle: any) => {
     try {
-      const link = `https://nasara-six.vercel.app/battle-room?id=${battle.id}`;
-
+      const webLink = `https://nasara-six.vercel.app/battle-room?id=${battle.id}`;
+      const appLink = `nasara://battle-room?id=${battle.id}`;
       await Share.share({
-        message: `⚔️ Vote in this battle on Nasara!\n${battle.title}\n${link}`,
-      });
+        
+  message:
+    `⚔️ Vote in this battle on Nasara!\n\n` +
+    `${battle.title}\n\n` +
+    `Open in app: ${appLink}\n` +
+    `Or web: ${webLink}`,
+});
     } catch (error) {
       console.log("Share error:", error);
     }
@@ -44,7 +49,18 @@ export default function BattleScreen() {
     };
     getUser();
   }, []);
+ 
+  useEffect(() => {
+  const checkAuth = async () => {
+    const { data } = await supabase.auth.getUser();
 
+    if (!data?.user) {
+      setShowAuthNotice(true);
+    }
+  };
+
+  checkAuth();
+}, []);
   /* ================= LOAD BOOSTS ================= */
   const loadBoosts = async () => {
     const { data, error } = await supabase
@@ -201,7 +217,61 @@ export default function BattleScreen() {
           </TouchableOpacity>
         ))}
       </View>
+      {showAuthNotice && (
+  <View
+    style={{
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.6)",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 999,
+    }}
+  >
+    <View
+      style={{
+        backgroundColor: "#fff",
+        padding: 20,
+        borderRadius: 12,
+        width: "85%",
+        alignItems: "center",
+      }}
+    >
+      <Text style={{ fontSize: 18, fontWeight: "bold", marginBottom: 10 }}>
+        ⚔️ Welcome to Battle Room
+      </Text>
 
+      <Text style={{ textAlign: "center", marginBottom: 15 }}>
+        Sign up or login to vote in this battle
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => {
+          setShowAuthNotice(false);
+          router.push("/(auth)/login");
+        }}
+        style={{
+          backgroundColor: "#16a34a",
+          padding: 12,
+          borderRadius: 8,
+          width: "100%",
+          marginBottom: 10,
+        }}
+      >
+        <Text style={{ color: "#fff", textAlign: "center" }}>
+          Login / Sign Up
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => setShowAuthNotice(false)}>
+        <Text style={{ color: "gray" }}>Close</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+)}
       {/* ===== LIST ===== */}
       <FlatList
         data={battles}

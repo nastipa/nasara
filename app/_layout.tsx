@@ -1,4 +1,5 @@
 import { Session } from "@supabase/supabase-js";
+import * as Linking from "expo-linking";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -13,6 +14,28 @@ export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  /* ================= STEP 5: DEEP LINK HANDLER ================= */
+  useEffect(() => {
+    const handleDeepLink = (event: any) => {
+      const url = event.url;
+      const parsed = Linking.parse(url);
+
+      if (parsed.path === "battle-room") {
+        router.push(`/battle-room?id=${parsed.queryParams?.id}`);
+      }
+
+      if (parsed.path === "item") {
+        router.push(`/item/${parsed.queryParams?.id}`);
+      }
+    };
+
+    const subscription = Linking.addEventListener("url", handleDeepLink);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   /* ================= MOUNT ================= */
   useEffect(() => {
     setMounted(true);
@@ -21,15 +44,34 @@ export default function RootLayout() {
   /* ================= LOAD SESSION ================= */
   useEffect(() => {
     const init = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.log("Session error:", error.message);
+          await supabase.auth.signOut();
+          setSession(null);
+        } else {
+          setSession(data.session);
+        }
+      } catch (err) {
+        console.log("Init error:", err);
+        setSession(null);
+      }
+
       setReady(true);
     };
 
     init();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (event, session) => {
+        if (String(event) === "TOKEN_REFRESH_FAILED") {
+          await supabase.auth.signOut();
+          setSession(null);
+          return;
+        }
+
         setSession(session);
       }
     );
@@ -52,23 +94,32 @@ export default function RootLayout() {
       path.startsWith("/verify-phone") ||
       isAdminRoute;
 
+    const isAuthPage =
+      path.startsWith("/(auth)/login") ||
+      path.startsWith("/(auth)/signup");
+
     const isAdmin =
       session?.user?.user_metadata?.role === "admin";
 
-    // 🔒 If NOT logged in → go to login
+    // 🔒 Not logged in → block protected pages
     if (!session && isProtected) {
-      router.replace("/(auth)/login");
+      if (!isAuthPage) {
+        router.replace("/(auth)/login");
+      }
       return;
     }
 
-    // 🔐 If NOT admin → block admin routes
-    if (isAdminRoute && !isAdmin) {
+    // 🔐 Logged in → prevent going back to login/signup
+    if (session && isAuthPage) {
       router.replace("/(tabs)/browse");
       return;
     }
 
-    // ❌ NO other redirects here (IMPORTANT)
-
+    // 🔐 Admin protection
+    if (isAdminRoute && !isAdmin) {
+      router.replace("/(tabs)/browse");
+      return;
+    }
   }, [pathname, session, ready, mounted]);
 
   /* ================= LOADING ================= */
@@ -97,8 +148,10 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)/signup" />
         <Stack.Screen name="verify-phone" />
         <Stack.Screen name="(admin)" />
-        {/* 🔥 ADD THIS */}
-      
+
+        {/* 🔥 SHARE ROUTES */}
+        <Stack.Screen name="item/[id]" />
+        <Stack.Screen name="battle-room" />
       </Stack>
     </AuthProvider>
   );

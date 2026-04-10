@@ -1,4 +1,3 @@
-import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -25,6 +24,9 @@ export default function LoginScreen() {
   const [mode, setMode] = useState<"email" | "password" | null>(null);
   const [newValue, setNewValue] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+const [showNewPassword, setShowNewPassword] = useState(false);
 
   /* ================= LOGIN ================= */
   const signIn = async () => {
@@ -137,28 +139,30 @@ export default function LoginScreen() {
     router.push("/(auth)/signup");
   };
 /* ================= FORGOT PASSWORD ================= */
-const forgotPassword = async () => {
-  if (!email) {
-    Alert.alert("Enter your email");
-    return;
-  }
-
-  const redirectUrl = Linking.createURL("reset-password");
-
-  const { error } = await supabase.auth.resetPasswordForEmail(
-    email.trim().toLowerCase(),
-    {
-      redirectTo: redirectUrl,
+ const forgotPassword = async () => {
+    if (!email) {
+      Alert.alert("Enter your email");
+      return;
     }
-  );
 
-  if (error) {
-    Alert.alert("Error", error.message);
-    return;
-  }
+    setLoading(true);
 
-  Alert.alert("Check your email", "Reset link sent.");
-};
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase(),
+      {
+        redirectTo: "nasara://reset-password", // ✅ FIXED HERE
+      }
+    );
+
+    setLoading(false);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    Alert.alert("Check your email 📩", "Reset link sent.");
+  };
   /* ================= UPDATE EMAIL/PASSWORD ================= */
   const handleUpdate = async () => {
     if (!mode || !newValue || !currentPassword) {
@@ -229,14 +233,26 @@ const forgotPassword = async () => {
           onChangeText={setEmail}
         />
 
-        <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter password"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
+        <View style={{ position: "relative" }}>
+  <TextInput
+    style={styles.input}
+    placeholder="Enter password"
+    secureTextEntry={!showPassword}
+    value={password}
+    onChangeText={setPassword}
+  />
+
+  <TouchableOpacity
+    onPress={() => setShowPassword(!showPassword)}
+    style={{
+      position: "absolute",
+      right: 15,
+      top: 18,
+    }}
+  >
+    <Text>{showPassword ? "🙈" : "👁️"}</Text>
+  </TouchableOpacity>
+</View>
         
 
         <TouchableOpacity style={styles.button} onPress={signIn}>
@@ -244,7 +260,7 @@ const forgotPassword = async () => {
             {loading ? "Signing in..." : "Login"}
           </Text>
         </TouchableOpacity>
-
+        
         <TouchableOpacity style={styles.secondaryButton} onPress={goSignup}>
           <Text style={styles.secondaryText}>
             New customer? Create Account →
@@ -286,23 +302,66 @@ const forgotPassword = async () => {
             <Text style={styles.modalTitle}>
               {mode === "email" ? "Change Email" : "Change Password"}
             </Text>
+{/* CURRENT FIELD */}
+{mode === "password" ? (
+  <View style={{ position: "relative" }}>
+    <TextInput
+      style={styles.input}
+      placeholder="Current Password"
+      secureTextEntry={!showCurrentPassword}
+      value={currentPassword}
+      onChangeText={setCurrentPassword}
+    />
 
-            <TextInput
-              style={styles.input}
-              placeholder="Current password"
-              secureTextEntry
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-            />
+    <TouchableOpacity
+      onPress={() =>
+        setShowCurrentPassword(!showCurrentPassword)
+      }
+      style={{ position: "absolute", right: 15, top: 18 }}
+    >
+      <Text>
+        {showCurrentPassword ? "🙈" : "👁️"}
+      </Text>
+    </TouchableOpacity>
+  </View>
+) : (
+  <TextInput
+    style={styles.input}
+    placeholder="Current Email"
+    value={currentPassword}
+    onChangeText={setCurrentPassword}
+  />
+)}
 
-            <TextInput
-              style={styles.input}
-              placeholder={mode === "email" ? "New Email" : "New Password"}
-              secureTextEntry={mode === "password"}
-              value={newValue}
-              onChangeText={setNewValue}
-            />
+{/* NEW FIELD */}
+{mode === "password" ? (
+  <View style={{ position: "relative" }}>
+    <TextInput
+      style={styles.input}
+      placeholder="New Password"
+      secureTextEntry={!showNewPassword}
+      value={newValue}
+      onChangeText={setNewValue}
+    />
 
+    <TouchableOpacity
+      onPress={() => setShowNewPassword(!showNewPassword)}
+      style={{ position: "absolute", right: 15, top: 18 }}
+    >
+      <Text>
+        {showNewPassword ? "🙈" : "👁️"}
+      </Text>
+    </TouchableOpacity>
+  </View>
+) : (
+  <TextInput
+    style={styles.input}
+    placeholder="New Email"
+    value={newValue}
+    onChangeText={setNewValue}
+  />
+)}
+            
             <TouchableOpacity style={styles.button} onPress={handleUpdate}>
               <Text style={styles.buttonText}>Update</Text>
             </TouchableOpacity>
