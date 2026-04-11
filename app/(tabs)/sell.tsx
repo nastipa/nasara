@@ -18,10 +18,11 @@ import {
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
-/* ===== CLOUDINARY CONFIG ===== */
-const CLOUD_NAME = "ajars";
-const UPLOAD_PRESET_IMAGES = "ajars_images";
-const UPLOAD_PRESET_VIDEOS = "ajars_videos";
+
+const BASE_URL =
+  Platform.OS === "web"
+    ? "http://localhost:3000"
+    : "http://172.20.10.6:3000";
 
 /* ===== STORAGE KEY ===== */
 const QUEUE_KEY = "UPLOAD_QUEUE";
@@ -108,52 +109,47 @@ export default function Sell() {
   };
 
   /* ===== UPLOAD WITH PROGRESS ===== */
-  const uploadWithProgress = async (uri: string, type: "image" | "video") => {
-    const file = await prepareFile(uri, type);
+ const uploadWithProgress = async (
+  uri: string,
+  type: "image" | "video"
+) => {
+  const formData = new FormData();
 
-    const data = new FormData();
-    data.append("file", file as any);
-    data.append(
-      "upload_preset",
-      type === "image" ? UPLOAD_PRESET_IMAGES : UPLOAD_PRESET_VIDEOS
-    );
+  // 📱 MOBILE + WEB FILE HANDLING FIX
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    const blob = await response.blob();
 
-    const endpoint =
-      type === "image"
-        ? `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`
-        : `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`;
+    formData.append("file", blob, "upload.jpg");
+  } else {
+    formData.append("file", {
+      uri,
+      name: type === "image" ? "upload.jpg" : "upload.mp4",
+      type: type === "image" ? "image/jpeg" : "video/mp4",
+    } as any);
+  }
 
-    return new Promise<string>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+  // 🌍 DIRECT RENDER BACKEND URL (NO BASE_URL)
+  const res = await fetch(
+    "https://nasara-upload-server.onrender.com/upload",
+    {
+      method: "POST",
+      body: formData,
+    }
+  );
 
-      setUploading(true);
+  const data = await res.json();
 
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          setUploadProgress(Math.round((e.loaded / e.total) * 100));
-        }
-      };
+  console.log("UPLOAD RESPONSE:", data);
 
-      xhr.onload = () => {
-        setUploading(false);
-        setUploadProgress(0);
+  // ❌ ERROR CHECK
+  if (!data.success || !data.url) {
+    console.log("UPLOAD FAILED:", data);
+    throw new Error("Upload failed");
+  }
 
-        const res = JSON.parse(xhr.response);
-        if (res.secure_url) resolve(res.secure_url);
-        else reject(res);
-      };
-
-      xhr.onerror = () => {
-        setUploading(false);
-        setUploadProgress(0);
-        reject("Upload failed");
-      };
-
-      xhr.open("POST", endpoint);
-      xhr.send(data);
-    });
-  };
-
+  return data.url;
+};
   /* ===== PROCESS QUEUE (SILENT RETRY) ===== */
   const processQueue = async () => {
     const net = await Network.getNetworkStateAsync();
@@ -184,7 +180,7 @@ export default function Sell() {
             video_url: videoUrl,
           })
           .eq("id", job.itemId);
-
+         router.replace("/browse"); // 
         queue.splice(i, 1);
         await saveQueue(queue);
         i--;
@@ -254,47 +250,53 @@ export default function Sell() {
 
     try {
       const { data: newItem, error } = await (supabase as any)
-        .from("items_live")
-        .insert({
-          title,
-          description,
-          price: Number(price),
-          location,
-          latitude,
-          longitude,
-          seller_phone: phone,
-          image_url: null,
-          video_url: null,
-          user_id: user.id,
-          is_negotiable: isNegotiable,
-          category,
-          status: "active",
-          created_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+  .from("items_live")
+  .insert({
+    title,
+    description,
+    price: Number(price),
+    location,
+    latitude,
+    longitude,
+    seller_phone: phone,
+    image_url: null,
+    video_url: null,
+    user_id: user.id,
+    is_negotiable: isNegotiable,
+    category,
+    status: "active",
+    created_at: new Date().toISOString(),
+  })
+  .select()
+  .single();
 
-      if (error || !newItem) throw error;
+if (error || !newItem) throw error;
 
       let imageUrl = null;
-      let videoUrl = null;
+let videoUrl = null;
 
-      if (imageUri) {
-        imageUrl = await uploadWithProgress(imageUri, "image");
-      }
+if (imageUri) {
+  imageUrl = await uploadWithProgress(imageUri, "image");
+}
 
-      if (videoUri) {
-        videoUrl = await uploadWithProgress(videoUri, "video");
-      }
+if (videoUri) {
+  videoUrl = await uploadWithProgress(videoUri, "video");
+}
 
-      await (supabase as any)
-        .from("items_live")
-        .update({
-          image_url: imageUrl,
-          video_url: videoUrl,
-        })
-        .eq("id", newItem.id);
+console.log("NEW ITEM ID:", newItem.id);
+console.log("IMAGE URL:", imageUrl);
+console.log("VIDEO URL:", videoUrl);
+      const { error: updateError } = await (supabase as any)
+  .from("items_live")
+  .update({
+    image_url: imageUrl,
+    video_url: videoUrl,
+  })
+  .eq("id", newItem.id);
 
+if (updateError) {
+  console.log("UPDATE ERROR:", updateError);
+}
       Alert.alert("Success", "Item posted successfully 🚀");
 
       router.push("/browse");
@@ -398,7 +400,11 @@ export default function Sell() {
         <Text>Select Image</Text>
       </TouchableOpacity>
 
-      {imageUri && <Image source={{ uri: imageUri }} style={styles.squareImage} />}
+     {imageUri ? (
+  <Image source={{ uri: imageUri }} style={styles.squareImage} />
+) : (
+  <Text>No image selected</Text>
+)}
 
       <TouchableOpacity style={styles.imageBtn} onPress={pickVideo}>
         <Text>Select Video</Text>
