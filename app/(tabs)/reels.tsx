@@ -33,19 +33,76 @@ export default function Reels() {
   const loadingMore = useRef(false);
   const preloaded = useRef(new Set<string>());
 
+  /* ================= RESET ACTIVE INDEX ================= */
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [posts.length]);
+   
+  
+  /* ================= REALTIME ================= */
+useEffect(() => {
+  const channel = (supabase as any).channel(`reels-sync-${Date.now()}`);
+
+  // ✅ ADD ALL LISTENERS FIRST
+  channel.on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: "posts" },
+    (payload: any) => {
+      const p = payload.new;
+
+      setPosts((prev) => {
+        if (prev.find((x) => x.id === p.id)) return prev;
+
+        return [p, ...prev];
+      });
+    }
+  );
+
+  channel.on(
+    "postgres_changes",
+    { event: "UPDATE", schema: "public", table: "posts" },
+    (payload: any) => {
+      const updated = payload.new;
+
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === updated.id ? { ...p, ...updated } : p
+        )
+      );
+    }
+  );
+
+  channel.on(
+    "postgres_changes",
+    { event: "DELETE", schema: "public", table: "posts" },
+    (payload: any) => {
+      const id = payload.old.id;
+      setPosts((prev) => prev.filter((p) => p.id !== id));
+    }
+  );
+
+  // ✅ SUBSCRIBE LAST (VERY IMPORTANT)
+  channel.subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
   /* ================= SAFE URL ================= */
   const safeUrl = (url?: string | null) => {
-    if (!url) return null;
+  if (!url) return null;
 
-    // ❌ block blob in mobile ONLY
-    if (url.startsWith("blob:") && Platform.OS !== "web") {
-      return null;
-    }
+  // ❌ BLOCK blob for mobile
+  if (Platform.OS !== "web" && url.startsWith("blob:")) {
+    return null;
+  }
 
-    return url;
-  };
+  if (url.includes("undefined")) return null;
 
-  /* ================= LOAD ================= */
+  return url;
+};
+
+  /* ================= LOAD POSTS ================= */
   const loadPosts = async (reset = false) => {
     if (loadingMore.current) return;
     loadingMore.current = true;
@@ -91,7 +148,7 @@ export default function Reels() {
               id: p.id,
               user_id: p.user_id,
               media_url: safeUrl(p.media_url),
-              local_uri: safeUrl(p.local_uri), // 🔥 important
+              local_uri: safeUrl(p.local_uri),
               thumbnail_url: p.thumbnail_url ?? null,
               caption: p.caption ?? "",
               views: p.views ?? 0,
@@ -108,27 +165,55 @@ export default function Reels() {
     loadingMore.current = false;
   };
 
-  /* ================= 🔥 PRELOAD (ALL PLATFORMS) ================= */
-  const preloadVideos = (index: number) => {
-    const next = posts.slice(index + 1, index + 3);
+ /* ================= 🚀 SMART PRELOAD ================= */
+const cacheVideo = async (url: string) => {
+  if (!url) return;
 
-    next.forEach((v) => {
-      if (!v.media_url || preloaded.current.has(v.id)) return;
+  try {
+    if (Platform.OS === "web") {
+      const video = document.createElement("video");
+      video.src = url;
+      video.preload = "auto";
+      video.muted = true;
+      video.playsInline = true;
+    } else {
+      // ✅ MOBILE preload (VERY IMPORTANT)
+      const { Video } = require("expo-av");
 
-      if (Platform.OS === "web") {
-        const video = document.createElement("video");
-        video.src = v.media_url;
-        video.preload = "auto";
-      }
+      const video = new Video();
+      await video.loadAsync({ uri: url }, {}, false);
+      await video.unloadAsync();
+    }
+  } catch (e) {
+    console.log("preload error:", e);
+  }
+};
 
-      // mark as preloaded
-      preloaded.current.add(v.id);
-    });
-  };
+const preloadVideos = (index: number) => {
+  if (!posts.length) return;
 
-  useEffect(() => {
-    preloadVideos(activeIndex);
-  }, [activeIndex, posts]);
+  // 🔥 LOAD AROUND CURRENT (not only next)
+  const around = posts.slice(
+    Math.max(0, index - 2), // 2 behind
+    index + 6               // 6 ahead
+  );
+
+  around.forEach((v) => {
+    const src = v.media_url || v.local_uri;
+
+    if (!src || preloaded.current.has(v.id)) return;
+
+    preloaded.current.add(v.id);
+
+    // ⚡ preload instantly (no delay)
+    cacheVideo(src);
+  });
+};
+
+/* 🔥 TRIGGER */
+useEffect(() => {
+  preloadVideos(activeIndex);
+}, [activeIndex, posts]);
 
   /* ================= DELETE ================= */
   const handleDelete = async (id: string) => {
@@ -139,9 +224,7 @@ export default function Reels() {
         style: "destructive",
         onPress: async () => {
           try {
-            // 🔥 instant UI update
             setPosts((prev) => prev.filter((p) => p.id !== id));
-
             await supabase.from("posts").delete().eq("id", id);
 
             ids.current.delete(id);
@@ -153,78 +236,6 @@ export default function Reels() {
       },
     ]);
   };
-
-  /* ================= REALTIME ================= */
-  useEffect(() => {
-    const channel = supabase
-      .channel("reels-live")
-      
-
-      // INSERT
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "posts" },
-        (payload: any) => {
-          const p = payload.new;
-
-          if (ids.current.has(p.id)) return;
-
-          const formatted: Post = {
-            id: p.id,
-            user_id: p.user_id,
-            media_url: safeUrl(p.media_url),
-            local_uri: safeUrl(p.local_uri),
-            thumbnail_url: p.thumbnail_url ?? null,
-            caption: p.caption ?? "",
-            views: p.views ?? 0,
-          };
-
-          ids.current.add(formatted.id);
-          setPosts((prev) => [formatted, ...prev]);
-        }
-      )
-
-      // UPDATE (🔥 critical fix)
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "posts" },
-        (payload: any) => {
-          const updated = payload.new;
-
-          setPosts((prev) =>
-            prev.map((p) =>
-              p.id === updated.id
-                ? {
-                    ...p,
-                    media_url: safeUrl(updated.media_url),
-                    local_uri: safeUrl(updated.local_uri),
-                    thumbnail_url: updated.thumbnail_url,
-                  }
-                : p
-            )
-          );
-        }
-      )
-
-      // DELETE
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "posts" },
-        (payload: any) => {
-          const id = payload.old.id;
-
-          setPosts((prev) => prev.filter((p) => p.id !== id));
-          ids.current.delete(id);
-          preloaded.current.delete(id);
-        }
-      )
-
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel).catch(() => {});
-    };
-  }, []);
 
   /* ================= INIT ================= */
   useEffect(() => {
@@ -244,8 +255,10 @@ export default function Reels() {
     );
   }
 
+  /* ================= UI ================= */
   return (
     <ReelsFeed
+      key={posts.length} // 🔥 force clean re-render (fix ghost video)
       reels={posts}
       activeIndex={activeIndex}
       setActiveIndex={setActiveIndex}

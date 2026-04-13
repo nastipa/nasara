@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import * as Network from "expo-network";
@@ -46,6 +47,7 @@ export default function Sell() {
 
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
+  
 
   const categories = [
     "phones",
@@ -248,80 +250,84 @@ export default function Sell() {
       return;
     }
 
-    try {
-      const { data: newItem, error } = await (supabase as any)
-  .from("items_live")
-  .insert({
-    title,
-    description,
-    price: Number(price),
-    location,
-    latitude,
-    longitude,
-    seller_phone: phone,
-    image_url: null,
-    video_url: null,
-    user_id: user.id,
-    is_negotiable: isNegotiable,
-    category,
-    status: "active",
-    created_at: new Date().toISOString(),
-  })
-  .select()
-  .single();
+   try {
+  const { data: newItem, error } = await (supabase as any)
+    .from("items_live")
+    .insert({
+      title,
+      description,
+      price: Number(price),
+      location,
+      latitude,
+      longitude,
+      seller_phone: phone,
+      image_url: imageUri || null,
+      video_url: videoUri || null,
+      user_id: user.id,
+      is_negotiable: isNegotiable,
+      category,
+      status: "active",
+      created_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
 
-if (error || !newItem) throw error;
+  if (error || !newItem) throw error;
 
-      let imageUrl = null;
-let videoUrl = null;
+  // ✅ STOP HERE FOR NOW (no upload yet)
+   router.push("/browse");
+   setTimeout(async () => {
+  if (uploading) return; // 🚫 prevent duplicate
+  setUploading(true);
+  try {
+    if (!imageUri && !videoUri) return;
+    let imageUrl = null;
+    let videoUrl = null;
 
-if (imageUri) {
-  imageUrl = await uploadWithProgress(imageUri, "image");
-}
+    if (imageUri) {
+     const compressed = await ImageManipulator.manipulateAsync(
+  imageUri,
+  [{ resize: { width: 800 } }],
+  {
+    compress: 0.7,
+    format: ImageManipulator.SaveFormat.JPEG,
+  }
+);
 
-if (videoUri) {
-  videoUrl = await uploadWithProgress(videoUri, "video");
-}
-
-console.log("NEW ITEM ID:", newItem.id);
-console.log("IMAGE URL:", imageUrl);
-console.log("VIDEO URL:", videoUrl);
-      const { error: updateError } = await (supabase as any)
-  .from("items_live")
-  .update({
-    image_url: imageUrl,
-    video_url: videoUrl,
-  })
-  .eq("id", newItem.id);
-
-if (updateError) {
-  console.log("UPDATE ERROR:", updateError);
-}
-      Alert.alert("Success", "Item posted successfully 🚀");
-
-      router.push("/browse");
-
-      setTitle("");
-      setDescription("");
-      setPrice("");
-      setLocation("");
-      setPhone("");
-      setCategory("");
-      setImageUri(null);
-      setVideoUri(null);
-      setIsNegotiable(false);
-
-    } catch (err: any) {
-      await addToQueue({
-        itemId: "temp",
-        imageUri,
-        videoUri,
-      });
-
-      Alert.alert("Offline", "Saved. Will upload later.");
+imageUrl = await uploadWithProgress(compressed.uri, "image");
     }
 
-    setLoading(false);
+    if (videoUri) {
+      videoUrl = await uploadWithProgress(videoUri, "video");
+    }
+
+    await (supabase as any)
+      .from("items_live")
+      .update({
+        image_url: imageUrl,
+        video_url: videoUrl,
+      })
+      .eq("id", newItem.id);
+
+  } catch (err) {
+    console.log("BACKGROUND UPLOAD ERROR:", err);
+  } finally {
+    setUploading(false); // ✅ unlock
+  }
+}, 100);
+  Alert.alert("Success", "Item posted successfully 🚀");
+
+} catch (err: any) {
+  await addToQueue({
+    itemId: "temp",
+    imageUri,
+    videoUri,
+  });
+
+  Alert.alert("Offline", "Saved. Will upload later.");
+}
+
+setLoading(false);
   };
 
   /* ===== UI ===== */
@@ -374,11 +380,49 @@ if (updateError) {
 
       <Text style={styles.header}>Sell Item</Text>
 
-      <TextInput style={styles.input} placeholder="Title" value={title} onChangeText={setTitle} />
-      <TextInput style={styles.input} placeholder="Description" value={description} onChangeText={setDescription} multiline />
-      <TextInput style={styles.input} placeholder="Price" value={price} onChangeText={setPrice} />
-      <TextInput style={styles.input} placeholder="Location" value={location} onChangeText={setLocation} />
-      <TextInput style={styles.input} placeholder="Phone" value={phone} onChangeText={setPhone} />
+     <TextInput
+  style={styles.input}
+  placeholder="Title"
+  placeholderTextColor="#9ca3af"
+  value={title}
+  onChangeText={setTitle}
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Description"
+  placeholderTextColor="#9ca3af"
+  value={description}
+  onChangeText={setDescription}
+  multiline
+  textAlignVertical="top" // ✅ FIX for Android
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Price"
+  placeholderTextColor="#9ca3af"
+  value={price}
+  onChangeText={setPrice}
+  keyboardType="numeric" // ✅ better UX
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Location"
+  placeholderTextColor="#9ca3af"
+  value={location}
+  onChangeText={setLocation}
+/>
+
+<TextInput
+  style={styles.input}
+  placeholder="Phone"
+  placeholderTextColor="#9ca3af"
+  value={phone}
+  onChangeText={setPhone}
+  keyboardType="phone-pad" // ✅ better UX
+/>
 
       {/* CATEGORY */}
       <View style={styles.categoryWrap}>
@@ -422,16 +466,117 @@ if (updateError) {
 
 /* ===== STYLES ===== */
 const styles = StyleSheet.create({
-  container: { padding: 16 },
-  header: { fontSize: 22, fontWeight: "bold", marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: "#ccc", padding: 10, marginBottom: 10 },
-  imageBtn: { backgroundColor: "#eee", padding: 12, marginBottom: 10 },
-  squareImage: { width: "100%", aspectRatio: 1, marginBottom: 10 },
-  postBtn: { backgroundColor: "green", padding: 14, alignItems: "center" },
-  postText: { color: "#fff", fontWeight: "bold" },
-  categoryWrap: { flexDirection: "row", flexWrap: "wrap", marginBottom: 10 },
-  categoryBtn: { padding: 10, margin: 4, borderRadius: 20 },
-  quickBtn: { backgroundColor: "#2563eb", padding: 12, borderRadius: 10, margin: 5 },
-  quickText: { color: "#fff" },
-    switchRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  container: {
+    padding: 16,
+    backgroundColor: "#f9fafb",
+  },
+
+  header: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 16,
+    color: "#111827",
+  },
+
+  input: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    padding: 12,
+    marginBottom: 12,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    color: "#111827", // ✅ FIX TEXT VISIBILITY
+  },
+
+  imageBtn: {
+    backgroundColor: "#e5e7eb",
+    padding: 14,
+    borderRadius: 10,
+    marginBottom: 12,
+    alignItems: "center",
+  },
+
+  squareImage: {
+    width: "100%",
+    aspectRatio: 1,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+
+  postBtn: {
+    backgroundColor: "#16a34a",
+    padding: 16,
+    borderRadius: 12,
+    alignItems: "center",
+    marginTop: 10,
+  },
+
+  postText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+
+  /* CATEGORY (HORIZONTAL LOOK) */
+  categoryWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+
+  categoryBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    margin: 4,
+    borderRadius: 20,
+    backgroundColor: "#e5e7eb",
+  },
+
+  categoryText: {
+    color: "#111827",
+  },
+
+  /* QUICK ACTIONS (HORIZONTAL GRID) */
+  quickWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+
+  quickBtn: {
+    backgroundColor: "#2563eb",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+    width: "48%", // ✅ makes it horizontal 2-column
+    alignItems: "center",
+  },
+
+  quickText: {
+    color: "#fff",
+    fontWeight: "600",
+    textAlign: "center",
+  },
+
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+
+  switchText: {
+    marginLeft: 10,
+    color: "#111827",
+  },
+
+  /* EMPTY MEDIA / LOADING */
+  noMedia: {
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: "#f3f4f6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });

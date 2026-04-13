@@ -1,100 +1,109 @@
-import { Ionicons } from "@expo/vector-icons"
-import { useEffect, useState } from "react"
-import { Pressable, Text, View } from "react-native"
-import { supabase } from "../lib/supabase"
+import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
+import { Pressable, Text, View } from "react-native";
+import { getUserSafe } from "../lib/auth";
+import { supabase } from "../lib/supabase";
+
 
 export default function LikeButton({ postId }: { postId: string }) {
+  const [liked, setLiked] = useState(false);
+  const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(false);
 
-const [liked,setLiked] = useState(false)
-const [count,setCount] = useState(0)
+  /* ================= LOAD LIKES ================= */
+  useEffect(() => {
+    loadLikes();
+  }, [postId]);
 
-useEffect(()=>{
-loadLikes()
-},[])
+  const loadLikes = async () => {
+    try {
+      const user = await getUserSafe();
+      const userId = user?.id;
 
-async function loadLikes(){
+      /* COUNT */
+      const { count } = await supabase
+        .from("likes")
+        .select("*", { count: "exact", head: true })
+        .eq("post_id", postId);
 
-const { data:userData } = await supabase.auth.getUser()
-const userId = userData.user?.id
+      setCount(count || 0);
 
-const { count } = await supabase
-.from("likes")
-.select("*",{count:"exact",head:true})
-.eq("post_id",postId)
+      if (!userId) return;
 
-setCount(count || 0)
+      /* CHECK IF USER LIKED */
+      const { data } = await supabase
+        .from("likes")
+        .select("id")
+        .eq("post_id", postId)
+        .eq("user_id", userId)
+        .maybeSingle();
 
-if(userId){
+      setLiked(!!data);
+    } catch (e) {
+      console.log("Like load error:", e);
+    }
+  };
 
-const { data } = await supabase
-.from("likes")
-.select("id")
-.eq("post_id",postId)
-.eq("user_id",userId)
-.maybeSingle()
+  /* ================= TOGGLE LIKE (OPTIMISTIC UI) ================= */
+  const toggleLike = async () => {
+    if (loading) return;
+    setLoading(true);
 
-if(data){
-setLiked(true)
-}
+    const user = await getUserSafe();
+    const userId = user?.id;
 
-}
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
 
-}
+    const newLiked = !liked;
 
-async function toggleLike(){
+    // 🔥 INSTANT UI UPDATE (NO WAIT)
+    setLiked(newLiked);
+    setCount((c) => (newLiked ? c + 1 : c - 1));
 
-const { data:userData } = await supabase.auth.getUser()
-const userId = userData.user?.id
+    try {
+      if (newLiked) {
+        const { error } = await (supabase as any).from("likes").insert({
+          post_id: postId,
+          user_id: userId,
+        });
 
-if(!userId) return
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("likes")
+          .delete()
+          .eq("post_id", postId)
+          .eq("user_id", userId);
 
-if(liked){
+        if (error) throw error;
+      }
+    } catch (e) {
+      console.log("Like toggle error:", e);
 
-await supabase
-.from("likes")
-.delete()
-.eq("post_id",postId)
-.eq("user_id",userId)
+      // rollback UI if failed
+      setLiked(!newLiked);
+      setCount((c) => (newLiked ? c - 1 : c + 1));
+    }
 
-setLiked(false)
-setCount(c=>c-1)
+    setLoading(false);
+  };
 
-}else{
+  return (
+    <Pressable onPress={toggleLike}>
+      <View style={{ alignItems: "center", opacity: loading ? 0.5 : 1 }}>
+        <Ionicons
+          name={liked ? "heart" : "heart-outline"}
+          size={28}
+          color={liked ? "red" : "white"}
+        />
 
-await (supabase as any)
-.from("likes")
-.insert({
-post_id:postId,
-user_id:userId
-})
-
-setLiked(true)
-setCount(c=>c+1)
-
-}
-
-}
-
-return(
-
-<Pressable onPress={toggleLike}>
-
-<View style={{alignItems:"center"}}>
-
-<Ionicons
-name={liked ? "heart" : "heart-outline"}
-size={28}
-color={liked ? "red" : "white"}
-/>
-
-<Text style={{color:"white",fontSize:12}}>
-{count}
-</Text>
-
-</View>
-
-</Pressable>
-
-)
-
+        <Text style={{ color: "white", fontSize: 12 }}>
+          {count}
+        </Text>
+      </View>
+    </Pressable>
+  );
 }

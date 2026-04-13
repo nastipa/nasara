@@ -3,8 +3,9 @@ import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Animated,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,50 +19,86 @@ import { uploadVideo } from "../lib/uploadVideo";
 export default function CreateReel() {
   const router = useRouter();
 
-  const videoRef = useRef<any>(null);
-  const mediaRecorderRef = useRef<any>(null);
-  const chunks = useRef<any[]>([]);
-
   const [video, setVideo] = useState<any>(null);
   const [caption, setCaption] = useState("");
-  const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  /* ================= WEB RECORD ================= */
-  const startWebRecording = async () => {
+  const [cameraOn, setCameraOn] = useState(false);
+  const [recording, setRecording] = useState(false);
+
+  const videoRef = useRef<any>(null);
+  const streamRef = useRef<any>(null);
+  const recorderRef = useRef<any>(null);
+  const chunks = useRef<any[]>([]);
+
+  const pulse = useRef(new Animated.Value(1)).current;
+
+  /* ================= PICK VIDEO ================= */
+  const pickVideo = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.7,
+    });
+
+    if (!res.canceled) {
+      const file = res.assets[0];
+      setVideo(file);
+    }
+  };
+
+  /* ================= MOBILE CAMERA RECORD ================= */
+  const recordMobile = async () => {
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.7,
+      videoMaxDuration: 60,
+    });
+
+    if (!res.canceled) {
+      setVideo(res.assets[0]);
+    }
+  };
+
+  /* ================= WEB CAMERA ================= */
+  const startCamera = async () => {
     if (Platform.OS !== "web") return;
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
+      streamRef.current = stream;
+      setCameraOn(true);
+
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (e) {
+      console.log("Camera error:", e);
     }
+  };
 
-    const recorder = new MediaRecorder(stream, {
-      mimeType: "video/webm;codecs=vp8",
-      videoBitsPerSecond: 800000, // 🔥 compress
-    });
+  const startRecord = () => {
+    if (Platform.OS !== "web") return;
 
-    mediaRecorderRef.current = recorder;
+    const stream = streamRef.current;
+    if (!stream) return;
+
+    const recorder = new MediaRecorder(stream);
+    recorderRef.current = recorder;
     chunks.current = [];
 
-    recorder.ondataavailable = (e: any) => {
+    recorder.ondataavailable = (e) => {
       if (e.data.size > 0) chunks.current.push(e.data);
     };
 
     recorder.onstop = () => {
       const blob = new Blob(chunks.current, { type: "video/webm" });
-
-      // 🔥 SIZE CHECK
-      if (blob.size > 100 * 1024 * 1024) {
-        alert("Video too large! Max 100MB");
-        return;
-      }
-
-      const file = new File([blob], "record.webm");
+      const file = new File([blob], "reel.webm");
 
       setVideo(file);
 
@@ -73,244 +110,242 @@ export default function CreateReel() {
 
     recorder.start();
     setRecording(true);
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1.3,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   };
 
-  const stopWebRecording = () => {
-    if (Platform.OS !== "web") return;
-
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current.stream
-        ?.getTracks()
-        ?.forEach((t: any) => t.stop());
-    }
-
+  const stopRecord = () => {
+    recorderRef.current?.stop();
     setRecording(false);
-  };
-
-  /* ================= MOBILE RECORD ================= */
-  const recordMobile = async () => {
-    const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      quality: 0.5, // 🔥 compress
-      videoMaxDuration: 60, // 🔥 limit
-    });
-
-    if (!res.canceled) {
-      const file = res.assets[0];
-
-      if (file.fileSize && file.fileSize > 100 * 1024 * 1024) {
-        alert("Video too large! Max 100MB");
-        return;
-      }
-
-      setVideo(file);
-    }
-  };
-
-  /* ================= PICK ================= */
-  const pickVideo = async () => {
-    if (Platform.OS === "web") {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "video/*";
-
-      input.onchange = (e: any) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        if (file.size > 100 * 1024 * 1024) {
-          alert("Video too large! Max 100MB");
-          return;
-        }
-
-        setVideo(file);
-
-        if (videoRef.current) {
-          videoRef.current.src = URL.createObjectURL(file);
-        }
-      };
-
-      input.click();
-    } else {
-      const res = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        quality: 0.5, // 🔥 ADD
-        videoMaxDuration: 60, // 🔥 ADD
-      });
-
-      if (!res.canceled) {
-        const file = res.assets[0];
-
-        if (file.fileSize && file.fileSize > 100 * 1024 * 1024) {
-          alert("Video too large! Max 100MB");
-          return;
-        }
-
-        setVideo(file);
-      }
-    }
+    pulse.stopAnimation();
+    pulse.setValue(1);
   };
 
   /* ================= POST ================= */
   const postReel = async () => {
-    if (!video) {
-      alert("Please select a video");
-      return;
-    }
+  if (!video) {
+    Alert.alert("Select video first");
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
 
+  try {
     const { data } = await supabase.auth.getUser();
     if (!data?.user) {
-      setLoading(false);
+      Alert.alert("Login required");
       return;
     }
 
-    // 🔥 FINAL SIZE CHECK
-    if (Platform.OS === "web" && video.size > 100 * 1024 * 1024) {
-      alert("Video too large!");
-      setLoading(false);
-      return;
-    }
+    let preview = null;
 
-    if (
-      Platform.OS !== "web" &&
-      video.fileSize &&
-      video.fileSize > 100 * 1024 * 1024
-    ) {
-      alert("Video too large!");
-      setLoading(false);
-      return;
-    }
-
-    const preview =
-      Platform.OS === "web"
-        ? URL.createObjectURL(video)
-        : video.uri;
-
-    try {
-      // ✅ INSERT FIRST (FAST UI)
-      const { data: newPost, error } = await (supabase as any)
-        .from("posts")
-        .insert({
-          user_id: data.user.id,
-          caption,
-          media_url: null,
-          local_uri: preview,
-        })
-        .select()
-        .single();
-
-      if (error || !newPost) {
-        console.log("insert error", error);
-        setLoading(false);
-        return;
+    if (Platform.OS === "web") {
+      if (video instanceof File || video instanceof Blob) {
+        preview = URL.createObjectURL(video);
+      } else if (video?.uri) {
+        preview = video.uri;
       }
-
-      // 🚀 INSTANT NAVIGATION
-      router.replace("/reels");
-
-      // 🔥 BACKGROUND UPLOAD
-      const result = await uploadVideo(video);
-
-      await (supabase as any)
-        .from("posts")
-        .update({
-          media_url: result.video,
-          thumbnail_url: result.thumbnail,
-          public_id: result.public_id,
-          local_uri: null,
-        })
-        .eq("id", newPost.id);
-
-    } catch (e) {
-      console.log("UPLOAD ERROR:", e);
+    } else {
+      preview = video?.uri ?? null;
     }
 
-    setLoading(false);
-  };
+   const { data: newPost, error } = await (supabase as any)
+  .from("posts")
+  .insert({
+    user_id: data.user.id,
+    caption,
+    media_url: null,
+    local_uri: preview,
+    thumbnail_url: null,
+    views: 0, // ✅ IMPORTANT
+    status: "uploading",
+  })
+  .select()
+  .single();
 
+if (error) {
+  console.log("insert error:", error);
+  return;
+}
+console.log("NEW POST:", newPost);
+    router.replace("/reels");
+
+    const result = await uploadVideo(video);
+
+    await (supabase as any)
+      .from("posts")
+      .update({
+        media_url: result.video,
+        thumbnail_url: result.thumbnail,
+        local_uri: null,
+        status: "ready",
+      })
+      .eq("id", newPost.id);
+
+  } catch (err: any) {
+    console.log(err);
+    Alert.alert("Upload failed", err.message);
+  }
+
+  setLoading(false);
+};
   /* ================= UI ================= */
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.box}>
-        
-        {Platform.OS === "web" && (
-          <video
-            ref={videoRef}
-            style={{ height: 200 }}
-            autoPlay
-            muted
-            controls
-          />
-        )}
+    <View style={styles.container}>
 
-        {Platform.OS === "web" ? (
-          recording ? (
-            <TouchableOpacity onPress={stopWebRecording}>
-              <Text style={styles.btn}>⏹ Stop</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity onPress={startWebRecording}>
-              <Text style={styles.btn}>🎥 Record</Text>
-            </TouchableOpacity>
-          )
-        ) : (
-          <TouchableOpacity onPress={recordMobile}>
-            <Text style={styles.btn}>🎥 Record</Text>
-          </TouchableOpacity>
-        )}
+      {/* BACK BUTTON */}
+      <TouchableOpacity
+        onPress={() => router.replace("/browse")}
+        style={styles.backBtn}
+      >
+        <Text style={{ color: "white" }}>⬅ Home</Text>
+      </TouchableOpacity>
 
-        <TouchableOpacity onPress={pickVideo}>
-          <Text style={styles.btn}>📁 Pick Video</Text>
-        </TouchableOpacity>
-
-        <TextInput
-          placeholder="Caption..."
-          value={caption}
-          onChangeText={setCaption}
-          style={styles.input}
+      {/* WEB CAMERA */}
+      {Platform.OS === "web" && cameraOn && (
+        <video
+          ref={videoRef}
+          style={styles.video}
+          autoPlay
+          muted
+          playsInline
         />
+      )}
 
-        <TouchableOpacity onPress={postReel}>
-          <Text style={styles.btn}>🚀 Post</Text>
+      {/* OPEN CAMERA */}
+      {!cameraOn && (
+        <TouchableOpacity onPress={startCamera} style={styles.startBtn}>
+          <Text style={{ color: "white" }}>🎥 Open Camera</Text>
         </TouchableOpacity>
+      )}
 
-        <TouchableOpacity onPress={() => router.replace("/browse")}>
-          <Text style={styles.back}>⬅ Back Home</Text>
-        </TouchableOpacity>
+      {/* RECORD BUTTON (WEB ONLY) */}
+      {Platform.OS === "web" && cameraOn && (
+        <Animated.View style={[styles.recordWrap, { transform: [{ scale: pulse }] }]}>
+          <TouchableOpacity
+            onPressIn={startRecord}
+            onPressOut={stopRecord}
+            style={styles.recordBtn}
+          />
+        </Animated.View>
+      )}
 
-        {loading && <ActivityIndicator />}
-      </View>
-    </ScrollView>
+      {/* MOBILE CONTROLS */}
+     <View style={{ marginTop: 20 }}>
+  
+  {/* RECORD BUTTON (ALL PLATFORMS) */}
+  <TouchableOpacity
+    onPress={Platform.OS === "web" ? startCamera : recordMobile}
+    style={styles.btn}
+  >
+    <Text style={{ color: "white" }}>
+      🎥 {Platform.OS === "web" ? "Open & Record Camera" : "Record Video"}
+    </Text>
+  </TouchableOpacity>
+
+  {/* PICK VIDEO (ALL PLATFORMS) */}
+  <TouchableOpacity onPress={pickVideo} style={styles.btn}>
+    <Text style={{ color: "white" }}>📁 Pick Video</Text>
+  </TouchableOpacity>
+
+</View>
+
+      {/* CAPTION */}
+      <TextInput
+        placeholder="Caption..."
+        placeholderTextColor="#aaa"
+        value={caption}
+        onChangeText={setCaption}
+        style={styles.input}
+      />
+
+      {/* POST */}
+      <TouchableOpacity onPress={postReel} style={styles.postBtn}>
+        <Text style={{ color: "white" }}>🚀 Post Reel</Text>
+      </TouchableOpacity>
+
+      {loading && <ActivityIndicator color="white" />}
+    </View>
   );
 }
 
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
   container: {
-    flexGrow: 1,
-    justifyContent: "center",
+    flex: 1,
+    backgroundColor: "black",
+    padding: 20,
+  },
+
+  video: {
+    width: "100%",
+    height: 300,
+    backgroundColor: "black",
+  },
+
+  startBtn: {
+    padding: 14,
+    backgroundColor: "#2563eb",
     alignItems: "center",
+    marginTop: 20,
   },
-  box: {
-    width: "85%",
-    gap: 10,
+
+  recordWrap: {
+    alignSelf: "center",
+    marginTop: 20,
   },
+
+  recordBtn: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "red",
+  },
+
   input: {
-    borderWidth: 1,
-    padding: 10,
-  },
-  btn: {
-    backgroundColor: "#000",
-    color: "#fff",
+    backgroundColor: "#111",
+    color: "white",
     padding: 12,
-    textAlign: "center",
+    marginTop: 20,
+    borderRadius: 10,
   },
-  back: {
-    color: "blue",
+
+  postBtn: {
+    backgroundColor: "#00c853",
+    padding: 14,
+    marginTop: 15,
+    alignItems: "center",
+    borderRadius: 10,
+  },
+
+  btn: {
+    backgroundColor: "#333",
+    padding: 12,
     marginTop: 10,
-    textAlign: "center",
+    alignItems: "center",
+    borderRadius: 10,
+  },
+
+  backBtn: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: "#222",
+    padding: 10,
+    borderRadius: 8,
   },
 });

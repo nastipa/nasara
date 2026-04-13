@@ -1,8 +1,9 @@
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { memo, useEffect, useRef, useState } from "react";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dimensions,
   FlatList,
+  Platform,
   Pressable,
   Share,
   StyleSheet,
@@ -18,7 +19,6 @@ import ReelPlayer from "./ReelPlayer";
 
 const { height, width } = Dimensions.get("window");
 
-/* ================= TYPES ================= */
 type ReelType = {
   id: string;
   media_url: string | null;
@@ -29,7 +29,6 @@ type ReelType = {
   thumbnail_url?: string | null;
 };
 
-/* ================= COMPONENT ================= */
 export default function ReelsFeed({
   reels,
   activeIndex,
@@ -37,55 +36,76 @@ export default function ReelsFeed({
   loadMore,
   myOnly,
   setMyOnly,
+  onDelete,
 }: any) {
   const router = useRouter();
-  const params = useLocalSearchParams();
+
   const viewed = useRef<Set<string>>(new Set());
+  const preloaded = useRef<Set<string>>(new Set());
 
   const [feed, setFeed] = useState<ReelType[]>([]);
 
-  /* ================= LOAD ================= */
+  /* ================= MERGE ================= */
   useEffect(() => {
-    setFeed(reels || []);
+    if (!reels) return;
+
+    setFeed((prev) => {
+      const map = new Map(prev.map((p) => [p.id, p]));
+      reels.forEach((r: ReelType) => map.set(r.id, r));
+      return Array.from(map.values());
+    });
   }, [reels]);
 
   /* ================= REALTIME ================= */
   useEffect(() => {
-    const channel = supabase
-      .channel("reels-feed")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "posts" },
-        (payload: any) => {
-          const updated = payload.new as ReelType;
+    const channel = supabase.channel("reels-sync");
 
-          setFeed((prev) =>
-            prev.map((item) =>
-              item.id === updated.id ? { ...item, ...updated } : item
-            )
-          );
-        }
-      )
-      .subscribe();
+    channel.on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "posts" },
+      (payload: any) => {
+        const p = payload.new;
+
+        setFeed((prev) => {
+          if (prev.find((x) => x.id === p.id)) return prev;
+          return [p, ...prev];
+        });
+      }
+    );
+
+    channel.on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "posts" },
+      (payload: any) => {
+        const updated = payload.new;
+
+        setFeed((prev) =>
+          prev.map((p) =>
+            p.id === updated.id ? { ...p, ...updated } : p
+          )
+        );
+      }
+    );
+
+    channel.on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "posts" },
+      (payload: any) => {
+        const id = payload.old.id;
+        setFeed((prev) => prev.filter((p) => p.id !== id));
+      }
+    );
+
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, []);
 
-  /* ================= DELETE ================= */
-  const handleDelete = async (id: string) => {
-    try {
-      setFeed((prev) => prev.filter((item) => item.id !== id));
-      await supabase.from("posts").delete().eq("id", id);
-    } catch (e) {
-      console.log("delete error", e);
-    }
-  };
-
   /* ================= VIEW TRACK ================= */
   const onViewableItemsChanged = useRef(
-    async ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (!viewableItems.length) return;
 
       const index = viewableItems[0].index;
@@ -96,50 +116,83 @@ export default function ReelsFeed({
       const reel = feed[index];
       if (!reel) return;
 
-      // only count view once
       if (!viewed.current.has(reel.id)) {
         viewed.current.add(reel.id);
 
-        try {
-          await (supabase as any).rpc("increment_reel_views", {
+        // 🔥 FIX: ensure RPC runs
+        (supabase as any)
+          .rpc("increment_reel_views", {
             post_id_input: reel.id,
-          });
-        } catch {}
+          })
+          .then(() => {
+            // instant UI update
+            setFeed((prev) =>
+              prev.map((item) =>
+                item.id === reel.id
+                  ? { ...item, views: (item.views ?? 0) + 1 }
+                  : item
+              )
+            );
+          })
+          .catch((e: any) => console.log("view error", e));
       }
     }
   ).current;
 
-  const viewabilityConfig = { itemVisiblePercentThreshold: 85 };
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 85,
+  };
+
+  /* ================= PRELOAD ================= */
+  const preloadVideos = useCallback(
+    (index: number) => {
+      const around = feed.slice(Math.max(0, index - 1), index + 3);
+
+      around.forEach((item) => {
+        const src = item.media_url || item.local_uri;
+
+        if (!src || preloaded.current.has(item.id)) return;
+
+        preloaded.current.add(item.id);
+
+        if (Platform.OS === "web") {
+          const v = document.createElement("video");
+          v.src = src;
+          v.preload = "metadata";
+        }
+      });
+    },
+    [feed]
+  );
+
+  useEffect(() => {
+    preloadVideos(activeIndex);
+  }, [activeIndex, feed]);
 
   /* ================= ITEM ================= */
-  const RenderItem = memo(({ item, index }: any) => {
+  const renderItem = ({ item, index }: any) => {
     const isActive = index === activeIndex;
-
-    // 🔥 OPTIMIZED VIDEO SOURCE
-    const videoUrl =
-      (typeof item.media_url === "string" && item.media_url) ||
-      (typeof item.local_uri === "string" && item.local_uri) ||
-      "";
 
     return (
       <View style={{ height, width }}>
         <ReelPlayer
           id={item.id}
-          url={videoUrl}
+          url={item.media_url}
+          localUri={item.local_uri}
           active={isActive}
           thumbnail={item.thumbnail_url}
         />
 
-        {item.caption && <Text style={styles.caption}>{item.caption}</Text>}
+        {!!item.caption && (
+          <Text style={styles.caption}>{item.caption}</Text>
+        )}
 
         <Text style={styles.views}>👁 {item.views ?? 0}</Text>
 
         <View style={styles.actions}>
           <LikeButton postId={item.id} />
 
-          <Pressable
-            onPress={() => router.push(`/comments?postId=${item.id}`)}
-          >
+          <Pressable onPress={() => router.push(`/comments?postId=${item.id}`)}>
             <Text style={styles.icon}>💬</Text>
           </Pressable>
 
@@ -147,12 +200,14 @@ export default function ReelsFeed({
 
           <Pressable
             onPress={() =>
-              videoUrl && Share.share({ message: videoUrl })
+              item.media_url &&
+              Share.share({ message: item.media_url })
             }
           >
             <Text style={styles.icon}>📤</Text>
           </Pressable>
 
+          {/* ✅ SELLER SHOP BACK */}
           <Pressable
             onPress={() =>
               router.push(`/seller-items?userId=${item.user_id}`)
@@ -161,19 +216,20 @@ export default function ReelsFeed({
             <Text style={styles.icon}>🛍</Text>
           </Pressable>
 
-          {myOnly && (
-            <Pressable onPress={() => handleDelete(item.id)}>
+          {/* ✅ DELETE ONLY IN MY REELS */}
+          {myOnly && onDelete && (
+            <Pressable onPress={() => onDelete(item.id)}>
               <Text style={styles.icon}>🗑️</Text>
             </Pressable>
           )}
         </View>
       </View>
     );
-  });
+  };
 
   /* ================= UI ================= */
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: "black" }}>
       <View style={styles.topBar}>
         <Text
           onPress={() => setMyOnly(false)}
@@ -193,7 +249,7 @@ export default function ReelsFeed({
       <FlatList
         data={feed}
         keyExtractor={(item) => item.id}
-        renderItem={({ item, index }) => <RenderItem item={item} index={index} />}
+        renderItem={renderItem}
         pagingEnabled
         snapToInterval={height}
         decelerationRate="fast"
@@ -203,8 +259,8 @@ export default function ReelsFeed({
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
         initialNumToRender={3}
-        maxToRenderPerBatch={2}
-        windowSize={3}
+        maxToRenderPerBatch={3}
+        windowSize={5}
         removeClippedSubviews
         getItemLayout={(_, index) => ({
           length: height,
@@ -216,7 +272,6 @@ export default function ReelsFeed({
   );
 }
 
-/* ================= STYLES ================= */
 const styles = StyleSheet.create({
   topBar: {
     position: "absolute",

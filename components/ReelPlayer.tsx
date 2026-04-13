@@ -7,7 +7,6 @@ import {
   Dimensions,
   Easing,
   Image,
-  Platform,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -24,64 +23,47 @@ type Props = {
 };
 
 export default function ReelPlayer({
-  id,
   url,
   localUri,
   active,
   thumbnail,
 }: Props) {
   const [paused, setPaused] = useState(true);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(false); // ✅ default NOT muted
   const [loading, setLoading] = useState(true);
 
-  const videoOpacity = useRef(new Animated.Value(0)).current;
-
-  /* ================= 🔥 OPTIMIZE CLOUDINARY URL ================= */
-  const getOptimizedUrl = (rawUrl: string) => {
-    if (!rawUrl.includes("/upload/")) return rawUrl;
-
-    return rawUrl.replace(
-      "/upload/",
-      "/upload/q_auto:low,f_auto,w_480/"
-    ); // 🔥 HUGE bandwidth saver
-  };
+  const opacity = useRef(new Animated.Value(0)).current;
 
   /* ================= SOURCE ================= */
   const source = useMemo(() => {
-    if (!active) return null;
-
-    // ✅ Cloudinary optimized URL
-    if (typeof url === "string" && url.length > 0) {
-      return getOptimizedUrl(url);
-    }
-
-    // ✅ Local preview (instant play after upload)
     if (
-      Platform.OS !== "web" &&
       typeof localUri === "string" &&
-      localUri.startsWith("file")
+      (localUri.startsWith("file") || localUri.startsWith("blob:"))
     ) {
-      return localUri;
+      return { uri: localUri };
     }
 
-    return null;
-  }, [url, localUri, active]);
+    if (typeof url === "string" && url && !url.includes("undefined")) {
+      return { uri: url };
+    }
 
-  /* ================= PLAYER ================= */
-  const player = useVideoPlayer(source || "");
+    return { uri: "" };
+  }, [url, localUri]);
 
-  /* ================= LOAD HANDLER ================= */
+  const player = useVideoPlayer(source);
+
+  /* ================= LOAD ================= */
   useEffect(() => {
-    if (!player || !source) return;
+    if (!player) return;
 
     setLoading(true);
-    videoOpacity.setValue(0);
+    opacity.setValue(0);
 
-    const sub = player.addListener("statusChange", (status) => {
-      if (status.status === "readyToPlay") {
+    const sub = player.addListener("statusChange", (s) => {
+      if (s.status === "readyToPlay") {
         setLoading(false);
 
-        Animated.timing(videoOpacity, {
+        Animated.timing(opacity, {
           toValue: 1,
           duration: 200,
           easing: Easing.out(Easing.ease),
@@ -91,36 +73,38 @@ export default function ReelPlayer({
     });
 
     return () => sub.remove();
-  }, [player, source]);
+  }, [player]);
 
-  /* ================= PLAY CONTROL ================= */
+  /* ================= AUTOPLAY + SOUND FIX ================= */
   useEffect(() => {
     if (!player) return;
 
     player.loop = true;
-    player.muted = muted;
 
     try {
-      if (active && source) {
-        player.currentTime = 0;
+      if (active) {
+        player.muted = false;       // ✅ ALWAYS unmute when active
+        setMuted(false);            // sync UI
+
         player.play();
         setPaused(false);
       } else {
         player.pause();
+        player.currentTime = 0;
+
         setPaused(true);
       }
     } catch {}
-  }, [active, source, muted]);
+  }, [active, player]);
 
-  /* ================= HARD STOP ================= */
+  /* ================= KEEP MUTE SYNC ================= */
   useEffect(() => {
-    if (!active && player) {
-      try {
-        player.pause();
-        player.currentTime = 0;
-      } catch {}
-    }
-  }, [active]);
+    if (!player) return;
+
+    try {
+      player.muted = muted;
+    } catch {}
+  }, [muted, player]);
 
   /* ================= CLEANUP ================= */
   useEffect(() => {
@@ -129,11 +113,11 @@ export default function ReelPlayer({
         player?.pause();
       } catch {}
     };
-  }, []);
+  }, [player]);
 
   /* ================= ACTIONS ================= */
   const togglePlay = () => {
-    if (!player || !source) return;
+    if (!player) return;
 
     try {
       if (paused) {
@@ -146,13 +130,8 @@ export default function ReelPlayer({
     } catch {}
   };
 
-  const toggleVolume = () => {
-    const newMuted = !muted;
-    setMuted(newMuted);
-
-    try {
-      player.muted = newMuted;
-    } catch {}
+  const toggleMute = () => {
+    setMuted((prev) => !prev); // ✅ simple + synced
   };
 
   /* ================= UI ================= */
@@ -162,14 +141,14 @@ export default function ReelPlayer({
       onPress={togglePlay}
       style={styles.container}
     >
-      {/* ✅ THUMBNAIL (NO BANDWIDTH HEAVY VIDEO) */}
-      {(!active || loading) && thumbnail && (
+      {/* THUMBNAIL */}
+      {!player && thumbnail && (
         <Image source={{ uri: thumbnail }} style={styles.video} />
       )}
 
-      {/* ✅ VIDEO ONLY WHEN ACTIVE */}
-      {source && active && (
-        <Animated.View style={[styles.video, { opacity: videoOpacity }]}>
+      {/* VIDEO */}
+      {player && (
+        <Animated.View style={[styles.video, { opacity }]}>
           <VideoView
             player={player}
             style={styles.video}
@@ -179,25 +158,22 @@ export default function ReelPlayer({
       )}
 
       {/* LOADER */}
-      {active && loading && (
+      {player && loading && (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="white" />
         </View>
       )}
 
       {/* PLAY ICON */}
-      {paused && !loading && active && (
+      {paused && player && !loading && (
         <View style={styles.playButton}>
           <Ionicons name="play" size={80} color="white" />
         </View>
       )}
 
       {/* VOLUME */}
-      {active && (
-        <TouchableOpacity
-          style={styles.volumeButton}
-          onPress={toggleVolume}
-        >
+      {player && (
+        <TouchableOpacity style={styles.volume} onPress={toggleMute}>
           <Ionicons
             name={muted ? "volume-mute" : "volume-high"}
             size={26}
@@ -232,7 +208,7 @@ const styles = StyleSheet.create({
     top: "45%",
     left: "42%",
   },
-  volumeButton: {
+  volume: {
     position: "absolute",
     top: 70,
     right: 20,

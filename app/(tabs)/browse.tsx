@@ -778,7 +778,7 @@ style={{ backgroundColor: "#0f172a" }}
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/aWGR3BU6pTqXmeuUUgjACn.apk"
+      "https://expo.dev/artifacts/eas/kjpZGcH8NB1mQQ1MooidiE.apk"
     )
   }
   style={{
@@ -920,21 +920,21 @@ style={{ backgroundColor: "#0f172a" }}
 }}
         >
         {/* MEDIA */}
-{item.video_url ? (
+{item?.video_url ? (
   <SafeVideo url={item.video_url} />
-) : item.image_url ? (
+) : item?.image_url ? (
   <Image
     source={{ uri: item.image_url }}
     style={styles.squareImage}
-    contentFit="cover"
-    transition={300}
-    cachePolicy="memory-disk"
   />
 ) : (
   <View style={styles.noMedia}>
-    <Text style={{ color: "#9ca3af" }}>Loading media...</Text>
+    <ActivityIndicator size="small" />
+    <Text style={{ color: "#9ca3af", marginTop: 6 }}>
+      Uploading...
+    </Text>
   </View>
-)}
+)}   
           {/* BADGES */}
           {item.type === "ad" && <Badge label="📢 AD" />}
           {item.type === "banner" && <Badge label="🎯 BANNER" />}
