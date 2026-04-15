@@ -59,31 +59,37 @@ export default function CreateReel() {
     return () => clearInterval(timerRef.current);
   }, [recording]);
 
-  /* ================= CAMERA ================= */
+  /* ================= CAMERA (FIXED STABLE VERSION) ================= */
   const startCamera = async (mode = facing) => {
     if (Platform.OS !== "web") return;
 
     try {
+      // stop previous stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t: any) => t.stop());
         streamRef.current = null;
       }
 
+      const isMobileWeb =
+        typeof navigator !== "undefined" &&
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: mode },
+        video: {
+          facingMode: isMobileWeb ? { ideal: mode } : "user",
+        },
         audio: true,
       });
 
       streamRef.current = stream;
       setCameraOn(true);
 
-      requestAnimationFrame(() => {
-        if (videoRef.current && videoRef.current.srcObject !== stream) {
-          videoRef.current.srcObject = stream;
-        }
-      });
-
-    } catch {
+      // IMPORTANT: prevent flashing
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play?.();
+      }
+    } catch (e) {
       Alert.alert("Camera Error", "Allow camera permission");
     }
   };
@@ -110,7 +116,9 @@ export default function CreateReel() {
         clearInterval(interval);
         setCountdown(null);
         beginRecording();
-      } else setCountdown(time);
+      } else {
+        setCountdown(time);
+      }
     }, 1000);
   };
 
@@ -125,9 +133,11 @@ export default function CreateReel() {
 
     recorder.onstop = () => {
       const blob = new Blob(chunks.current, { type: "video/webm" });
-      const file = new File([blob], "reel.webm");
+      const file = new File([blob], "reel.webm", { type: "video/webm" });
 
-      setVideo({ uri: URL.createObjectURL(file), file });
+      const url = URL.createObjectURL(file);
+
+      setVideo({ uri: url, file });
       setEditing(true);
       setRecording(false);
     };
@@ -140,7 +150,7 @@ export default function CreateReel() {
     recorderRef.current?.stop();
   };
 
-  /* ================= OTHER ================= */
+  /* ================= MOBILE CAMERA ================= */
   const recordMobile = async () => {
     const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -154,6 +164,7 @@ export default function CreateReel() {
     }
   };
 
+  /* ================= PICK VIDEO ================= */
   const pickVideo = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -166,13 +177,19 @@ export default function CreateReel() {
     }
   };
 
+  /* ================= TRIM PREVIEW ================= */
   const previewTrim = () => {
     if (!player) return;
+
     player.currentTime = startTime;
     player.play();
-    setTimeout(() => player.pause(), (endTime - startTime) * 1000);
+
+    setTimeout(() => {
+      player.pause();
+    }, (endTime - startTime) * 1000);
   };
 
+  /* ================= THUMBNAIL ================= */
   const generateThumbnail = async () => {
     try {
       const { uri } = await VideoThumbnails.getThumbnailAsync(video.uri, {
@@ -184,6 +201,7 @@ export default function CreateReel() {
     }
   };
 
+  /* ================= POST ================= */
   const postReel = async () => {
     if (!video) return Alert.alert("Select video first");
 
@@ -229,9 +247,9 @@ export default function CreateReel() {
     setLoading(false);
   };
 
+  /* ================= UI ================= */
   return (
     <View style={styles.container}>
-
       <TouchableOpacity
         onPress={() => router.replace("/browse")}
         style={styles.backBtn}
@@ -239,27 +257,23 @@ export default function CreateReel() {
         <Text style={{ color: "white" }}>⬅ Home</Text>
       </TouchableOpacity>
 
-      {/* ================= CAMERA VIEW ================= */}
+      {/* CAMERA */}
       {Platform.OS === "web" && cameraOn && !editing && (
         <View style={styles.cameraWrap}>
           <video ref={videoRef} autoPlay muted playsInline style={styles.fullVideo} />
 
-          {/* TIMER */}
           {recording && (
             <Text style={styles.timerOverlay}>⏱ {recordTime}s</Text>
           )}
 
-          {/* COUNTDOWN */}
           {countdown !== null && (
             <Text style={styles.countdownOverlay}>{countdown}</Text>
           )}
 
-          {/* FLIP */}
           <TouchableOpacity onPress={flipCamera} style={styles.flipOverlay}>
             <Text style={{ color: "white" }}>🔄</Text>
           </TouchableOpacity>
 
-          {/* RECORD BUTTON */}
           <TouchableOpacity
             onPress={recording ? stopRecord : startRecord}
             style={styles.recordBtn}
@@ -272,7 +286,7 @@ export default function CreateReel() {
       {/* START CAMERA */}
       {!cameraOn && !editing && (
         <TouchableOpacity onPress={() => startCamera()} style={styles.bigBtn}>
-          <Text style={styles.txt}>▶ Start Camera</Text>
+          <Text style={styles.txt}>▶️ Start Camera</Text>
         </TouchableOpacity>
       )}
 
@@ -283,17 +297,25 @@ export default function CreateReel() {
         </TouchableOpacity>
       )}
 
-      {/* EDITING (UNCHANGED) */}
+      {/* EDITING */}
       {editing && video && (
         <>
           <VideoView player={player} style={styles.video} />
 
           <View style={styles.trimBox}>
             <Text style={styles.txt}>Start</Text>
-            <TextInput value={String(startTime)} onChangeText={(v) => setStartTime(Number(v))} style={styles.input} />
+            <TextInput
+              value={String(startTime)}
+              onChangeText={(v) => setStartTime(Number(v))}
+              style={styles.input}
+            />
 
             <Text style={styles.txt}>End</Text>
-            <TextInput value={String(endTime)} onChangeText={(v) => setEndTime(Number(v))} style={styles.input} />
+            <TextInput
+              value={String(endTime)}
+              onChangeText={(v) => setEndTime(Number(v))}
+              style={styles.input}
+            />
 
             <TouchableOpacity onPress={previewTrim} style={styles.btn}>
               <Text style={styles.txt}>Preview Trim</Text>
@@ -318,7 +340,6 @@ export default function CreateReel() {
     </View>
   );
 }
-
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "black" },
