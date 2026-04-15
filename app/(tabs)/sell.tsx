@@ -20,10 +20,7 @@ import {
 import { supabase } from "../../lib/supabase";
 
 
-const BASE_URL =
-  Platform.OS === "web"
-    ? "http://localhost:3000"
-    : "http://172.20.10.6:3000";
+
 
 /* ===== STORAGE KEY ===== */
 const QUEUE_KEY = "UPLOAD_QUEUE";

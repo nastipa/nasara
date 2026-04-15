@@ -1,10 +1,12 @@
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { VideoView, useVideoPlayer } from "expo-video";
+import * as VideoThumbnails from "expo-video-thumbnails";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
+  Dimensions,
   Platform,
   StyleSheet,
   Text,
@@ -16,79 +18,104 @@ import {
 import { supabase } from "../lib/supabase";
 import { uploadVideo } from "../lib/uploadVideo";
 
+const { height, width } = Dimensions.get("window");
+
 export default function CreateReel() {
   const router = useRouter();
 
   const [video, setVideo] = useState<any>(null);
   const [caption, setCaption] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const [cameraOn, setCameraOn] = useState(false);
+  const [facing, setFacing] = useState<"user" | "environment">("user");
+
   const [recording, setRecording] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [recordTime, setRecordTime] = useState(0);
 
   const videoRef = useRef<any>(null);
   const streamRef = useRef<any>(null);
   const recorderRef = useRef<any>(null);
   const chunks = useRef<any[]>([]);
+  const timerRef = useRef<any>(null);
 
-  const pulse = useRef(new Animated.Value(1)).current;
+  const [startTime, setStartTime] = useState(0);
+  const [endTime, setEndTime] = useState(10);
 
-  /* ================= PICK VIDEO ================= */
-  const pickVideo = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      quality: 0.7,
-    });
+  const player = useVideoPlayer(video?.uri || null);
 
-    if (!res.canceled) {
-      const file = res.assets[0];
-      setVideo(file);
+  /* ================= TIMER ================= */
+  useEffect(() => {
+    if (recording) {
+      timerRef.current = setInterval(() => {
+        setRecordTime((t) => t + 1);
+      }, 1000);
+    } else {
+      clearInterval(timerRef.current);
+      setRecordTime(0);
     }
-  };
+    return () => clearInterval(timerRef.current);
+  }, [recording]);
 
-  /* ================= MOBILE CAMERA RECORD ================= */
-  const recordMobile = async () => {
-    const res = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      quality: 0.7,
-      videoMaxDuration: 60,
-    });
-
-    if (!res.canceled) {
-      setVideo(res.assets[0]);
-    }
-  };
-
-  /* ================= WEB CAMERA ================= */
-  const startCamera = async () => {
+  /* ================= CAMERA ================= */
+  const startCamera = async (mode = facing) => {
     if (Platform.OS !== "web") return;
 
     try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t: any) => t.stop());
+        streamRef.current = null;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
+        video: { facingMode: mode },
         audio: true,
       });
 
       streamRef.current = stream;
       setCameraOn(true);
 
-      setTimeout(() => {
-        if (videoRef.current) {
+      requestAnimationFrame(() => {
+        if (videoRef.current && videoRef.current.srcObject !== stream) {
           videoRef.current.srcObject = stream;
         }
-      }, 100);
-    } catch (e) {
-      console.log("Camera error:", e);
+      });
+
+    } catch {
+      Alert.alert("Camera Error", "Allow camera permission");
     }
   };
 
+  const flipCamera = () => {
+    const newFacing = facing === "user" ? "environment" : "user";
+    setFacing(newFacing);
+    startCamera(newFacing);
+  };
+
+  /* ================= RECORD ================= */
   const startRecord = () => {
-    if (Platform.OS !== "web") return;
+    if (!cameraOn || !streamRef.current) {
+      Alert.alert("Start camera first");
+      return;
+    }
 
-    const stream = streamRef.current;
-    if (!stream) return;
+    let time = 3;
+    setCountdown(time);
 
-    const recorder = new MediaRecorder(stream);
+    const interval = setInterval(() => {
+      time--;
+      if (time === 0) {
+        clearInterval(interval);
+        setCountdown(null);
+        beginRecording();
+      } else setCountdown(time);
+    }, 1000);
+  };
+
+  const beginRecording = () => {
+    const recorder = new MediaRecorder(streamRef.current);
     recorderRef.current = recorder;
     chunks.current = [];
 
@@ -100,113 +127,111 @@ export default function CreateReel() {
       const blob = new Blob(chunks.current, { type: "video/webm" });
       const file = new File([blob], "reel.webm");
 
-      setVideo(file);
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-        videoRef.current.src = URL.createObjectURL(file);
-      }
+      setVideo({ uri: URL.createObjectURL(file), file });
+      setEditing(true);
+      setRecording(false);
     };
 
     recorder.start();
     setRecording(true);
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1.3,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
   };
 
   const stopRecord = () => {
     recorderRef.current?.stop();
-    setRecording(false);
-    pulse.stopAnimation();
-    pulse.setValue(1);
   };
 
-  /* ================= POST ================= */
+  /* ================= OTHER ================= */
+  const recordMobile = async () => {
+    const res = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      videoMaxDuration: 60,
+      quality: 0.7,
+    });
+
+    if (!res.canceled) {
+      setVideo(res.assets[0]);
+      setEditing(true);
+    }
+  };
+
+  const pickVideo = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.7,
+    });
+
+    if (!res.canceled) {
+      setVideo(res.assets[0]);
+      setEditing(true);
+    }
+  };
+
+  const previewTrim = () => {
+    if (!player) return;
+    player.currentTime = startTime;
+    player.play();
+    setTimeout(() => player.pause(), (endTime - startTime) * 1000);
+  };
+
+  const generateThumbnail = async () => {
+    try {
+      const { uri } = await VideoThumbnails.getThumbnailAsync(video.uri, {
+        time: startTime * 1000,
+      });
+      return uri;
+    } catch {
+      return null;
+    }
+  };
+
   const postReel = async () => {
-  if (!video) {
-    Alert.alert("Select video first");
-    return;
-  }
+    if (!video) return Alert.alert("Select video first");
 
-  setLoading(true);
+    setLoading(true);
 
-  try {
-    const { data } = await supabase.auth.getUser();
-    if (!data?.user) {
-      Alert.alert("Login required");
-      return;
+    try {
+      const { data } = await supabase.auth.getUser();
+      if (!data?.user) return Alert.alert("Login required");
+
+      const thumbnail = await generateThumbnail();
+
+      const { data: newPost } = await (supabase as any)
+        .from("posts")
+        .insert({
+          user_id: data.user.id,
+          caption,
+          local_uri: video.uri,
+          thumbnail_url: thumbnail,
+          status: "uploading",
+          views: 0,
+        })
+        .select()
+        .single();
+
+      router.replace("/reels");
+
+      const result = await uploadVideo(video.file || video);
+
+      await (supabase as any)
+        .from("posts")
+        .update({
+          media_url: result.video,
+          thumbnail_url: result.thumbnail || thumbnail,
+          local_uri: null,
+          status: "ready",
+        })
+        .eq("id", newPost.id);
+
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
     }
 
-    let preview = null;
+    setLoading(false);
+  };
 
-    if (Platform.OS === "web") {
-      if (video instanceof File || video instanceof Blob) {
-        preview = URL.createObjectURL(video);
-      } else if (video?.uri) {
-        preview = video.uri;
-      }
-    } else {
-      preview = video?.uri ?? null;
-    }
-
-   const { data: newPost, error } = await (supabase as any)
-  .from("posts")
-  .insert({
-    user_id: data.user.id,
-    caption,
-    media_url: null,
-    local_uri: preview,
-    thumbnail_url: null,
-    views: 0, // ✅ IMPORTANT
-    status: "uploading",
-  })
-  .select()
-  .single();
-
-if (error) {
-  console.log("insert error:", error);
-  return;
-}
-console.log("NEW POST:", newPost);
-    router.replace("/reels");
-
-    const result = await uploadVideo(video);
-
-    await (supabase as any)
-      .from("posts")
-      .update({
-        media_url: result.video,
-        thumbnail_url: result.thumbnail,
-        local_uri: null,
-        status: "ready",
-      })
-      .eq("id", newPost.id);
-
-  } catch (err: any) {
-    console.log(err);
-    Alert.alert("Upload failed", err.message);
-  }
-
-  setLoading(false);
-};
-  /* ================= UI ================= */
   return (
     <View style={styles.container}>
 
-      {/* BACK BUTTON */}
       <TouchableOpacity
         onPress={() => router.replace("/browse")}
         style={styles.backBtn}
@@ -214,68 +239,80 @@ console.log("NEW POST:", newPost);
         <Text style={{ color: "white" }}>⬅ Home</Text>
       </TouchableOpacity>
 
-      {/* WEB CAMERA */}
-      {Platform.OS === "web" && cameraOn && (
-        <video
-          ref={videoRef}
-          style={styles.video}
-          autoPlay
-          muted
-          playsInline
-        />
+      {/* ================= CAMERA VIEW ================= */}
+      {Platform.OS === "web" && cameraOn && !editing && (
+        <View style={styles.cameraWrap}>
+          <video ref={videoRef} autoPlay muted playsInline style={styles.fullVideo} />
+
+          {/* TIMER */}
+          {recording && (
+            <Text style={styles.timerOverlay}>⏱ {recordTime}s</Text>
+          )}
+
+          {/* COUNTDOWN */}
+          {countdown !== null && (
+            <Text style={styles.countdownOverlay}>{countdown}</Text>
+          )}
+
+          {/* FLIP */}
+          <TouchableOpacity onPress={flipCamera} style={styles.flipOverlay}>
+            <Text style={{ color: "white" }}>🔄</Text>
+          </TouchableOpacity>
+
+          {/* RECORD BUTTON */}
+          <TouchableOpacity
+            onPress={recording ? stopRecord : startRecord}
+            style={styles.recordBtn}
+          >
+            <View style={styles.innerRecord} />
+          </TouchableOpacity>
+        </View>
       )}
 
-      {/* OPEN CAMERA */}
-      {!cameraOn && (
-        <TouchableOpacity onPress={startCamera} style={styles.startBtn}>
-          <Text style={{ color: "white" }}>🎥 Open Camera</Text>
+      {/* START CAMERA */}
+      {!cameraOn && !editing && (
+        <TouchableOpacity onPress={() => startCamera()} style={styles.bigBtn}>
+          <Text style={styles.txt}>▶ Start Camera</Text>
         </TouchableOpacity>
       )}
 
-      {/* RECORD BUTTON (WEB ONLY) */}
-      {Platform.OS === "web" && cameraOn && (
-        <Animated.View style={[styles.recordWrap, { transform: [{ scale: pulse }] }]}>
-          <TouchableOpacity
-            onPressIn={startRecord}
-            onPressOut={stopRecord}
-            style={styles.recordBtn}
-          />
-        </Animated.View>
+      {/* UPLOAD */}
+      {!editing && (
+        <TouchableOpacity onPress={pickVideo} style={styles.bigBtn}>
+          <Text style={styles.txt}>📁 Upload</Text>
+        </TouchableOpacity>
       )}
 
-      {/* MOBILE CONTROLS */}
-     <View style={{ marginTop: 20 }}>
-  
-  {/* RECORD BUTTON (ALL PLATFORMS) */}
-  <TouchableOpacity
-    onPress={Platform.OS === "web" ? startCamera : recordMobile}
-    style={styles.btn}
-  >
-    <Text style={{ color: "white" }}>
-      🎥 {Platform.OS === "web" ? "Open & Record Camera" : "Record Video"}
-    </Text>
-  </TouchableOpacity>
+      {/* EDITING (UNCHANGED) */}
+      {editing && video && (
+        <>
+          <VideoView player={player} style={styles.video} />
 
-  {/* PICK VIDEO (ALL PLATFORMS) */}
-  <TouchableOpacity onPress={pickVideo} style={styles.btn}>
-    <Text style={{ color: "white" }}>📁 Pick Video</Text>
-  </TouchableOpacity>
+          <View style={styles.trimBox}>
+            <Text style={styles.txt}>Start</Text>
+            <TextInput value={String(startTime)} onChangeText={(v) => setStartTime(Number(v))} style={styles.input} />
 
-</View>
+            <Text style={styles.txt}>End</Text>
+            <TextInput value={String(endTime)} onChangeText={(v) => setEndTime(Number(v))} style={styles.input} />
 
-      {/* CAPTION */}
-      <TextInput
-        placeholder="Caption..."
-        placeholderTextColor="#aaa"
-        value={caption}
-        onChangeText={setCaption}
-        style={styles.input}
-      />
+            <TouchableOpacity onPress={previewTrim} style={styles.btn}>
+              <Text style={styles.txt}>Preview Trim</Text>
+            </TouchableOpacity>
+          </View>
 
-      {/* POST */}
-      <TouchableOpacity onPress={postReel} style={styles.postBtn}>
-        <Text style={{ color: "white" }}>🚀 Post Reel</Text>
-      </TouchableOpacity>
+          <TextInput
+            placeholder="Caption..."
+            placeholderTextColor="#aaa"
+            value={caption}
+            onChangeText={setCaption}
+            style={styles.input}
+          />
+
+          <TouchableOpacity onPress={postReel} style={styles.postBtn}>
+            <Text style={styles.txt}>🚀 Post</Text>
+          </TouchableOpacity>
+        </>
+      )}
 
       {loading && <ActivityIndicator color="white" />}
     </View>
@@ -284,51 +321,80 @@ console.log("NEW POST:", newPost);
 
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "black",
-    padding: 20,
+  container: { flex: 1, backgroundColor: "black" },
+
+  cameraWrap: {
+    width,
+    height,
+    position: "relative",
   },
 
-  video: {
+  fullVideo: {
     width: "100%",
-    height: 300,
-    backgroundColor: "black",
+    height: "100%",
+    objectFit: "cover",
   },
 
-  startBtn: {
-    padding: 14,
-    backgroundColor: "#2563eb",
-    alignItems: "center",
-    marginTop: 20,
-  },
-
-  recordWrap: {
+  timerOverlay: {
+    position: "absolute",
+    top: 80,
     alignSelf: "center",
-    marginTop: 20,
+    color: "red",
+    fontSize: 18,
+  },
+
+  countdownOverlay: {
+    position: "absolute",
+    top: "40%",
+    alignSelf: "center",
+    fontSize: 60,
+    color: "white",
+  },
+
+  flipOverlay: {
+    position: "absolute",
+    top: 80,
+    right: 20,
+    backgroundColor: "#222",
+    padding: 10,
+    borderRadius: 20,
   },
 
   recordBtn: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    position: "absolute",
+    bottom: 40,
+    alignSelf: "center",
+    width: 80,
+    height: 80,
+    borderRadius: 50,
     backgroundColor: "red",
+    justifyContent: "center",
+    alignItems: "center",
   },
+
+  innerRecord: {
+    width: 50,
+    height: 50,
+    backgroundColor: "white",
+    borderRadius: 10,
+  },
+
+  video: { width, height: height * 0.45 },
+
+  bigBtn: {
+    backgroundColor: "#222",
+    padding: 20,
+    margin: 20,
+    alignItems: "center",
+  },
+
+  trimBox: { padding: 15 },
 
   input: {
     backgroundColor: "#111",
     color: "white",
-    padding: 12,
-    marginTop: 20,
-    borderRadius: 10,
-  },
-
-  postBtn: {
-    backgroundColor: "#00c853",
-    padding: 14,
-    marginTop: 15,
-    alignItems: "center",
-    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
   },
 
   btn: {
@@ -336,8 +402,16 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 10,
     alignItems: "center",
-    borderRadius: 10,
   },
+
+  postBtn: {
+    backgroundColor: "#00c853",
+    padding: 15,
+    margin: 20,
+    alignItems: "center",
+  },
+
+  txt: { color: "white" },
 
   backBtn: {
     position: "absolute",
@@ -346,6 +420,5 @@ const styles = StyleSheet.create({
     zIndex: 10,
     backgroundColor: "#222",
     padding: 10,
-    borderRadius: 8,
   },
 });
