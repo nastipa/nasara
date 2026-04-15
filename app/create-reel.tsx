@@ -59,37 +59,28 @@ export default function CreateReel() {
     return () => clearInterval(timerRef.current);
   }, [recording]);
 
-  /* ================= CAMERA (FIXED STABLE VERSION) ================= */
+  /* ================= CAMERA (DESKTOP WEB ONLY) ================= */
   const startCamera = async (mode = facing) => {
     if (Platform.OS !== "web") return;
 
     try {
-      // stop previous stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t: any) => t.stop());
         streamRef.current = null;
       }
 
-      const isMobileWeb =
-        typeof navigator !== "undefined" &&
-        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: isMobileWeb ? { ideal: mode } : "user",
-        },
+        video: { facingMode: mode },
         audio: true,
       });
 
       streamRef.current = stream;
       setCameraOn(true);
 
-      // IMPORTANT: prevent flashing
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play?.();
       }
-    } catch (e) {
+    } catch {
       Alert.alert("Camera Error", "Allow camera permission");
     }
   };
@@ -100,26 +91,48 @@ export default function CreateReel() {
     startCamera(newFacing);
   };
 
-  /* ================= RECORD ================= */
-  const startRecord = () => {
-    if (!cameraOn || !streamRef.current) {
-      Alert.alert("Start camera first");
+  /* ================= RECORD (FIXED FOR WEB + MOBILE WEB) ================= */
+  const startRecord = async () => {
+    const isMobileWeb =
+      Platform.OS === "web" &&
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    /* 📱 MOBILE WEB → NATIVE CAMERA (NO CORRUPTION FIX) */
+    if (isMobileWeb) {
+      const res = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        videoMaxDuration: 60,
+        quality: 1,
+      });
+
+      if (!res.canceled) {
+        setVideo(res.assets[0]);
+        setEditing(true);
+      }
       return;
     }
 
-    let time = 3;
-    setCountdown(time);
-
-    const interval = setInterval(() => {
-      time--;
-      if (time === 0) {
-        clearInterval(interval);
-        setCountdown(null);
-        beginRecording();
-      } else {
-        setCountdown(time);
+    /* 💻 DESKTOP WEB → WEBCAM RECORDING */
+    if (Platform.OS === "web") {
+      if (!cameraOn || !streamRef.current) {
+        Alert.alert("Start camera first");
+        return;
       }
-    }, 1000);
+
+      let time = 3;
+      setCountdown(time);
+
+      const interval = setInterval(() => {
+        time--;
+        if (time === 0) {
+          clearInterval(interval);
+          setCountdown(null);
+          beginRecording();
+        } else {
+          setCountdown(time);
+        }
+      }, 1000);
+    }
   };
 
   const beginRecording = () => {
@@ -150,12 +163,12 @@ export default function CreateReel() {
     recorderRef.current?.stop();
   };
 
-  /* ================= MOBILE CAMERA ================= */
+  /* ================= MOBILE APP CAMERA ================= */
   const recordMobile = async () => {
     const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       videoMaxDuration: 60,
-      quality: 0.7,
+      quality: 0.8,
     });
 
     if (!res.canceled) {
@@ -164,11 +177,10 @@ export default function CreateReel() {
     }
   };
 
-  /* ================= PICK VIDEO ================= */
   const pickVideo = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      quality: 0.7,
+      quality: 0.8,
     });
 
     if (!res.canceled) {
@@ -257,7 +269,7 @@ export default function CreateReel() {
         <Text style={{ color: "white" }}>⬅ Home</Text>
       </TouchableOpacity>
 
-      {/* CAMERA */}
+      {/* CAMERA (DESKTOP WEB ONLY) */}
       {Platform.OS === "web" && cameraOn && !editing && (
         <View style={styles.cameraWrap}>
           <video ref={videoRef} autoPlay muted playsInline style={styles.fullVideo} />
@@ -286,7 +298,7 @@ export default function CreateReel() {
       {/* START CAMERA */}
       {!cameraOn && !editing && (
         <TouchableOpacity onPress={() => startCamera()} style={styles.bigBtn}>
-          <Text style={styles.txt}>▶️ Start Camera</Text>
+          <Text style={styles.txt}>▶ Start Camera</Text>
         </TouchableOpacity>
       )}
 
@@ -303,14 +315,12 @@ export default function CreateReel() {
           <VideoView player={player} style={styles.video} />
 
           <View style={styles.trimBox}>
-            <Text style={styles.txt}>Start</Text>
             <TextInput
               value={String(startTime)}
               onChangeText={(v) => setStartTime(Number(v))}
               style={styles.input}
             />
 
-            <Text style={styles.txt}>End</Text>
             <TextInput
               value={String(endTime)}
               onChangeText={(v) => setEndTime(Number(v))}
