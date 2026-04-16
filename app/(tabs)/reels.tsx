@@ -29,78 +29,77 @@ export default function Reels() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [myOnly, setMyOnly] = useState(false);
 
+  const userIdRef = useRef<string | null>(null);
   const ids = useRef(new Set<string>());
   const loadingMore = useRef(false);
-  const preloaded = useRef(new Set<string>());
 
-  /* ================= RESET ACTIVE INDEX ================= */
+  /* ================= GET USER ================= */
+  useEffect(() => {
+    const getUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      userIdRef.current = data?.user?.id ?? null;
+    };
+    getUser();
+  }, []);
+
+  /* ================= RESET INDEX ================= */
   useEffect(() => {
     setActiveIndex(0);
   }, [posts.length]);
-   
-  
-  /* ================= REALTIME ================= */
-useEffect(() => {
-  const channel = (supabase as any).channel(`reels-sync-${Date.now()}`);
 
-  // ✅ ADD ALL LISTENERS FIRST
-  channel.on(
-    "postgres_changes",
-    { event: "INSERT", schema: "public", table: "posts" },
-    (payload: any) => {
-      const p = payload.new;
+  /* ================= REALTIME (FIXED FILTERED) ================= */
+  useEffect(() => {
+    supabase.removeAllChannels();
 
-      setPosts((prev) => {
-        if (prev.find((x) => x.id === p.id)) return prev;
+    const channel = supabase.channel("reels-sync");
 
-        return [p, ...prev];
-      });
-    }
-  );
+    channel.on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "posts" },
+      (payload: any) => {
+        const p = payload.new;
 
-  channel.on(
-    "postgres_changes",
-    { event: "UPDATE", schema: "public", table: "posts" },
-    (payload: any) => {
-      const updated = payload.new;
+        if (!p?.id) return;
 
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === updated.id ? { ...p, ...updated } : p
-        )
-      );
-    }
-  );
+        // 🔥 FILTER FOR MY REELS
+        if (myOnly && p.user_id !== userIdRef.current) return;
 
-  channel.on(
-    "postgres_changes",
-    { event: "DELETE", schema: "public", table: "posts" },
-    (payload: any) => {
-      const id = payload.old.id;
-      setPosts((prev) => prev.filter((p) => p.id !== id));
-    }
-  );
+        setPosts((prev) => {
+          if (prev.some((x) => x.id === p.id)) return prev;
+          return [p, ...prev];
+        });
+      }
+    );
 
-  // ✅ SUBSCRIBE LAST (VERY IMPORTANT)
-  channel.subscribe();
+    channel.on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "posts" },
+      (payload: any) => {
+        const updated = payload.new;
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, []);
-  /* ================= SAFE URL ================= */
-  const safeUrl = (url?: string | null) => {
-  if (!url) return null;
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === updated.id ? { ...p, ...updated } : p
+          )
+        );
+      }
+    );
 
-  // ❌ BLOCK blob for mobile
-  if (Platform.OS !== "web" && url.startsWith("blob:")) {
-    return null;
-  }
+    channel.on(
+      "postgres_changes",
+      { event: "DELETE", schema: "public", table: "posts" },
+      (payload: any) => {
+        const id = payload.old.id;
+        setPosts((prev) => prev.filter((p) => p.id !== id));
+      }
+    );
 
-  if (url.includes("undefined")) return null;
+    channel.subscribe();
 
-  return url;
-};
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [myOnly]);
 
   /* ================= LOAD POSTS ================= */
   const loadPosts = async (reset = false) => {
@@ -118,28 +117,25 @@ useEffect(() => {
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      if (myOnly) {
-        const { data } = await supabase.auth.getUser();
-        const userId = data?.user?.id;
-        if (!userId) return;
-        query = query.eq("user_id", userId);
+      // 🔥 KEY FIX: APPLY FILTER HERE TOO
+      if (myOnly && userIdRef.current) {
+        query = query.eq("user_id", userIdRef.current);
       }
 
       const { data, error } = await query;
 
       if (error) {
-        console.log("load error:", error);
+        console.log(error);
         return;
       }
 
       if (data) {
         if (reset) {
           ids.current.clear();
-          preloaded.current.clear();
           setPosts([]);
         }
 
-        const formatted: Post[] = data
+        const formatted = data
           .filter((p: any) => !ids.current.has(p.id))
           .map((p: any) => {
             ids.current.add(p.id);
@@ -147,94 +143,43 @@ useEffect(() => {
             return {
               id: p.id,
               user_id: p.user_id,
-              media_url: safeUrl(p.media_url),
-              local_uri: safeUrl(p.local_uri),
-              thumbnail_url: p.thumbnail_url ?? null,
-              caption: p.caption ?? "",
-              views: p.views ?? 0,
+              media_url: p.media_url,
+              local_uri: p.local_uri,
+              thumbnail_url: p.thumbnail_url,
+              caption: p.caption,
+              views: p.views,
             };
           });
 
-        setPosts((prev) => (reset ? formatted : [...prev, ...formatted]));
+        setPosts((prev) =>
+          reset ? formatted : [...prev, ...formatted]
+        );
       }
     } catch (e) {
-      console.log("load exception:", e);
+      console.log(e);
     }
 
     setLoading(false);
     loadingMore.current = false;
   };
 
- /* ================= 🚀 SMART PRELOAD ================= */
-const cacheVideo = async (url: string) => {
-  if (!url) return;
-
-  try {
-    if (Platform.OS === "web") {
-      const video = document.createElement("video");
-      video.src = url;
-      video.preload = "auto";
-      video.muted = true;
-      video.playsInline = true;
-    } else {
-      // ✅ MOBILE preload (VERY IMPORTANT)
-      const { Video } = require("expo-av");
-
-      const video = new Video();
-      await video.loadAsync({ uri: url }, {}, false);
-      await video.unloadAsync();
-    }
-  } catch (e) {
-    console.log("preload error:", e);
-  }
-};
-
-const preloadVideos = (index: number) => {
-  if (!posts.length) return;
-
-  // 🔥 LOAD AROUND CURRENT (not only next)
-  const around = posts.slice(
-    Math.max(0, index - 2), // 2 behind
-    index + 6               // 6 ahead
-  );
-
-  around.forEach((v) => {
-    const src = v.media_url || v.local_uri;
-
-    if (!src || preloaded.current.has(v.id)) return;
-
-    preloaded.current.add(v.id);
-
-    // ⚡ preload instantly (no delay)
-    cacheVideo(src);
-  });
-};
-
-/* 🔥 TRIGGER */
-useEffect(() => {
-  preloadVideos(activeIndex);
-}, [activeIndex, posts]);
-
   /* ================= DELETE ================= */
   const handleDelete = async (id: string) => {
-    Alert.alert("Delete Reel", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setPosts((prev) => prev.filter((p) => p.id !== id));
-            await supabase.from("posts").delete().eq("id", id);
+    const ok =
+      Platform.OS === "web"
+        ? window.confirm("Delete reel?")
+        : await new Promise<boolean>((res) => {
+            Alert.alert("Delete", "Are you sure?", [
+              { text: "Cancel", onPress: () => res(false) },
+              { text: "Delete", style: "destructive", onPress: () => res(true) },
+            ]);
+          });
 
-            ids.current.delete(id);
-            preloaded.current.delete(id);
-          } catch (e) {
-            console.log("delete error", e);
-          }
-        },
-      },
-    ]);
+    if (!ok) return;
+
+    setPosts((p) => p.filter((x) => x.id !== id));
+
+    await supabase.from("posts").delete().eq("id", id);
   };
 
   /* ================= INIT ================= */
@@ -246,7 +191,7 @@ useEffect(() => {
     if (page !== 0) loadPosts();
   }, [page]);
 
-  /* ================= LOADER ================= */
+  /* ================= LOADING ================= */
   if (loading && posts.length === 0) {
     return (
       <View style={styles.loader}>
@@ -258,7 +203,6 @@ useEffect(() => {
   /* ================= UI ================= */
   return (
     <ReelsFeed
-      key={posts.length} // 🔥 force clean re-render (fix ghost video)
       reels={posts}
       activeIndex={activeIndex}
       setActiveIndex={setActiveIndex}

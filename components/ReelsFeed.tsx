@@ -42,105 +42,93 @@ export default function ReelsFeed({
 
   const viewed = useRef<Set<string>>(new Set());
   const preloaded = useRef<Set<string>>(new Set());
-
+  const watchTimers = useRef<Record<string, any>>({});
   const [feed, setFeed] = useState<ReelType[]>([]);
 
   /* ================= MERGE ================= */
   useEffect(() => {
-    if (!reels) return;
+  if (!Array.isArray(reels)) {
+    setFeed([]);
+    return;
+  }
 
-    setFeed((prev) => {
-      const map = new Map(prev.map((p) => [p.id, p]));
-      reels.forEach((r: ReelType) => map.set(r.id, r));
-      return Array.from(map.values());
-    });
-  }, [reels]);
+  // 🔥 IMPORTANT: NO MERGE
+  setFeed((prev) => {
+  const map = new Map(prev.map((r) => [r.id, r]));
+  return reels.map((r) => {
+    const existing = map.get(r.id);
+    return existing ? { ...r, views: existing.views ?? r.views } : r;
+  });
+});
+}, [reels])
 
-  /* ================= REALTIME ================= */
-  useEffect(() => {
-    const channel = supabase.channel("reels-sync");
+ 
+  /* ================= VIEW TRACK ================= */
+  const feedRef = useRef<ReelType[]>([]);
+useEffect(() => {
+  feedRef.current = feed;
+}, [feed]);
 
-    channel.on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "posts" },
-      (payload: any) => {
-        const p = payload.new;
+const onViewableItemsChanged = useRef(
+  ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (!viewableItems.length) return;
 
-        setFeed((prev) => {
-          if (prev.find((x) => x.id === p.id)) return prev;
-          return [p, ...prev];
-        });
-      }
-    );
+    const index = viewableItems[0].index;
+    if (index == null) return;
 
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "posts" },
-      (payload: any) => {
-        const updated = payload.new;
+    setActiveIndex(index);
+
+    const reel = feedRef.current[index];
+    if (!reel) return;
+
+    console.log("VIEW TRIGGERED:", reel.id);
+    // ✅ ADD HERE
+   Object.keys(watchTimers.current).forEach((id) => {
+    if (id !== reel.id) {
+    clearTimeout(watchTimers.current[id]);
+    delete watchTimers.current[id];
+  }
+});
+
+    // ❌ cancel timers for other reels
+Object.keys(watchTimers.current).forEach((id) => {
+  if (id !== reel.id) {
+    clearTimeout(watchTimers.current[id]);
+    delete watchTimers.current[id];
+  }
+});
+
+if (!viewed.current.has(reel.id)) {
+  if (watchTimers.current[reel.id]) return;
+
+  watchTimers.current[reel.id] = setTimeout(() => {
+    viewed.current.add(reel.id);
+
+    (supabase as any)
+      .rpc("increment_reel_views", {
+        post_id_input: reel.id,
+      })
+      .then(() => {
+        console.log("VIEW COUNTED:", reel.id);
 
         setFeed((prev) =>
-          prev.map((p) =>
-            p.id === updated.id ? { ...p, ...updated } : p
+          prev.map((item) =>
+            item.id === reel.id
+              ? { ...item, views: (item.views ?? 0) + 1 }
+              : item
           )
         );
-      }
-    );
+      })
+      .catch((e: any) => console.log("RPC ERROR:", e));
 
-    channel.on(
-      "postgres_changes",
-      { event: "DELETE", schema: "public", table: "posts" },
-      (payload: any) => {
-        const id = payload.old.id;
-        setFeed((prev) => prev.filter((p) => p.id !== id));
-      }
-    );
-
-    channel.subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  /* ================= VIEW TRACK ================= */
-  const onViewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (!viewableItems.length) return;
-
-      const index = viewableItems[0].index;
-      if (index == null) return;
-
-      setActiveIndex(index);
-
-      const reel = feed[index];
-      if (!reel) return;
-
-      if (!viewed.current.has(reel.id)) {
-        viewed.current.add(reel.id);
-
-        // 🔥 FIX: ensure RPC runs
-        (supabase as any)
-          .rpc("increment_reel_views", {
-            post_id_input: reel.id,
-          })
-          .then(() => {
-            // instant UI update
-            setFeed((prev) =>
-              prev.map((item) =>
-                item.id === reel.id
-                  ? { ...item, views: (item.views ?? 0) + 1 }
-                  : item
-              )
-            );
-          })
-          .catch((e: any) => console.log("view error", e));
-      }
-    }
-  ).current;
+    delete watchTimers.current[reel.id];
+  }, 2000); // ⏱ 2 seconds
+}
+  }
+).current;
 
   const viewabilityConfig = {
-    itemVisiblePercentThreshold: 85,
+    itemVisiblePercentThreshold: 60,
   };
 
   /* ================= PRELOAD ================= */

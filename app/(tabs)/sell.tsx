@@ -1,8 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-import * as Network from "expo-network";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -19,9 +17,6 @@ import {
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
-
-
-
 /* ===== STORAGE KEY ===== */
 const QUEUE_KEY = "UPLOAD_QUEUE";
 
@@ -30,7 +25,7 @@ export default function Sell() {
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(""); // ✅ optional
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -39,12 +34,10 @@ export default function Sell() {
   const [category, setCategory] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [videoUri, setVideoUri] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [isNegotiable, setIsNegotiable] = useState(false);
-
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploading, setUploading] = useState(false);
-  
 
   const categories = [
     "phones",
@@ -70,131 +63,37 @@ export default function Sell() {
     })();
   }, []);
 
-  /* ===== AUTO QUEUE (SILENT) ===== */
-  useEffect(() => {
-    const interval = setInterval(processQueue, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  /* ===== UPLOAD FUNCTION ===== */
+  const uploadWithProgress = async (uri: string, type: "image" | "video") => {
+    const formData = new FormData();
 
-  /* ===== QUEUE HELPERS ===== */
-  const getQueue = async () => {
-    const data = await AsyncStorage.getItem(QUEUE_KEY);
-    return data ? JSON.parse(data) : [];
-  };
-
-  const saveQueue = async (queue: any[]) => {
-    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-  };
-
-  const addToQueue = async (item: any) => {
-    const queue = await getQueue();
-    queue.push({ ...item, retries: 0 });
-    await saveQueue(queue);
-  };
-
-  /* ===== FILE FIX (WEB + MOBILE) ===== */
-  const prepareFile = async (uri: string, type: "image" | "video") => {
     if (Platform.OS === "web") {
-      const res = await fetch(uri);
-      const blob = await res.blob();
-      return blob;
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      formData.append("file", blob, "upload.jpg");
+    } else {
+      formData.append("file", {
+        uri,
+        name: type === "image" ? "upload.jpg" : "upload.mp4",
+        type: type === "image" ? "image/jpeg" : "video/mp4",
+      } as any);
     }
 
-    return {
-      uri,
-      name: type === "image" ? "upload.jpg" : "upload.mp4",
-      type: type === "image" ? "image/jpeg" : "video/mp4",
-    } as any;
-  };
-
-  /* ===== UPLOAD WITH PROGRESS ===== */
- const uploadWithProgress = async (
-  uri: string,
-  type: "image" | "video"
-) => {
-  const formData = new FormData();
-
-  // 📱 MOBILE + WEB FILE HANDLING FIX
-  if (Platform.OS === "web") {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-
-    formData.append("file", blob, "upload.jpg");
-  } else {
-    formData.append("file", {
-      uri,
-      name: type === "image" ? "upload.jpg" : "upload.mp4",
-      type: type === "image" ? "image/jpeg" : "video/mp4",
-    } as any);
-  }
-
-  // 🌍 DIRECT RENDER BACKEND URL (NO BASE_URL)
-  const res = await fetch(
-    "https://nasara-upload-server.onrender.com/upload",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
-
-  const data = await res.json();
-
-  console.log("UPLOAD RESPONSE:", data);
-
-  // ❌ ERROR CHECK
-  if (!data.success || !data.url) {
-    console.log("UPLOAD FAILED:", data);
-    throw new Error("Upload failed");
-  }
-
-  return data.url;
-};
-  /* ===== PROCESS QUEUE (SILENT RETRY) ===== */
-  const processQueue = async () => {
-    const net = await Network.getNetworkStateAsync();
-    if (!net.isConnected) return;
-
-    let queue = await getQueue();
-    if (queue.length === 0) return;
-
-    for (let i = 0; i < queue.length; i++) {
-      const job = queue[i];
-
-      try {
-        let imageUrl = null;
-        let videoUrl = null;
-
-        if (job.imageUri) {
-          imageUrl = await uploadWithProgress(job.imageUri, "image");
-        }
-
-        if (job.videoUri) {
-          videoUrl = await uploadWithProgress(job.videoUri, "video");
-        }
-
-        await (supabase as any)
-          .from("items_live")
-          .update({
-            image_url: imageUrl,
-            video_url: videoUrl,
-          })
-          .eq("id", job.itemId);
-         router.replace("/browse"); // 
-        queue.splice(i, 1);
-        await saveQueue(queue);
-        i--;
-
-      } catch (err) {
-        job.retries = (job.retries || 0) + 1;
-
-        if (job.retries > 3) {
-          queue.splice(i, 1);
-          i--;
-        }
-
-        await saveQueue(queue);
+    const res = await fetch(
+      "https://nasara-upload-server.onrender.com/upload",
+      {
+        method: "POST",
+        body: formData,
       }
+    );
+
+    const data = await res.json();
+
+    if (!data.success || !data.url) {
+      throw new Error("Upload failed");
     }
+
+    return data.url;
   };
 
   /* ===== PICK IMAGE ===== */
@@ -223,10 +122,10 @@ export default function Sell() {
     }
   };
 
-  /* ===== POST ITEM ===== */
+  /* ===== POST ITEM (FIXED) ===== */
   const postItem = async () => {
-    if (!title || !price || !phone) {
-      Alert.alert("Error", "Title, price and phone are required");
+    if (!title || !phone) {
+      Alert.alert("Error", "Title and phone are required");
       return;
     }
 
@@ -247,99 +146,96 @@ export default function Sell() {
       return;
     }
 
-   try {
-  const { data: newItem, error } = await (supabase as any)
-    .from("items_live")
-    .insert({
-      title,
-      description,
-      price: Number(price),
-      location,
-      latitude,
-      longitude,
-      seller_phone: phone,
-      image_url: imageUri || null,
-      video_url: videoUri || null,
-      user_id: user.id,
-      is_negotiable: isNegotiable,
-      category,
-      status: "active",
-      created_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
+    try {
+      const { data: newItem, error } = await (supabase as any)
+        .from("items_live")
+        .insert({
+          title,
+          description,
+          price: price ? Number(price) : null, // ✅ OPTIONAL
+          location,
+          latitude,
+          longitude,
+          seller_phone: phone,
+          image_url: null,
+          video_url: null,
+          user_id: user.id,
+          is_negotiable: isNegotiable,
+          category,
+          status: "active",
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
 
-  if (error || !newItem) throw error;
+      if (error || !newItem) throw error;
 
-  // ✅ STOP HERE FOR NOW (no upload yet)
-   router.push("/browse");
-   setTimeout(async () => {
-  if (uploading) return; // 🚫 prevent duplicate
-  setUploading(true);
-  try {
-    if (!imageUri && !videoUri) return;
-    let imageUrl = null;
-    let videoUrl = null;
+      router.push("/browse");
 
-    if (imageUri) {
-     const compressed = await ImageManipulator.manipulateAsync(
-  imageUri,
-  [{ resize: { width: 800 } }],
-  {
-    compress: 0.7,
-    format: ImageManipulator.SaveFormat.JPEG,
-  }
-);
+      setTimeout(async () => {
+        if (uploading) return;
+        setUploading(true);
 
-imageUrl = await uploadWithProgress(compressed.uri, "image");
+        try {
+          let imageUrl = null;
+          let videoUrl = null;
+
+          if (imageUri) {
+            const compressed = await ImageManipulator.manipulateAsync(
+              imageUri,
+              [{ resize: { width: 800 } }],
+              {
+                compress: 0.7,
+                format: ImageManipulator.SaveFormat.JPEG,
+              }
+            );
+
+            const uploaded = await uploadWithProgress(
+              compressed.uri,
+              "image"
+            );
+
+            if (uploaded && uploaded.startsWith("http")) {
+              imageUrl = uploaded;
+            }
+          }
+
+          if (videoUri) {
+            const uploaded = await uploadWithProgress(videoUri, "video");
+
+            if (uploaded && uploaded.startsWith("http")) {
+              videoUrl = uploaded;
+            }
+          }
+
+          if (imageUrl || videoUrl) {
+            await (supabase as any)
+              .from("items_live")
+              .update({
+                image_url: imageUrl,
+                video_url: videoUrl,
+              })
+              .eq("id", newItem.id);
+          }
+        } catch (err) {
+          console.log("UPLOAD ERROR:", err);
+        } finally {
+          setUploading(false);
+        }
+      }, 300);
+
+      Alert.alert("Success", "Item posted successfully 🚀");
+    } catch (err: any) {
+      Alert.alert("Offline", "Saved. Will upload later.");
     }
 
-    if (videoUri) {
-      videoUrl = await uploadWithProgress(videoUri, "video");
-    }
-
-    await (supabase as any)
-      .from("items_live")
-      .update({
-        image_url: imageUrl,
-        video_url: videoUrl,
-      })
-      .eq("id", newItem.id);
-
-  } catch (err) {
-    console.log("BACKGROUND UPLOAD ERROR:", err);
-  } finally {
-    setUploading(false); // ✅ unlock
-  }
-}, 100);
-  Alert.alert("Success", "Item posted successfully 🚀");
-
-} catch (err: any) {
-  await addToQueue({
-    itemId: "temp",
-    imageUri,
-    videoUri,
-  });
-
-  Alert.alert("Offline", "Saved. Will upload later.");
-}
-
-setLoading(false);
+    setLoading(false);
   };
+
 
   /* ===== UI ===== */
   return (
     <ScrollView contentContainerStyle={styles.container}>
-
-      {/* PROGRESS BAR */}
-      {uploading && (
-        <View style={{ marginBottom: 10 }}>
-          <Text>Uploading: {uploadProgress}%</Text>
-          <View style={{ height: 6, backgroundColor: "#ddd" }}>
-            <View style={{ width: `${uploadProgress}%`, height: 6, backgroundColor: "green" }} />
-          </View>
-        </View>
-      )}
 
       {/* QUICK ACTIONS */}
       <View style={{ marginBottom: 20 }}>
