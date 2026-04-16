@@ -553,15 +553,7 @@ Follow
     </View>
   </View>
 </Modal>
-<TouchableOpacity
-  onPress={() =>
-    Linking.openURL("https://nasara-six.vercel.app/privacy")
-  }
->
-  <Text style={{ color: "blue", marginTop: 10 }}>
-    Privacy Policy
-  </Text>
-</TouchableOpacity>
+
       {/* ===== WHATSAPP MODAL ===== */}
       <Modal visible={showWhatsappModal} transparent animationType="slide">
         <View style={styles.modalWrap}>
