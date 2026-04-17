@@ -12,7 +12,6 @@ import {
   ViewToken,
 } from "react-native";
 
-import { supabase } from "../lib/supabase";
 import FollowButton from "./FollowButton";
 import LikeButton from "./LikeButton";
 import ReelPlayer from "./ReelPlayer";
@@ -45,87 +44,65 @@ export default function ReelsFeed({
   const watchTimers = useRef<Record<string, any>>({});
   const [feed, setFeed] = useState<ReelType[]>([]);
 
-  /* ================= MERGE ================= */
+  /* ================= SAFE SET FEED ================= */
   useEffect(() => {
-  if (!Array.isArray(reels)) {
-    setFeed([]);
-    return;
-  }
+    if (!Array.isArray(reels)) {
+      setFeed([]);
+      return;
+    }
 
-  // 🔥 IMPORTANT: NO MERGE
-  setFeed((prev) => {
-  const map = new Map(prev.map((r) => [r.id, r]));
-  return reels.map((r) => {
-    const existing = map.get(r.id);
-    return existing ? { ...r, views: existing.views ?? r.views } : r;
-  });
-});
-}, [reels])
+    // ✅ DIRECT REPLACE (NO MERGE BUG)
+    setFeed(reels);
+  }, [reels]);
 
- 
   /* ================= VIEW TRACK ================= */
   const feedRef = useRef<ReelType[]>([]);
-useEffect(() => {
-  feedRef.current = feed;
-}, [feed]);
+  useEffect(() => {
+    feedRef.current = feed;
+  }, [feed]);
 
-const onViewableItemsChanged = useRef(
-  ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    if (!viewableItems.length) return;
+  const onViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
+      if (!viewableItems.length) return;
 
-    const index = viewableItems[0].index;
-    if (index == null) return;
+      const index = viewableItems[0].index;
+      if (index == null) return;
 
-    setActiveIndex(index);
+      setActiveIndex(index);
 
-    const reel = feedRef.current[index];
-    if (!reel) return;
+      const reel = feedRef.current[index];
+      if (!reel) return;
 
-    console.log("VIEW TRIGGERED:", reel.id);
-    // ✅ ADD HERE
-   Object.keys(watchTimers.current).forEach((id) => {
-    if (id !== reel.id) {
-    clearTimeout(watchTimers.current[id]);
-    delete watchTimers.current[id];
-  }
-});
+      // clear other timers
+      Object.keys(watchTimers.current).forEach((id) => {
+        if (id !== reel.id) {
+          clearTimeout(watchTimers.current[id]);
+          delete watchTimers.current[id];
+        }
+      });
 
-    // ❌ cancel timers for other reels
-Object.keys(watchTimers.current).forEach((id) => {
-  if (id !== reel.id) {
-    clearTimeout(watchTimers.current[id]);
-    delete watchTimers.current[id];
-  }
-});
+      if (!viewed.current.has(reel.id)) {
+        if (watchTimers.current[reel.id]) return;
 
-if (!viewed.current.has(reel.id)) {
-  if (watchTimers.current[reel.id]) return;
+        watchTimers.current[reel.id] = setTimeout(() => {
+          viewed.current.add(reel.id);
 
-  watchTimers.current[reel.id] = setTimeout(() => {
-    viewed.current.add(reel.id);
+          // optional RPC
+          // supabase.rpc("increment_reel_views", { post_id_input: reel.id });
 
-    (supabase as any)
-      .rpc("increment_reel_views", {
-        post_id_input: reel.id,
-      })
-      .then(() => {
-        console.log("VIEW COUNTED:", reel.id);
+          setFeed((prev) =>
+            prev.map((item) =>
+              item.id === reel.id
+                ? { ...item, views: (item.views ?? 0) + 1 }
+                : item
+            )
+          );
 
-        setFeed((prev) =>
-          prev.map((item) =>
-            item.id === reel.id
-              ? { ...item, views: (item.views ?? 0) + 1 }
-              : item
-          )
-        );
-      })
-      .catch((e: any) => console.log("RPC ERROR:", e));
-
-    delete watchTimers.current[reel.id];
-  }, 2000); // ⏱ 2 seconds
-}
-  }
-).current;
+          delete watchTimers.current[reel.id];
+        }, 2000);
+      }
+    }
+  ).current;
 
   const viewabilityConfig = {
     itemVisiblePercentThreshold: 60,
@@ -137,7 +114,7 @@ if (!viewed.current.has(reel.id)) {
       const around = feed.slice(Math.max(0, index - 1), index + 3);
 
       around.forEach((item) => {
-        const src = item.media_url || item.local_uri;
+        const src = item.media_url;
 
         if (!src || preloaded.current.has(item.id)) return;
 
@@ -166,7 +143,6 @@ if (!viewed.current.has(reel.id)) {
         <ReelPlayer
           id={item.id}
           url={item.media_url}
-          localUri={item.local_uri}
           active={isActive}
           thumbnail={item.thumbnail_url}
         />
@@ -195,7 +171,6 @@ if (!viewed.current.has(reel.id)) {
             <Text style={styles.icon}>📤</Text>
           </Pressable>
 
-          {/* ✅ SELLER SHOP BACK */}
           <Pressable
             onPress={() =>
               router.push(`/seller-items?userId=${item.user_id}`)
@@ -204,7 +179,6 @@ if (!viewed.current.has(reel.id)) {
             <Text style={styles.icon}>🛍</Text>
           </Pressable>
 
-          {/* ✅ DELETE ONLY IN MY REELS */}
           {myOnly && onDelete && (
             <Pressable onPress={() => onDelete(item.id)}>
               <Text style={styles.icon}>🗑️</Text>
@@ -223,7 +197,7 @@ if (!viewed.current.has(reel.id)) {
           onPress={() => setMyOnly(false)}
           style={[styles.tab, !myOnly && styles.activeTab]}
         >
-          For You
+          All
         </Text>
 
         <Text

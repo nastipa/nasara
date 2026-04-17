@@ -18,6 +18,7 @@ type Post = {
   caption?: string;
   user_id: string;
   views?: number;
+  status?: string;
 };
 
 const PAGE_SIZE = 8;
@@ -32,14 +33,13 @@ export default function Reels() {
   const userIdRef = useRef<string | null>(null);
   const ids = useRef(new Set<string>());
   const loadingMore = useRef(false);
+  const channelRef = useRef<any>(null);
 
   /* ================= GET USER ================= */
   useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
+    supabase.auth.getUser().then(({ data }) => {
       userIdRef.current = data?.user?.id ?? null;
-    };
-    getUser();
+    });
   }, []);
 
   /* ================= RESET INDEX ================= */
@@ -47,121 +47,98 @@ export default function Reels() {
     setActiveIndex(0);
   }, [posts.length]);
 
- const channelRef = useRef<any>(null);
-const myOnlyRef = useRef(myOnly);
-
-useEffect(() => {
-  myOnlyRef.current = myOnly;
-}, [myOnly]);
-
-useEffect(() => {
-  if (channelRef.current) return; // 🔥 prevent duplicate
-
-  const channel = supabase.channel("reels-sync", {
-    config: {
-      broadcast: { self: true },
-    },
-  });
-
-  channelRef.current = channel;
-
-  /* ================= BROADCAST ================= */
-
-  channel.on("broadcast", { event: "new_post" }, (payload: any) => {
-    const p = payload.payload;
-    if (!p?.id) return;
-
-    if (myOnlyRef.current && p.user_id !== userIdRef.current) return;
-
-    setPosts((prev) => {
-      if (prev.some((x) => x.id === p.id)) return prev;
-      return [{ ...p, views: p.views ?? 0 }, ...prev];
-    });
-  });
-
-  channel.on("broadcast", { event: "update_post" }, (payload: any) => {
-    const updated = payload.payload;
-    if (!updated?.id) return;
-
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === updated.id
-          ? {
-              ...p,
-              ...updated,
-              views: updated.views ?? p.views ?? 0,
-            }
-          : p
-      )
-    );
-  });
-
-  channel.on("broadcast", { event: "delete_post" }, (payload: any) => {
-    const id = payload.payload?.id;
-    if (!id) return;
-
-    setPosts((prev) => prev.filter((p) => p.id !== id));
-  });
-
-  /* ================= REALTIME ================= */
-
-  channel.on(
-    "postgres_changes",
-    { event: "INSERT", schema: "public", table: "posts" },
-    (payload: any) => {
-      const p = payload.new;
-      if (!p?.id) return;
-
-      if (myOnlyRef.current && p.user_id !== userIdRef.current) return;
-
-      setPosts((prev) => {
-        if (prev.some((x) => x.id === p.id)) return prev;
-        return [{ ...p, views: p.views ?? 0 }, ...prev];
-      });
-    }
-  );
-
-  channel.on(
-    "postgres_changes",
-    { event: "UPDATE", schema: "public", table: "posts" },
-    (payload: any) => {
-      const updated = payload.new;
-      if (!updated?.id) return;
-
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === updated.id
-            ? {
-                ...p,
-                ...updated,
-                views: updated.views ?? 0,
-              }
-            : p
-        )
-      );
-    }
-  );
-
-  channel.on(
-    "postgres_changes",
-    { event: "DELETE", schema: "public", table: "posts" },
-    (payload: any) => {
-      const id = payload.old?.id;
-      if (!id) return;
-
-      setPosts((prev) => prev.filter((p) => p.id !== id));
-    }
-  );
-
-  channel.subscribe();
-
-  return () => {
+  /* ================= REALTIME (FULL FIX) ================= */
+  useEffect(() => {
+    // 🔥 remove old channel ALWAYS
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
-  };
-}, []);
+
+    const channel = supabase.channel("reels-sync-" + Date.now());
+
+    channel
+      // INSERT
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts" },
+        (payload: any) => {
+          const p = payload.new;
+
+          // ❗ show your own post immediately even if not ready
+          if (p.status !== "ready") {
+            if (p.user_id === userIdRef.current) {
+              setPosts((prev) => {
+                if (prev.some((x) => x.id === p.id)) return prev;
+                return [{ ...p, views: 0 }, ...prev];
+              });
+            }
+            return;
+          }
+
+          if (myOnly && p.user_id !== userIdRef.current) return;
+
+          setPosts((prev) => {
+            if (prev.some((x) => x.id === p.id)) return prev;
+            return [{ ...p, views: p.views ?? 0 }, ...prev];
+          });
+        }
+      )
+
+      // UPDATE
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "posts" },
+        (payload: any) => {
+          const updated = payload.new;
+
+          if (updated.status !== "ready") return;
+
+          setPosts((prev) => {
+            const exists = prev.find((p) => p.id === updated.id);
+
+            // 🔥 if missing → force insert
+            if (!exists) {
+              return [{ ...updated, views: updated.views ?? 0 }, ...prev];
+            }
+
+            return prev.map((p) =>
+              p.id === updated.id
+                ? {
+                    ...p,
+                    ...updated,
+                    views: updated.views ?? p.views ?? 0,
+                  }
+                : p
+            );
+          });
+        }
+      )
+
+      // DELETE
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "posts" },
+        (payload: any) => {
+          const id = payload.old?.id;
+          if (!id) return;
+
+          setPosts((prev) => prev.filter((p) => p.id !== id));
+        }
+      )
+
+      // ✅ subscribe LAST
+      .subscribe();
+
+    channelRef.current = channel;
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, [myOnly]);
 
   /* ================= LOAD POSTS ================= */
   const loadPosts = async (reset = false) => {
@@ -176,6 +153,7 @@ useEffect(() => {
       let query = supabase
         .from("posts")
         .select("*")
+        .eq("status", "ready")
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -207,16 +185,15 @@ useEffect(() => {
               id: p.id,
               user_id: p.user_id,
               media_url: p.media_url,
-              local_uri: p.local_uri,
+              local_uri: null,
               thumbnail_url: p.thumbnail_url,
               caption: p.caption,
               views: p.views ?? 0,
+              status: p.status,
             };
           });
 
-        setPosts((prev) =>
-          reset ? formatted : [...prev, ...formatted]
-        );
+        setPosts((prev) => (reset ? formatted : [...prev, ...formatted]));
       }
     } catch (e) {
       console.log(e);
@@ -224,6 +201,15 @@ useEffect(() => {
 
     loadingMore.current = false;
   };
+
+  /* ================= AUTO REFRESH (VERY IMPORTANT) ================= */
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadPosts(true);
+    }, 15000); // every 15s
+
+    return () => clearInterval(interval);
+  }, []);
 
   /* ================= DELETE ================= */
   const handleDelete = async (id: string) => {
@@ -253,6 +239,7 @@ useEffect(() => {
     if (page !== 0) loadPosts();
   }, [page]);
 
+  /* ================= LOADING ================= */
   if (loading && posts.length === 0) {
     return (
       <View style={styles.loader}>
@@ -261,6 +248,7 @@ useEffect(() => {
     );
   }
 
+  /* ================= UI ================= */
   return (
     <ReelsFeed
       reels={posts}

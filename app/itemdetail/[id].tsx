@@ -95,18 +95,29 @@ export default function ItemDetail() {
   };
 
   /* ============================
-     VIDEO PLAYER
-  ============================ */
-  const videoUrl = item?.video_url?.trim() || "";
+   VIDEO PLAYER (FIXED)
+============================ */
+const videoUrl = item?.video_url?.trim() || "";
 
-const hasVideo = videoUrl.length > 5;
+// ✅ ALWAYS call hook (NO condition)
+const player = useVideoPlayer(
+  videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4", // fallback safe video
+  (p) => {
+    p.loop = true;
+  }
+);
 
-const player = hasVideo
-  ? useVideoPlayer(videoUrl, (p) => {
-      p.loop = true;
-      p.play();
-    })
-  : null;
+// ✅ CONTROL play safely
+useEffect(() => {
+  if (videoUrl && videoUrl.startsWith("http")) {
+    try {
+      player.replace(videoUrl);
+      player.play();
+    } catch (e) {
+      console.log("Video error:", e);
+    }
+  }
+}, [videoUrl]);
   /* ============================
      LOADING STATES
   ============================ */
@@ -202,7 +213,7 @@ const player = hasVideo
               </Text>
             </TouchableOpacity>
 
-           {hasVideo && player ? (
+           {videoUrl && videoUrl.startsWith("http") ? (
   <VideoView
     player={player}
     style={{
@@ -211,25 +222,25 @@ const player = hasVideo
     }}
   />
 ) : item.image_url ? (
-              <Image
-                source={{ uri: item.image_url }}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                }}
-                resizeMode="cover"
-              />
-            ) : (
-              <View
-                style={{
-                  flex: 1,
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-              >
-                <Text>No media</Text>
-              </View>
-            )}
+  <Image
+    source={{ uri: item.image_url }}
+    style={{
+      width: "100%",
+      height: "100%",
+    }}
+    resizeMode="cover"
+  />
+) : (
+  <View
+    style={{
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+    }}
+  >
+    <Text>No media</Text>
+  </View>
+)}
           </View>
         </View>
 

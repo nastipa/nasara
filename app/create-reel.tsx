@@ -16,7 +16,6 @@ import {
 } from "react-native";
 
 import { supabase } from "../lib/supabase";
-import { uploadVideo } from "../lib/uploadVideo";
 
 const { height, width } = Dimensions.get("window");
 
@@ -40,9 +39,9 @@ export default function CreateReel() {
   const recorderRef = useRef<any>(null);
   const chunks = useRef<any[]>([]);
   const timerRef = useRef<any>(null);
+  
 
-  const [startTime, setStartTime] = useState(0);
-  const [endTime, setEndTime] = useState(10);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const player = useVideoPlayer(video?.uri || null);
 
@@ -59,14 +58,11 @@ export default function CreateReel() {
     return () => clearInterval(timerRef.current);
   }, [recording]);
 
-  /* ================= CAMERA (DESKTOP WEB ONLY) ================= */
+  /* ================= CAMERA FIX ================= */
   const startCamera = async (mode = facing) => {
-    if (Platform.OS !== "web") return;
-
     try {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t: any) => t.stop());
-        streamRef.current = null;
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -77,10 +73,14 @@ export default function CreateReel() {
       streamRef.current = stream;
       setCameraOn(true);
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch {
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play(); // ✅ FIX: force play
+        }
+      }, 100);
+
+    } catch (e) {
       Alert.alert("Camera Error", "Allow camera permission");
     }
   };
@@ -91,13 +91,13 @@ export default function CreateReel() {
     startCamera(newFacing);
   };
 
-  /* ================= RECORD (FIXED FOR WEB + MOBILE WEB) ================= */
+  /* ================= RECORD ================= */
   const startRecord = async () => {
     const isMobileWeb =
       Platform.OS === "web" &&
       /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-    /* 📱 MOBILE WEB → NATIVE CAMERA (NO CORRUPTION FIX) */
+    /* 📱 MOBILE WEB → USE PHONE CAMERA */
     if (isMobileWeb) {
       const res = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -112,27 +112,25 @@ export default function CreateReel() {
       return;
     }
 
-    /* 💻 DESKTOP WEB → WEBCAM RECORDING */
-    if (Platform.OS === "web") {
-      if (!cameraOn || !streamRef.current) {
-        Alert.alert("Start camera first");
-        return;
-      }
-
-      let time = 3;
-      setCountdown(time);
-
-      const interval = setInterval(() => {
-        time--;
-        if (time === 0) {
-          clearInterval(interval);
-          setCountdown(null);
-          beginRecording();
-        } else {
-          setCountdown(time);
-        }
-      }, 1000);
+    /* 💻 DESKTOP WEB */
+    if (!cameraOn || !streamRef.current) {
+      Alert.alert("Start camera first");
+      return;
     }
+
+    let time = 3;
+    setCountdown(time);
+
+    const interval = setInterval(() => {
+      time--;
+      if (time === 0) {
+        clearInterval(interval);
+        setCountdown(null);
+        beginRecording();
+      } else {
+        setCountdown(time);
+      }
+    }, 1000);
   };
 
   const beginRecording = () => {
@@ -163,7 +161,7 @@ export default function CreateReel() {
     recorderRef.current?.stop();
   };
 
-  /* ================= MOBILE APP CAMERA ================= */
+  /* ================= 📱 MOBILE APP RECORD (RESTORED) ================= */
   const recordMobile = async () => {
     const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -177,6 +175,7 @@ export default function CreateReel() {
     }
   };
 
+  /* ================= PICK VIDEO ================= */
   const pickVideo = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
@@ -189,23 +188,11 @@ export default function CreateReel() {
     }
   };
 
-  /* ================= TRIM PREVIEW ================= */
-  const previewTrim = () => {
-    if (!player) return;
-
-    player.currentTime = startTime;
-    player.play();
-
-    setTimeout(() => {
-      player.pause();
-    }, (endTime - startTime) * 1000);
-  };
-
-  /* ================= THUMBNAIL ================= */
+  /* ================= THUMB ================= */
   const generateThumbnail = async () => {
     try {
       const { uri } = await VideoThumbnails.getThumbnailAsync(video.uri, {
-        time: startTime * 1000,
+        time: 1000,
       });
       return uri;
     } catch {
@@ -213,104 +200,128 @@ export default function CreateReel() {
     }
   };
 
-  /* ================= POST ================= */
-  const postReel = async () => {
+  /* ================= POST (UPLOAD FIRST) ================= */
+  const [progress, setProgress] = useState(0);
+
+const uploadWithProgress = async (uri: string) => {
+  return new Promise<{ video: string; thumbnail?: string }>(
+    async (resolve, reject) => {
+      try {
+        const formData = new FormData();
+
+        if (Platform.OS === "web") {
+          const res = await fetch(uri);
+          const blob = await res.blob();
+          formData.append("file", blob, "reel.mp4");
+        } else {
+          formData.append("file", {
+            uri,
+            name: "reel.mp4",
+            type: "video/mp4",
+          } as any);
+        }
+
+        const xhr = new XMLHttpRequest();
+
+        xhr.open(
+          "POST",
+          "https://nasara-upload-server.onrender.com/upload"
+        );
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percent = Math.round(
+              (event.loaded / event.total) * 100
+            );
+            setProgress(percent);
+          }
+        };
+
+        xhr.onload = () => {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (!data.success) throw new Error("Upload failed");
+
+            resolve({
+              video: data.url,
+              thumbnail: data.thumbnail,
+            });
+          } catch (e) {
+            reject(e);
+          }
+        };
+
+        xhr.onerror = () => reject("Upload failed");
+
+        xhr.send(formData);
+      } catch (e) {
+        reject(e);
+      }
+    }
+  );
+};
+
+/* ================= POST REEL (FINAL FIX) ================= */
+const postReel = async () => {
   if (!video) return Alert.alert("Select video first");
 
   setLoading(true);
+  setProgress(0);
 
   try {
     const { data } = await supabase.auth.getUser();
-    if (!data?.user) return Alert.alert("Login required");
+    if (!data?.user) {
+      Alert.alert("Login required");
+      setLoading(false);
+      return;
+    }
 
     const thumbnail = await generateThumbnail();
 
-    // ✅ STEP 1: INSERT POST (DB)
-    const { data: newPost } = await (supabase as any)
+    // ✅ STEP 1: INSERT (HIDDEN FROM FEED)
+    const { data: newPost, error } = await (supabase as any)
       .from("posts")
       .insert({
         user_id: data.user.id,
         caption,
         local_uri: video.uri,
         thumbnail_url: thumbnail,
-        status: "uploading",
+        status: "uploading", // 🔥 IMPORTANT
         views: 0,
       })
       .select()
       .single();
 
-    // ✅ STEP 2: CREATE LOCAL OBJECT (OPTIMISTIC UI)
-    const instantPost = {
-      id: newPost.id,
-      user_id: newPost.user_id,
-      media_url: null,
-      local_uri: video.uri,
-      thumbnail_url: thumbnail,
-      caption,
-      views: 0,
-    };
-   
-    // 🔥 STEP 3: BROADCAST TO ALL DEVICES (APP + WEB INSTANT)
-   const sendBroadcast = (event: string, payload: any) => {
-  const ch = supabase.channel(`broadcast-${Date.now()}`);
+    if (error || !newPost) throw error;
 
-  ch.send({
-    type: "broadcast",
-    event,
-    payload,
-  });
-
-  // auto cleanup
-  setTimeout(() => {
-    supabase.removeChannel(ch);
-  }, 1000);
-};
-    // 🔥 STEP 4: GO BACK IMMEDIATELY (NO WAIT)
+    // 👉 go back immediately (user sees progress)
     router.replace("/reels");
 
-    // ✅ STEP 5: UPLOAD VIDEO (BACKGROUND)
-    const result = await uploadVideo(video.file || video);
+    // ✅ STEP 2: UPLOAD WITH PROGRESS
+    const result = await uploadWithProgress(video.uri);
 
-    // ✅ STEP 6: UPDATE POST AFTER UPLOAD
+    // ✅ STEP 3: FINAL UPDATE (THIS WAS MISSING ❗)
     await (supabase as any)
       .from("posts")
       .update({
         media_url: result.video,
         thumbnail_url: result.thumbnail || thumbnail,
         local_uri: null,
-        status: "ready",
+        status: "ready", // 🔥 THIS FIXES EVERYTHING
       })
       .eq("id", newPost.id);
-     sendBroadcast("update_post", {
-  id: newPost.id,
-  media_url: result.video,
-  thumbnail_url: result.thumbnail || thumbnail,
-  local_uri: null,
-  status: "ready",
-});
-    // 🔥 STEP 7: BROADCAST UPDATE (SYNC FINAL VIDEO)
-    supabase.channel("reels-sync-broadcast").send({
-      type: "broadcast",
-      event: "update_post",
-      payload: {
-        id: newPost.id,
-        media_url: result.video,
-        thumbnail_url: result.thumbnail || thumbnail,
-        local_uri: null,
-        status: "ready",
-      },
-    });
 
   } catch (e: any) {
-    Alert.alert("Error", e.message);
+    Alert.alert("Error", e.message || "Upload failed");
   }
 
   setLoading(false);
 };
-
   /* ================= UI ================= */
   return (
     <View style={styles.container}>
+
+      {/* BACK */}
       <TouchableOpacity
         onPress={() => router.replace("/browse")}
         style={styles.backBtn}
@@ -318,10 +329,16 @@ export default function CreateReel() {
         <Text style={{ color: "white" }}>⬅ Home</Text>
       </TouchableOpacity>
 
-      {/* CAMERA (DESKTOP WEB ONLY) */}
+      {/* 🎥 CAMERA (WEB) */}
       {Platform.OS === "web" && cameraOn && !editing && (
         <View style={styles.cameraWrap}>
-          <video ref={videoRef} autoPlay muted playsInline style={styles.fullVideo} />
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            style={styles.fullVideo}
+          />
 
           {recording && (
             <Text style={styles.timerOverlay}>⏱ {recordTime}s</Text>
@@ -344,17 +361,24 @@ export default function CreateReel() {
         </View>
       )}
 
-      {/* START CAMERA */}
-      {!cameraOn && !editing && (
+      {/* ▶️ START CAMERA */}
+      {!cameraOn && !editing && Platform.OS === "web" && (
         <TouchableOpacity onPress={() => startCamera()} style={styles.bigBtn}>
-          <Text style={styles.txt}>▶ Start Camera</Text>
+          <Text style={styles.txt}>▶️ Start Camera</Text>
         </TouchableOpacity>
       )}
 
-      {/* UPLOAD */}
+      {/* 📱 MOBILE RECORD BUTTON (RESTORED) */}
+      {Platform.OS !== "web" && !editing && (
+        <TouchableOpacity onPress={recordMobile} style={styles.bigBtn}>
+          <Text style={styles.txt}>🎥 Record Video</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* 📁 UPLOAD */}
       {!editing && (
         <TouchableOpacity onPress={pickVideo} style={styles.bigBtn}>
-          <Text style={styles.txt}>📁 Upload</Text>
+          <Text style={styles.txt}>📁 Upload Video</Text>
         </TouchableOpacity>
       )}
 
@@ -362,24 +386,6 @@ export default function CreateReel() {
       {editing && video && (
         <>
           <VideoView player={player} style={styles.video} />
-
-          <View style={styles.trimBox}>
-            <TextInput
-              value={String(startTime)}
-              onChangeText={(v) => setStartTime(Number(v))}
-              style={styles.input}
-            />
-
-            <TextInput
-              value={String(endTime)}
-              onChangeText={(v) => setEndTime(Number(v))}
-              style={styles.input}
-            />
-
-            <TouchableOpacity onPress={previewTrim} style={styles.btn}>
-              <Text style={styles.txt}>Preview Trim</Text>
-            </TouchableOpacity>
-          </View>
 
           <TextInput
             placeholder="Caption..."
@@ -389,9 +395,30 @@ export default function CreateReel() {
             style={styles.input}
           />
 
+          {/* 📊 UPLOAD PROGRESS */}
+          {loading && (
+            <Text style={{ color: "white", textAlign: "center" }}>
+              Uploading {uploadProgress}%
+            </Text>
+          )}
+
           <TouchableOpacity onPress={postReel} style={styles.postBtn}>
             <Text style={styles.txt}>🚀 Post</Text>
           </TouchableOpacity>
+          {loading && (
+  <View style={{
+    position: "absolute",
+    bottom: 100,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    padding: 12,
+    borderRadius: 10
+  }}>
+    <Text style={{ color: "white", fontWeight: "bold" }}>
+      Uploading: {progress}%
+    </Text>
+  </View>
+)}
         </>
       )}
 
@@ -399,15 +426,12 @@ export default function CreateReel() {
     </View>
   );
 }
+
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "black" },
 
-  cameraWrap: {
-    width,
-    height,
-    position: "relative",
-  },
+  cameraWrap: { width, height },
 
   fullVideo: {
     width: "100%",
@@ -468,20 +492,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  trimBox: { padding: 15 },
-
   input: {
     backgroundColor: "#111",
     color: "white",
     padding: 10,
     marginTop: 10,
-  },
-
-  btn: {
-    backgroundColor: "#333",
-    padding: 12,
-    marginTop: 10,
-    alignItems: "center",
   },
 
   postBtn: {
