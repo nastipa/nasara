@@ -8,8 +8,64 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+import { VideoView, useVideoPlayer } from "expo-video";
 import { supabase } from "../../lib/supabase";
 
+/* ================= MEDIA RENDER (SAFE - NO HOOKS IN LOOP) ================= */
+function MediaPreview({ ad }: { ad: any }) {
+  // IMAGE ONLY
+  if (ad.media_type === "image" && ad.image_url) {
+    return (
+      <Image
+        source={{ uri: ad.image_url }}
+        style={{
+          width: "100%",
+          height: 180,
+          borderRadius: 10,
+        }}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  // VIDEO ONLY (HOOK USED SAFELY INSIDE COMPONENT, NOT LOOP)
+  if (ad.media_type === "video" && ad.video_url) {
+    const player = useVideoPlayer(ad.video_url, (player) => {
+      player.loop = true;
+      player.muted = true;
+    });
+
+    return (
+      <VideoView
+        player={player}
+        style={{
+          width: "100%",
+          height: 180,
+          borderRadius: 10,
+        }}
+        allowsFullscreen={false}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: "100%",
+        height: 180,
+        borderRadius: 10,
+        backgroundColor: "#eee",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Text>No Media</Text>
+    </View>
+  );
+}
+
+/* ================= MAIN ADMIN ADS ================= */
 export default function AdminAdsApproval() {
   const [ads, setAds] = useState<any[]>([]);
   const router = useRouter();
@@ -53,8 +109,8 @@ export default function AdminAdsApproval() {
         .update({
           status: "approved",
           is_active: true,
-          title: title,
-          expires_at: expires_at,
+          title,
+          expires_at,
         })
         .eq("id", ad.id);
 
@@ -64,7 +120,6 @@ export default function AdminAdsApproval() {
       }
 
       Alert.alert("Approved ✅", "Ad is now live on Browse.");
-
       loadAds();
     } catch (err) {
       console.log(err);
@@ -74,6 +129,7 @@ export default function AdminAdsApproval() {
 
   return (
     <ScrollView style={{ padding: 16 }}>
+      {/* BACK BUTTON */}
       <TouchableOpacity
         onPress={() => router.push("/(admin)")}
         style={{
@@ -107,25 +163,20 @@ export default function AdminAdsApproval() {
             borderColor: "#ddd",
           }}
         >
-          {ad.image_url && (
-            <Image
-              source={{ uri: ad.image_url }}
-              style={{
-                width: "100%",
-                height: 180,
-                borderRadius: 10,
-              }}
-              resizeMode="contain"
-            />
-          )}
+          {/* ================= MEDIA ================= */}
+          <MediaPreview ad={ad} />
 
+          {/* TITLE */}
           <Text style={{ fontWeight: "bold", marginTop: 10 }}>
             {ad.title || "Sponsored Ad"}
           </Text>
 
+          {/* DETAILS */}
           <Text>Days: {ad.days}</Text>
           <Text>Amount: GH₵ {ad.amount}</Text>
+          <Text>Type: {ad.media_type}</Text>
 
+          {/* APPROVE */}
           <TouchableOpacity
             onPress={() => approveAd(ad)}
             style={{

@@ -28,6 +28,7 @@ const showAlert = (title: string, message: string) => {
 };
 
 /* ================= ITEM CARD ================= */
+const isWeb = Platform.OS === "web";
 function MyItemCard({
   item,
   onDelete,
@@ -59,48 +60,72 @@ function MyItemCard({
         borderColor: "#eee",
       }}
     >
-      {/* MEDIA */}
-      {item.video_url ? (
-        <VideoView
-          player={player!}
-          style={{
-            width: 130,
-            height: 130,
-            alignSelf: "center",
-            borderRadius: 10,
-            backgroundColor: "black",
-            marginTop: 10,
-          }}
-        />
-      ) : item.image_url ? (
-        <Image
-          source={{ uri: item.image_url }}
-          style={{
-            width: 200,
-            height: 200,
-            alignSelf: "center",
-            borderRadius: 20,
-            backgroundColor: "#eee",
-            marginTop: 20,
-          }}
-          resizeMode="cover"
-        />
-      ) : (
-        <View
-          style={{
-            width: 200,
-            height: 200,
-            alignSelf: "center",
-            borderRadius: 20,
-            justifyContent: "center",
-            alignItems: "center",
-            backgroundColor: "#eee",
-            marginTop: 20,
-          }}
-        >
-          <Text>No Media</Text>
-        </View>
-      )}
+      {/* MEDIA FIX (IMAGE + VIDEO WORKING ON WEB + APP) */}
+{item.video_url ? (
+  isWeb ? (
+    <video
+      src={item.video_url}
+      autoPlay
+      muted
+      loop
+      playsInline
+      controls
+      style={{
+        width: 130,
+        height: 130,
+        alignSelf: "center",
+        borderRadius: 10,
+        backgroundColor: "black",
+        marginTop: 10,
+        objectFit: "cover",
+      }}
+    />
+  ) : (
+    <VideoView
+      player={useVideoPlayer(item.video_url, (p) => {
+        p.muted = true;
+        p.loop = true;
+        setTimeout(() => p.play(), 100);
+      })}
+      style={{
+        width: 130,
+        height: 130,
+        alignSelf: "center",
+        borderRadius: 10,
+        backgroundColor: "black",
+        marginTop: 10,
+      }}
+    />
+  )
+) : item.image_url ? (
+  <Image
+    source={{ uri: item.image_url }}
+    style={{
+      width: 200,
+      height: 200,
+      alignSelf: "center",
+      borderRadius: 20,
+      backgroundColor: "#eee",
+      marginTop: 20,
+    }}
+    resizeMode="cover"
+  />
+) : (
+  <View
+    style={{
+      width: 200,
+      height: 200,
+      alignSelf: "center",
+      borderRadius: 20,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#eee",
+      marginTop: 20,
+    }}
+  >
+    <Text>No Media</Text>
+  </View>
+)}
 
       {/* BADGES */}
       {item.is_promoted && (

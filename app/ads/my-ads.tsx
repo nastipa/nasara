@@ -1,8 +1,8 @@
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   Linking,
   ScrollView,
   Text,
@@ -28,8 +28,12 @@ export default function MyAds() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (error) Alert.alert("Error", error.message);
-    else setAds(data ?? []);
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    setAds(data ?? []);
   };
 
   useEffect(() => {
@@ -38,7 +42,7 @@ export default function MyAds() {
 
   return (
     <ScrollView style={{ padding: 16 }}>
-      {/* BACK TO HOME */}
+      {/* BACK */}
       <TouchableOpacity
         onPress={() => router.push("/")}
         style={{
@@ -53,7 +57,9 @@ export default function MyAds() {
         </Text>
       </TouchableOpacity>
 
-      <Text style={{ fontSize: 22, fontWeight: "bold" }}>📌 My Ads</Text>
+      <Text style={{ fontSize: 22, fontWeight: "bold" }}>
+        📌 My Ads
+      </Text>
 
       {ads.map((ad) => (
         <View
@@ -67,33 +73,36 @@ export default function MyAds() {
             backgroundColor: "white",
           }}
         >
-          {ad.image_url ? (
-            <View
+          {/* ================= MEDIA (IMAGE OR VIDEO) ================= */}
+
+          {ad.video_url ? (
+            <video
+              src={ad.video_url}
+              controls
               style={{
                 width: "100%",
                 height: 180,
                 borderRadius: 12,
-                backgroundColor: "#f3f4f6",
-                overflow: "hidden",
-                justifyContent: "center",
-                alignItems: "center",
+                objectFit: "cover",
               }}
-            >
-              <Image
-                source={{ uri: ad.image_url }}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                }}
-                resizeMode="contain"
-              />
-            </View>
+            />
+          ) : ad.image_url ? (
+            <Image
+              source={{ uri: ad.image_url }}
+              style={{
+                width: "100%",
+                height: 180,
+                borderRadius: 12,
+              }}
+              contentFit="cover"
+            />
           ) : (
             <Text style={{ color: "red" }}>
-              ⚠ Image not available
+              ⚠ Media not available
             </Text>
           )}
 
+          {/* ================= DETAILS ================= */}
           <Text style={{ fontWeight: "bold", marginTop: 10 }}>
             {ad.title}
           </Text>
@@ -103,6 +112,7 @@ export default function MyAds() {
             Amount Paid: GH₵ {ad.amount} ({ad.days} days)
           </Text>
 
+          {/* ================= BUTTON ================= */}
           {ad.is_active && (
             <TouchableOpacity
               onPress={() => Linking.openURL(ad.link)}

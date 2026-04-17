@@ -32,7 +32,8 @@ export default function AdminPromoted() {
         status,
         items_live (
           title,
-          image_url
+          image_url,
+          video_url
         )
       `)
       .eq("status", "pending")
@@ -133,17 +134,45 @@ export default function AdminPromoted() {
             borderColor: "#ddd",
           }}
         >
-          {/* ITEM IMAGE */}
-          {item.items_live?.image_url && (
-            <Image
-              source={{ uri: item.items_live.image_url }}
-              style={{
-                width: "100%",
-                height: 180,
-                borderRadius: 10,
-              }}
-            />
-          )}
+         {/* MEDIA (IMAGE + VIDEO SUPPORT) */}
+{item.items_live?.video_url ? (
+  <video
+    src={item.items_live.video_url}
+    controls
+    autoPlay
+    muted
+    loop
+    playsInline
+    style={{
+      width: "100%",
+      height: 180,
+      borderRadius: 10,
+      backgroundColor: "black",
+    }}
+  />
+) : item.items_live?.image_url ? (
+  <Image
+    source={{ uri: item.items_live.image_url }}
+    style={{
+      width: "100%",
+      height: 180,
+      borderRadius: 10,
+    }}
+  />
+) : (
+  <View
+    style={{
+      width: "100%",
+      height: 180,
+      borderRadius: 10,
+      backgroundColor: "#eee",
+      justifyContent: "center",
+      alignItems: "center",
+    }}
+  >
+    <Text>No Media</Text>
+  </View>
+)}
 
           <Text style={{ fontWeight: "bold", marginTop: 10 }}>
             {item.items_live?.title}

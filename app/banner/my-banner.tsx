@@ -1,8 +1,8 @@
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   Linking,
   ScrollView,
   Text,
@@ -11,8 +11,8 @@ import {
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
-export default function MyBanner() {
-  const [banners, setBanners] = useState<any[]>([]);
+export default function MyAds() {
+    const [banners, setBanners] = useState<any[]>([]);
  const router = useRouter();
   const loadBanners = async () => {
     const {
@@ -27,8 +27,12 @@ export default function MyBanner() {
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (error) Alert.alert("Error", error.message);
-    else setBanners(data ?? []);
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    setBanners(data ?? []);
   };
 
   useEffect(() => {
@@ -37,7 +41,7 @@ export default function MyBanner() {
 
   return (
     <ScrollView style={{ padding: 16 }}>
-       {/* BACK TO HOME */}
+      {/* BACK */}
       <TouchableOpacity
         onPress={() => router.push("/")}
         style={{
@@ -51,51 +55,71 @@ export default function MyBanner() {
           ← Back to Home
         </Text>
       </TouchableOpacity>
+
       <Text style={{ fontSize: 22, fontWeight: "bold" }}>
-        My Banners
+        📌 My Banner
       </Text>
 
-      {banners.map((b) => (
+      {banners.map((ad) => (
         <View
-          key={b.id}
+          key={ad.id}
           style={{
             marginTop: 16,
             borderWidth: 1,
             borderColor: "#ddd",
             padding: 14,
             borderRadius: 12,
+            backgroundColor: "white",
           }}
         >
-          {/* ✅ FIXED IMAGE STYLE */}
-          {b.image_url && (
-            <Image
-              source={{ uri: b.image_url }}
+          {/* ================= MEDIA (IMAGE OR VIDEO) ================= */}
+
+          {ad.video_url ? (
+            <video
+              src={ad.video_url}
+              controls
               style={{
                 width: "100%",
                 height: 180,
                 borderRadius: 12,
-                resizeMode: "contain",
-                backgroundColor: "#f3f4f6",
+                objectFit: "cover",
               }}
             />
+          ) : ad.image_url ? (
+            <Image
+              source={{ uri: ad.image_url }}
+              style={{
+                width: "100%",
+                height: 180,
+                borderRadius: 12,
+              }}
+              contentFit="cover"
+            />
+          ) : (
+            <Text style={{ color: "red" }}>
+              ⚠ Media not available
+            </Text>
           )}
 
+          {/* ================= DETAILS ================= */}
           <Text style={{ fontWeight: "bold", marginTop: 10 }}>
-            {b.title}
+            {ad.title}
           </Text>
 
-          <Text>Status: {b.status}</Text>
-          <Text>Amount: GH₵ {b.amount}</Text>
+          <Text>Status: {ad.status}</Text>
+          <Text>
+            Amount Paid: GH₵ {ad.amount} ({ad.days} days)
+          </Text>
 
-          {/* Only clickable if approved */}
-          {b.is_active && (
+          {/* ================= BUTTON ================= */}
+          {ad.is_active && (
             <TouchableOpacity
-              onPress={() => Linking.openURL(b.link)}
+              onPress={() => Linking.openURL(ad.link)}
               style={{
                 backgroundColor: "#2563eb",
                 padding: 12,
-                borderRadius: 10,
-                marginTop: 10,
+                borderRadius: 8,
+                marginTop: 12,
               }}
             >
               <Text style={{ color: "white", textAlign: "center" }}>

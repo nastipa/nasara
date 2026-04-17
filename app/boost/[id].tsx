@@ -24,6 +24,7 @@ type BoostPlan = {
 type LiveItem = {
   title: string;
   image_url: string | null;
+  video_url: string | null;
   price: number;
 };
 /* ===============================
@@ -60,6 +61,7 @@ export default function BoostItem() {
 
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [video, setVideo] = useState<any>(null);
 
   /* PAYMENT MODAL */
   const [payVisible, setPayVisible] = useState(false);
@@ -158,24 +160,29 @@ export default function BoostItem() {
       /* ===============================
    LOAD ITEM DETAILS (FIX TS)
 ================================ */
-type LiveItem = {
-  title: string;
-  image_url: string | null;
-  price: number;
-};
 
-const { data: itemData, error: itemError } = await supabase
+const { data, error: itemError } = await supabase
   .from("items_live")
-  .select("title,image_url,price")
+  .select("title,image_url,video_url,price")
   .eq("id", itemId)
-  .single<LiveItem>();
+  .single();
 
-if (itemError || !itemData) {
+if (itemError || !data) {
   showAlert("Error", "Item not found. Cannot boost.");
   setProcessing(false);
   return;
 }
 
+/* ✅ FIX TYPE HERE */
+const itemData = data as {
+  title: string;
+  image_url: string | null;
+  video_url: string | null;
+  price: number;
+};
+
+/* ✅ DEBUG */
+console.log("ITEM DATA:", itemData);
       /* ===============================
          AUTO PAYMENT CODE
       ================================ */
@@ -186,25 +193,24 @@ if (itemError || !itemData) {
          INSERT BOOST REQUEST (ADMIN CAN SEE IMAGE)
       ================================ */
       const { error } = await (supabase as any).from("boost").insert({
-        live_item_id: itemId,
+  live_item_id: itemId,
 
-        plan_id: selectedPlan.id,
-        days: selectedPlan.days,
-        amount: Number(amountInput),
+  plan_id: selectedPlan.id,
+  days: selectedPlan.days,
+  amount: Number(amountInput),
 
-        seller_id: auth.user.id,
+  seller_id: auth.user.id,
 
-        /* ✅ STORE ITEM INFO FOR ADMIN */
-        item_title: itemData.title,
-        item_image_url: itemData.image_url,
-        item_price: itemData.price,
+  item_title: itemData.title,
+  item_image_url: itemData.image_url,
+  item_video_url: itemData.video_url, // ✅ NO ?? null
+  item_price: itemData.price,
 
-        payment_code: paymentCode,
-        network: adminMomoNetwork,
+  payment_code: paymentCode,
+  network: adminMomoNetwork,
 
-        status: "pending",
-      });
-
+  status: "pending",
+});
       if (error) {
         showAlert("Boost Failed", error.message);
         return;

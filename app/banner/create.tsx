@@ -16,8 +16,8 @@ import { supabase } from "../../lib/supabase";
 
 const pricePerDay = 30;
 
-const CLOUD_NAME = "ajars";
-const UPLOAD_PRESET = "ajars_images";
+/* ================= CLOUD FLARE UPLOAD SERVER (SAME AS ADS/REELS) ================= */
+const BASE_URL = "https://nasara-upload-server.onrender.com";
 
 /* ================= ALERT FIX ================= */
 const showAlert = (title: string, message: string) => {
@@ -28,16 +28,106 @@ const showAlert = (title: string, message: string) => {
   }
 };
 
-export default function CreateBanner() {
+/* ================= PRELOAD VIDEO (WEB ONLY) ================= */
+const preloadVideo = (url: string) => {
+  if (Platform.OS !== "web") return;
 
+  try {
+    const video = document.createElement("video");
+    video.src = url;
+    video.preload = "auto";
+    video.muted = true;
+    video.playsInline = true;
+  } catch (e) {
+    console.log("preload failed:", e);
+  }
+};
+
+/* ================= UPLOAD IMAGE OR VIDEO ================= */
+const uploadMedia = async (fileOrUri: any, type: "image" | "video") => {
+  const formData = new FormData();
+
+  /* ================= WEB ================= */
+  if (Platform.OS === "web") {
+    let file: File;
+
+    if (fileOrUri instanceof File) {
+      file = fileOrUri;
+    } else if (fileOrUri instanceof Blob) {
+      file = new File(
+        [fileOrUri],
+        type === "video" ? "video.webm" : "image.jpg",
+        { type: fileOrUri.type }
+      );
+    } else if (fileOrUri?.uri) {
+      const res = await fetch(fileOrUri.uri);
+      const blob = await res.blob();
+      file = new File(
+        [blob],
+        type === "video" ? "video.mp4" : "image.jpg",
+        { type: blob.type }
+      );
+    } else {
+      throw new Error("Invalid file");
+    }
+
+    formData.append("file", file);
+  }
+
+  /* ================= MOBILE ================= */
+  else {
+    let uri = "";
+
+    if (typeof fileOrUri === "string") {
+      uri = fileOrUri;
+    } else if (fileOrUri?.uri) {
+      uri = fileOrUri.uri;
+    }
+
+    if (!uri) throw new Error("Invalid file");
+
+    formData.append("file", {
+      uri,
+      type: type === "video" ? "video/mp4" : "image/jpeg",
+      name:
+        type === "video"
+          ? `banner_video_${Date.now()}.mp4`
+          : `banner_image_${Date.now()}.jpg`
+    } as any);
+  }
+
+  /* ================= UPLOAD REQUEST ================= */
+  const res = await fetch(`${BASE_URL}/upload`, {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+
+  if (!data.success || !data.url) {
+    throw new Error("Upload failed");
+  }
+
+  const url = data.url;
+
+  if (type === "video") {
+    preloadVideo(url);
+  }
+
+  return url;
+};
+
+export default function CreateBanner() {
   const router = useRouter();
 
   const [title, setTitle] = useState("");
   const [link, setLink] = useState("");
   const [days, setDays] = useState("3");
-  const [image, setImage] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
 
+  const [media, setMedia] = useState<any>(null);
+  const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
+
+  const [loading, setLoading] = useState(false);
   const [payVisible, setPayVisible] = useState(false);
   const [bannerData, setBannerData] = useState<any>(null);
 
@@ -47,12 +137,10 @@ export default function CreateBanner() {
 
   const totalAmount = Number(days || 0) * pricePerDay;
 
-  /* ================= PICK IMAGE ================= */
-
-  const pickImage = async () => {
-
+  /* ================= PICK MEDIA ================= */
+  const pickMedia = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images", "videos"],
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 0.8
     });
 
@@ -60,84 +148,34 @@ export default function CreateBanner() {
 
     const asset = result.assets[0];
 
-    if (Platform.OS === "web") {
-      setImage(asset.file);
-    } else {
-      setImage(asset.uri);
-    }
+    const type = asset.type === "video" ? "video" : "image";
 
-  };
-
-  /* ================= UPLOAD IMAGE CLOUDINARY ================= */
-
-  const uploadImage = async () => {
-
-    if (!image) return null;
-
-    const formData = new FormData();
+    setMediaType(type);
 
     if (Platform.OS === "web") {
-
-      formData.append("file", image);
-
+      setMedia(asset.file);
     } else {
-
-      formData.append("file", {
-        uri: image,
-        type: "image/jpeg",
-        name: "banner.jpg"
-      } as any);
-
+      setMedia(asset.uri);
     }
-
-    formData.append("upload_preset", UPLOAD_PRESET);
-
-    const res = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
-      {
-        method: "POST",
-        body: formData
-      }
-    );
-
-    const data = await res.json();
-
-    if (!data.secure_url) {
-
-      console.log(data);
-
-      showAlert("Upload Error", "Image upload failed");
-
-      return null;
-
-    }
-
-    return data.secure_url;
-
   };
 
   /* ================= SUBMIT BANNER ================= */
-
   const submitBanner = async () => {
-
-    if (!title.trim() || !link.trim() || !days.trim() || !image) {
-
-      showAlert("Error", "Fill all fields and select image");
-
+    if (!title.trim() || !link.trim() || !days.trim() || !media || !mediaType) {
+      showAlert("Error", "Fill all fields and select media");
       return;
-
     }
 
     setLoading(true);
 
-    const image_url = await uploadImage();
+    let mediaUrl;
 
-    if (!image_url) {
-
+    try {
+      mediaUrl = await uploadMedia(media, mediaType);
+    } catch (e: any) {
       setLoading(false);
-
+      showAlert("Upload Error", e.message);
       return;
-
     }
 
     const {
@@ -145,13 +183,9 @@ export default function CreateBanner() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-
-      showAlert("Login Required", "Please login first");
-
       setLoading(false);
-
+      showAlert("Login Required", "Please login first");
       return;
-
     }
 
     const { data, error } = await (supabase as any)
@@ -160,7 +194,9 @@ export default function CreateBanner() {
         user_id: user.id,
         title,
         link,
-        image_url,
+        image_url: mediaType === "image" ? mediaUrl : null,
+        video_url: mediaType === "video" ? mediaUrl : null,
+        media_type: mediaType,
         days: Number(days),
         amount: totalAmount,
         status: "pending",
@@ -169,55 +205,40 @@ export default function CreateBanner() {
       .select()
       .single();
 
-   if (error) {
-  setLoading(false);
+    if (error) {
+      setLoading(false);
 
-  /* 🔥 HANDLE JWT EXPIRED */
-  if (error?.message?.includes("JWT expired")) {
-    await supabase.auth.signOut();
-    router.replace("/(auth)/login");
-    return;
-  }
+      if (error.message?.includes("JWT expired")) {
+        await supabase.auth.signOut();
+        router.replace("/(auth)/login");
+        return;
+      }
 
-  showAlert("Error", error.message);
-  return;
-}
+      showAlert("Error", error.message);
+      return;
+    }
+
     setBannerData({ user, bannerId: data.id });
-
     setPayVisible(true);
-
     setLoading(false);
-
   };
 
-  /* ================= SEND PAYMENT ================= */
-
+  /* ================= PAYMENT ================= */
   const sendPayment = async () => {
-
     if (!bannerData) return;
 
     const code = "BANNER-" + Date.now();
 
-    const { error: payError } = await (supabase as any)
-      .from("payments")
-      .insert({
-        user_id: bannerData.user.id,
-        product_type: "banner",
-        amount: totalAmount,
-        momo_name: momoName,
-        momo_number: momoNumber,
-        network: momoNetwork,
-        code,
-        status: "pending"
-      });
-
-    if (payError) {
-
-      showAlert("Error", payError.message);
-
-      return;
-
-    }
+    await (supabase as any).from("payments").insert({
+      user_id: bannerData.user.id,
+      product_type: "banner",
+      amount: totalAmount,
+      momo_name: momoName,
+      momo_number: momoNumber,
+      network: momoNetwork,
+      code,
+      status: "pending"
+    });
 
     showAlert(
       "Request Sent ✅",
@@ -225,94 +246,63 @@ export default function CreateBanner() {
     );
 
     setPayVisible(false);
-
     router.replace("/banner/my-banner");
-
   };
 
   /* ================= UI ================= */
-
   return (
     <>
       <ScrollView style={{ padding: 16 }}>
-
         <Text style={{ fontSize: 22, fontWeight: "bold" }}>
           ♥️ Create Banner
         </Text>
 
         <Text style={{ marginTop: 12 }}>Banner Title</Text>
-
         <TextInput
           value={title}
           onChangeText={setTitle}
           placeholder="Enter banner title"
-          style={{
-            borderWidth: 1,
-            padding: 12,
-            borderRadius: 10,
-            marginBottom: 12
-          }}
+          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
         />
 
-        <Text>Website Link</Text>
-
+        <Text style={{ marginTop: 12 }}>Website Link</Text>
         <TextInput
           value={link}
           onChangeText={setLink}
           placeholder="https://yourwebsite.com"
-          style={{
-            borderWidth: 1,
-            padding: 12,
-            borderRadius: 10,
-            marginBottom: 12
-          }}
+          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
         />
 
-        <Text>Number of Days</Text>
-
+        <Text style={{ marginTop: 12 }}>Number of Days</Text>
         <TextInput
           value={days}
           onChangeText={setDays}
           keyboardType="numeric"
-          style={{
-            borderWidth: 1,
-            padding: 12,
-            borderRadius: 10,
-            marginBottom: 12
-          }}
+          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
         />
 
-        <Text style={{ fontWeight: "bold", marginBottom: 10 }}>
+        <Text style={{ fontWeight: "bold", marginVertical: 10 }}>
           Total Cost: GH₵ {totalAmount}
         </Text>
 
         <TouchableOpacity
-          onPress={pickImage}
+          onPress={pickMedia}
           style={{
             backgroundColor: "#ddd",
             padding: 14,
             borderRadius: 10
           }}
         >
-          <Text>Select Banner Image</Text>
+          <Text>Select Image / Video</Text>
         </TouchableOpacity>
 
-        {image && (
-          <Image
-            source={{
-              uri: Platform.OS === "web"
-                ? URL.createObjectURL(image)
-                : image
-            }}
-            style={{
-              width: "100%",
-              height: 200,
-              borderRadius: 14,
-              marginTop: 12,
-              resizeMode: "contain",
-              backgroundColor: "#f3f4f6"
-            }}
-          />
+        {/* PREVIEW */}
+        {media && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={{ fontWeight: "bold" }}>
+              Selected: {mediaType}
+            </Text>
+          </View>
         )}
 
         <TouchableOpacity
@@ -329,28 +319,17 @@ export default function CreateBanner() {
             {loading ? "Submitting..." : "Submit Banner"}
           </Text>
         </TouchableOpacity>
-
       </ScrollView>
 
+      {/* PAYMENT MODAL */}
       <Modal transparent visible={payVisible}>
-
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "#0007",
-            justifyContent: "center",
-            padding: 20
-          }}
-        >
-
+        <View style={{ flex: 1, backgroundColor: "#0007", justifyContent: "center", padding: 20 }}>
           <View style={{ backgroundColor: "white", padding: 20 }}>
-
             <Text style={{ fontSize: 18, fontWeight: "bold" }}>
               Banner Payment
             </Text>
 
             <Text style={{ marginTop: 10 }}>Pay To:</Text>
-
             <Text style={{ fontWeight: "bold" }}>
               {momoName} - {momoNumber}
             </Text>
@@ -373,23 +352,13 @@ export default function CreateBanner() {
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setPayVisible(false)}>
-              <Text
-                style={{
-                  textAlign: "center",
-                  marginTop: 10,
-                  color: "red"
-                }}
-              >
+              <Text style={{ textAlign: "center", marginTop: 10, color: "red" }}>
                 Cancel
               </Text>
             </TouchableOpacity>
-
           </View>
-
         </View>
-
       </Modal>
     </>
   );
-
 }

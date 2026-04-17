@@ -215,49 +215,98 @@ export default function CreateReel() {
 
   /* ================= POST ================= */
   const postReel = async () => {
-    if (!video) return Alert.alert("Select video first");
+  if (!video) return Alert.alert("Select video first");
 
-    setLoading(true);
+  setLoading(true);
 
-    try {
-      const { data } = await supabase.auth.getUser();
-      if (!data?.user) return Alert.alert("Login required");
+  try {
+    const { data } = await supabase.auth.getUser();
+    if (!data?.user) return Alert.alert("Login required");
 
-      const thumbnail = await generateThumbnail();
+    const thumbnail = await generateThumbnail();
 
-      const { data: newPost } = await (supabase as any)
-        .from("posts")
-        .insert({
-          user_id: data.user.id,
-          caption,
-          local_uri: video.uri,
-          thumbnail_url: thumbnail,
-          status: "uploading",
-          views: 0,
-        })
-        .select()
-        .single();
+    // ✅ STEP 1: INSERT POST (DB)
+    const { data: newPost } = await (supabase as any)
+      .from("posts")
+      .insert({
+        user_id: data.user.id,
+        caption,
+        local_uri: video.uri,
+        thumbnail_url: thumbnail,
+        status: "uploading",
+        views: 0,
+      })
+      .select()
+      .single();
 
-      router.replace("/reels");
+    // ✅ STEP 2: CREATE LOCAL OBJECT (OPTIMISTIC UI)
+    const instantPost = {
+      id: newPost.id,
+      user_id: newPost.user_id,
+      media_url: null,
+      local_uri: video.uri,
+      thumbnail_url: thumbnail,
+      caption,
+      views: 0,
+    };
+   
+    // 🔥 STEP 3: BROADCAST TO ALL DEVICES (APP + WEB INSTANT)
+   const sendBroadcast = (event: string, payload: any) => {
+  const ch = supabase.channel(`broadcast-${Date.now()}`);
 
-      const result = await uploadVideo(video.file || video);
+  ch.send({
+    type: "broadcast",
+    event,
+    payload,
+  });
 
-      await (supabase as any)
-        .from("posts")
-        .update({
-          media_url: result.video,
-          thumbnail_url: result.thumbnail || thumbnail,
-          local_uri: null,
-          status: "ready",
-        })
-        .eq("id", newPost.id);
+  // auto cleanup
+  setTimeout(() => {
+    supabase.removeChannel(ch);
+  }, 1000);
+};
+    // 🔥 STEP 4: GO BACK IMMEDIATELY (NO WAIT)
+    router.replace("/reels");
 
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
+    // ✅ STEP 5: UPLOAD VIDEO (BACKGROUND)
+    const result = await uploadVideo(video.file || video);
 
-    setLoading(false);
-  };
+    // ✅ STEP 6: UPDATE POST AFTER UPLOAD
+    await (supabase as any)
+      .from("posts")
+      .update({
+        media_url: result.video,
+        thumbnail_url: result.thumbnail || thumbnail,
+        local_uri: null,
+        status: "ready",
+      })
+      .eq("id", newPost.id);
+     sendBroadcast("update_post", {
+  id: newPost.id,
+  media_url: result.video,
+  thumbnail_url: result.thumbnail || thumbnail,
+  local_uri: null,
+  status: "ready",
+});
+    // 🔥 STEP 7: BROADCAST UPDATE (SYNC FINAL VIDEO)
+    supabase.channel("reels-sync-broadcast").send({
+      type: "broadcast",
+      event: "update_post",
+      payload: {
+        id: newPost.id,
+        media_url: result.video,
+        thumbnail_url: result.thumbnail || thumbnail,
+        local_uri: null,
+        status: "ready",
+      },
+    });
+
+  } catch (e: any) {
+    Alert.alert("Error", e.message);
+  }
+
+  setLoading(false);
+};
 
   /* ================= UI ================= */
   return (

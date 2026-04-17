@@ -47,59 +47,121 @@ export default function Reels() {
     setActiveIndex(0);
   }, [posts.length]);
 
-  /* ================= REALTIME (FIXED FILTERED) ================= */
-  useEffect(() => {
-    supabase.removeAllChannels();
+ const channelRef = useRef<any>(null);
+const myOnlyRef = useRef(myOnly);
 
-    const channel = supabase.channel("reels-sync");
+useEffect(() => {
+  myOnlyRef.current = myOnly;
+}, [myOnly]);
 
-    channel.on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "posts" },
-      (payload: any) => {
-        const p = payload.new;
+useEffect(() => {
+  if (channelRef.current) return; // 🔥 prevent duplicate
 
-        if (!p?.id) return;
+  const channel = supabase.channel("reels-sync", {
+    config: {
+      broadcast: { self: true },
+    },
+  });
 
-        // 🔥 FILTER FOR MY REELS
-        if (myOnly && p.user_id !== userIdRef.current) return;
+  channelRef.current = channel;
 
-        setPosts((prev) => {
-          if (prev.some((x) => x.id === p.id)) return prev;
-          return [p, ...prev];
-        });
-      }
+  /* ================= BROADCAST ================= */
+
+  channel.on("broadcast", { event: "new_post" }, (payload: any) => {
+    const p = payload.payload;
+    if (!p?.id) return;
+
+    if (myOnlyRef.current && p.user_id !== userIdRef.current) return;
+
+    setPosts((prev) => {
+      if (prev.some((x) => x.id === p.id)) return prev;
+      return [{ ...p, views: p.views ?? 0 }, ...prev];
+    });
+  });
+
+  channel.on("broadcast", { event: "update_post" }, (payload: any) => {
+    const updated = payload.payload;
+    if (!updated?.id) return;
+
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === updated.id
+          ? {
+              ...p,
+              ...updated,
+              views: updated.views ?? p.views ?? 0,
+            }
+          : p
+      )
     );
+  });
 
-    channel.on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "posts" },
-      (payload: any) => {
-        const updated = payload.new;
+  channel.on("broadcast", { event: "delete_post" }, (payload: any) => {
+    const id = payload.payload?.id;
+    if (!id) return;
 
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === updated.id ? { ...p, ...updated } : p
-          )
-        );
-      }
-    );
+    setPosts((prev) => prev.filter((p) => p.id !== id));
+  });
 
-    channel.on(
-      "postgres_changes",
-      { event: "DELETE", schema: "public", table: "posts" },
-      (payload: any) => {
-        const id = payload.old.id;
-        setPosts((prev) => prev.filter((p) => p.id !== id));
-      }
-    );
+  /* ================= REALTIME ================= */
 
-    channel.subscribe();
+  channel.on(
+    "postgres_changes",
+    { event: "INSERT", schema: "public", table: "posts" },
+    (payload: any) => {
+      const p = payload.new;
+      if (!p?.id) return;
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [myOnly]);
+      if (myOnlyRef.current && p.user_id !== userIdRef.current) return;
+
+      setPosts((prev) => {
+        if (prev.some((x) => x.id === p.id)) return prev;
+        return [{ ...p, views: p.views ?? 0 }, ...prev];
+      });
+    }
+  );
+
+  channel.on(
+    "postgres_changes",
+    { event: "UPDATE", schema: "public", table: "posts" },
+    (payload: any) => {
+      const updated = payload.new;
+      if (!updated?.id) return;
+
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === updated.id
+            ? {
+                ...p,
+                ...updated,
+                views: updated.views ?? 0,
+              }
+            : p
+        )
+      );
+    }
+  );
+
+  channel.on(
+    "postgres_changes",
+    { event: "DELETE", schema: "public", table: "posts" },
+    (payload: any) => {
+      const id = payload.old?.id;
+      if (!id) return;
+
+      setPosts((prev) => prev.filter((p) => p.id !== id));
+    }
+  );
+
+  channel.subscribe();
+
+  return () => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+  };
+}, []);
 
   /* ================= LOAD POSTS ================= */
   const loadPosts = async (reset = false) => {
@@ -117,7 +179,6 @@ export default function Reels() {
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      // 🔥 KEY FIX: APPLY FILTER HERE TOO
       if (myOnly && userIdRef.current) {
         query = query.eq("user_id", userIdRef.current);
       }
@@ -130,6 +191,8 @@ export default function Reels() {
       }
 
       if (data) {
+        setLoading(false);
+
         if (reset) {
           ids.current.clear();
           setPosts([]);
@@ -147,7 +210,7 @@ export default function Reels() {
               local_uri: p.local_uri,
               thumbnail_url: p.thumbnail_url,
               caption: p.caption,
-              views: p.views,
+              views: p.views ?? 0,
             };
           });
 
@@ -159,7 +222,6 @@ export default function Reels() {
       console.log(e);
     }
 
-    setLoading(false);
     loadingMore.current = false;
   };
 
@@ -191,7 +253,6 @@ export default function Reels() {
     if (page !== 0) loadPosts();
   }, [page]);
 
-  /* ================= LOADING ================= */
   if (loading && posts.length === 0) {
     return (
       <View style={styles.loader}>
@@ -200,7 +261,6 @@ export default function Reels() {
     );
   }
 
-  /* ================= UI ================= */
   return (
     <ReelsFeed
       reels={posts}

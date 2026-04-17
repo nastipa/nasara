@@ -97,15 +97,16 @@ export default function ItemDetail() {
   /* ============================
      VIDEO PLAYER
   ============================ */
-  const videoUrl = item?.video_url ?? "";
+  const videoUrl = item?.video_url?.trim() || "";
 
-  const player = useVideoPlayer(videoUrl, (p) => {
-    if (videoUrl) {
+const hasVideo = videoUrl.length > 5;
+
+const player = hasVideo
+  ? useVideoPlayer(videoUrl, (p) => {
       p.loop = true;
       p.play();
-    }
-  });
-
+    })
+  : null;
   /* ============================
      LOADING STATES
   ============================ */
@@ -201,15 +202,15 @@ export default function ItemDetail() {
               </Text>
             </TouchableOpacity>
 
-            {item.video_url ? (
-              <VideoView
-                player={player}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                }}
-              />
-            ) : item.image_url ? (
+           {hasVideo && player ? (
+  <VideoView
+    player={player}
+    style={{
+      width: "100%",
+      height: "100%",
+    }}
+  />
+) : item.image_url ? (
               <Image
                 source={{ uri: item.image_url }}
                 style={{

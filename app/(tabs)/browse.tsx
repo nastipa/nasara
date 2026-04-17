@@ -193,47 +193,82 @@ useEffect(() => {
       },
     ]);
   };
-   const deleteSpecialItem = async (item: Item) => {
-  let table = "";
+   /* ================= ADMIN DELETE SPECIAL ITEMS (FIXED) ================= */
+const deleteSpecialItem = async (item: Item) => {
+  if (!isAdmin) return;
 
-  if (item.type === "ad") table = "ads";
-  if (item.type === "banner") table = "banner";
-  if (item.type === "promoted") table = "promoted";
-  if (item.type === "boosted") table = "items_live";
-
-  Alert.alert("Delete?", "Remove this item?", [
+  Alert.alert("Delete?", "Remove this item permanently?", [
     { text: "Cancel", style: "cancel" },
     {
       text: "Delete",
       style: "destructive",
       onPress: async () => {
-        let query;
+        try {
+          let query;
 
-        if (item.type === "boosted") {
-          query = (supabase as any)
-            .from("items_live")
-            .update({ is_boosted: false })
-            .eq("id", item.id);
-        } else if (item.type === "promoted") {
-          query = supabase
-            .from("promoted")
-            .delete()
-            .eq("id", item.id);
-        } else {
-          query = supabase
-            .from(table)
-            .delete()
-            .eq("id", item.id.replace(`${item.type}-`, ""));
+          /* ================= ADS ================= */
+          if (item.type === "ad") {
+            const realId = item.id.replace("ad-", "");
+
+            query = supabase
+              .from("ads")
+              .delete()
+              .eq("id", realId);
+          }
+
+          /* ================= BANNERS ================= */
+          else if (item.type === "banner") {
+            const realId = item.id.replace("banner-", "");
+
+            query = supabase
+              .from("banner")
+              .delete()
+              .eq("id", realId);
+          }
+
+          /* ================= PROMOTED ================= */
+          else if (item.type === "promoted") {
+            const realId = item.id;
+
+            query = supabase
+              .from("promoted")
+              .delete()
+              .eq("id", realId);
+          }
+
+          /* ================= BOOSTED (NOT DELETE → UNBOOST) ================= */
+          else if (item.type === "boosted") {
+            query = (supabase as any)
+              .from("items_live")
+              .update({
+                is_boosted: false,
+                boosted_until: null,
+              })
+              .eq("id", item.id);
+          }
+
+          /* ================= NORMAL ITEM ================= */
+          else {
+            query = supabase
+              .from("items_live")
+              .delete()
+              .eq("id", item.id);
+          }
+
+          const { error } = await query;
+
+          if (error) {
+            Alert.alert("Delete Failed", error.message);
+            return;
+          }
+
+          Alert.alert("Success", "Item removed");
+
+          refreshAll();
+        } catch (err: any) {
+          console.log(err);
+          Alert.alert("Error", "Something went wrong");
         }
-
-        const { error } = await query;
-
-        if (error) {
-          Alert.alert("Error", error.message);
-          return;
-        }
-
-        refreshAll();
       },
     },
   ]);
@@ -375,6 +410,7 @@ setLoadingMore(false);
         title,
         price,
         image_url,
+        video_url,
         location,
         category
       )
@@ -402,6 +438,7 @@ setLoadingMore(false);
       title: item.title,
       price: item.price,
       image_url: item.image_url,
+      video_url: item.video_url,
       location: item.location,
       negotiable: false,
       created_at: item.created_at,
@@ -442,6 +479,7 @@ setLoadingMore(false);
           title: b.title,
           price: b.price,
           image_url: b.image_url,
+          video_url: b.video_url,
           location: b.location,
           negotiable: false,
           type: "boosted",
@@ -479,6 +517,7 @@ setLoadingMore(false);
     id: "ad-" + ad.id,
     title: ad.title,
     image_url: ad.image_url,
+    video_url: ad.video_url,
     url: ad.link || ad.url,
     expires_at: ad.expires_at,
     type: "ad" as const,
@@ -515,6 +554,7 @@ const loadBanners = async () => {
       id: "banner-" + b.id,
       title: b.title,
       image_url: b.image_url,
+      video_url: b.video_url,
       url: b.url,
        expires_at: b.expires_at, // ADD THIS
       type: "banner" as const,
@@ -778,7 +818,7 @@ style={{ backgroundColor: "#0f172a" }}
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/aKmjzGQbmicV6NHKzgGf5v.apk"
+      "https://expo.dev/artifacts/eas/2Y4xpyPYrzM6QGXXs4W9iW.apk"
     )
   }
   style={{

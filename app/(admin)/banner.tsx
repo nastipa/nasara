@@ -1,8 +1,8 @@
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
-  Image,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -35,7 +35,6 @@ export default function AdminBannerApproval() {
 
   const approveBanner = async (banner: any) => {
     try {
-      /* calculate expiration */
       const days = Number(banner.days) || 1;
 
       const expireDate = new Date();
@@ -43,9 +42,7 @@ export default function AdminBannerApproval() {
 
       const expires_at = expireDate.toISOString();
 
-      /* fix empty title */
       let title = banner.title;
-
       if (!title || title.trim() === "") {
         title = "Sponsored Banner";
       }
@@ -55,8 +52,8 @@ export default function AdminBannerApproval() {
         .update({
           status: "approved",
           is_active: true,
-          title: title,
-          expires_at: expires_at,
+          title,
+          expires_at,
         })
         .eq("id", banner.id);
 
@@ -65,8 +62,7 @@ export default function AdminBannerApproval() {
         return;
       }
 
-      Alert.alert("Approved ✅", "Banner is now live on Browse.");
-
+      Alert.alert("Approved ✅", "Banner is now live.");
       loadBanners();
     } catch (err) {
       console.log(err);
@@ -76,7 +72,7 @@ export default function AdminBannerApproval() {
 
   return (
     <ScrollView style={{ padding: 16 }}>
-      {/* BACK BUTTON */}
+      {/* BACK */}
       <TouchableOpacity
         onPress={() => router.push("/(admin)")}
         style={{
@@ -108,20 +104,40 @@ export default function AdminBannerApproval() {
             padding: 14,
             borderRadius: 12,
             borderColor: "#ddd",
+            backgroundColor: "white",
           }}
         >
-          {b.image_url && (
+          {/* ================= MEDIA (IMAGE OR VIDEO) ================= */}
+
+          {b.video_url ? (
+            <video
+              src={b.video_url}
+              controls
+              style={{
+                width: "100%",
+                height: 200,
+                borderRadius: 12,
+                backgroundColor: "#000",
+              }}
+            />
+          ) : b.image_url ? (
             <Image
               source={{ uri: b.image_url }}
               style={{
                 width: "100%",
                 height: 200,
                 borderRadius: 12,
-                resizeMode: "contain",
                 backgroundColor: "#f3f4f6",
               }}
+              contentFit="contain"
             />
+          ) : (
+            <Text style={{ color: "red" }}>
+              ⚠ No media available
+            </Text>
           )}
+
+          {/* ================= DETAILS ================= */}
 
           <Text style={{ fontWeight: "bold", marginTop: 10 }}>
             {b.title || "Sponsored Banner"}
@@ -130,6 +146,8 @@ export default function AdminBannerApproval() {
           <Text>Days: {b.days}</Text>
           <Text>Amount: GH₵ {b.amount}</Text>
           <Text>Link: {b.link}</Text>
+
+          {/* ================= APPROVE BUTTON ================= */}
 
           <TouchableOpacity
             onPress={() => approveBanner(b)}
