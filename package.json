@@ -11,6 +11,8 @@
     "build:web": "npx expo export --platform web"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1032.0",
+    "@aws-sdk/s3-request-presigner": "^3.1032.0",
     "@expo/vector-icons": "^15.1.1",
     "@livekit/components-react": "^2.9.19",
     "@livekit/react-native": "^2.9.6",
