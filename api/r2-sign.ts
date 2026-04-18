@@ -1,46 +1,43 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const client = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-  },
-});
-
 export default async function handler(req: any, res: any) {
   try {
-    const { fileName, contentType } = req.body;
+    const R2 = new S3Client({
+      region: "auto",
+      endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: process.env.R2_ACCESS_KEY!,
+        secretAccessKey: process.env.R2_SECRET_KEY!,
+      },
+    });
 
-    // 🔥 enforce MP4 (VERY IMPORTANT)
-    if (contentType !== "video/mp4") {
-      return res.status(400).json({
-        error: "Only MP4 videos allowed",
-      });
-    }
-
-    const key = `videos/${Date.now()}-${fileName}`;
+    const key = `reels/${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2)}.mp4`;
 
     const command = new PutObjectCommand({
       Bucket: process.env.R2_BUCKET!,
       Key: key,
-      ContentType: contentType,
+      ContentType: "video/mp4",
     });
 
-    const signedUrl = await getSignedUrl(client, command, {
-      expiresIn: 60 * 5,
+    const uploadUrl = await getSignedUrl(R2, command, {
+      expiresIn: 60,
     });
 
-    const publicUrl = `${process.env.R2_PUBLIC_BASE}/${key}`;
+    const fileUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
 
     return res.status(200).json({
-      signedUrl,
-      publicUrl,
+      uploadUrl,
+      fileUrl,
     });
-  } catch (e) {
-    console.log(e);
-    return res.status(500).json({ error: "Failed to sign URL" });
+
+  } catch (error) {
+    console.log("R2 SIGN ERROR:", error);
+
+    return res.status(500).json({
+      error: "Failed to generate signed URL",
+    });
   }
 }
