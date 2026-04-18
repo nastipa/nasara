@@ -276,40 +276,29 @@ const postReel = async () => {
       return;
     }
 
+    // ================= STEP 1: UPLOAD FIRST (VERY IMPORTANT FIX) =================
+    const result = await uploadWithProgress(video.uri);
+
     const thumbnail = await generateThumbnail();
 
-    // ✅ STEP 1: INSERT (HIDDEN FROM FEED)
+    // ================= STEP 2: ONLY INSERT AFTER UPLOAD =================
     const { data: newPost, error } = await (supabase as any)
       .from("posts")
       .insert({
         user_id: data.user.id,
         caption,
-        local_uri: video.uri,
-        thumbnail_url: thumbnail,
-        status: "uploading", // 🔥 IMPORTANT
+        media_url: result.video,        // ✅ already uploaded
+        thumbnail_url: result.thumbnail || thumbnail,
+        status: "ready",                // ✅ ONLY READY POSTS
         views: 0,
       })
       .select()
       .single();
 
-    if (error || !newPost) throw error;
+    if (error) throw error;
 
-    // 👉 go back immediately (user sees progress)
+    // ================= STEP 3: GO BACK =================
     router.replace("/reels");
-
-    // ✅ STEP 2: UPLOAD WITH PROGRESS
-    const result = await uploadWithProgress(video.uri);
-
-    // ✅ STEP 3: FINAL UPDATE (THIS WAS MISSING ❗)
-    await (supabase as any)
-      .from("posts")
-      .update({
-        media_url: result.video,
-        thumbnail_url: result.thumbnail || thumbnail,
-        local_uri: null,
-        status: "ready", // 🔥 THIS FIXES EVERYTHING
-      })
-      .eq("id", newPost.id);
 
   } catch (e: any) {
     Alert.alert("Error", e.message || "Upload failed");

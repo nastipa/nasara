@@ -45,77 +45,57 @@ export default function Reels() {
   /* ================= RESET INDEX ================= */
   useEffect(() => {
     setActiveIndex(0);
-  }, [posts.length]);
+  }, [myOnly]);
 
-  /* ================= REALTIME (FULL FIX) ================= */
+  /* ================= REALTIME (FIXED FOREVER) ================= */
   useEffect(() => {
-    // 🔥 remove old channel ALWAYS
+    // 🔥 CLEAN OLD CHANNEL
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
     }
 
-    const channel = supabase.channel("reels-sync-" + Date.now());
+    const channelName = `reels-sync-${Date.now()}-${Math.random()}`;
+    const channel = supabase.channel(channelName);
 
     channel
-      // INSERT
+      /* ================= INSERT ================= */
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "posts" },
         (payload: any) => {
           const p = payload.new;
 
-          // ❗ show your own post immediately even if not ready
-          if (p.status !== "ready") {
-            if (p.user_id === userIdRef.current) {
-              setPosts((prev) => {
-                if (prev.some((x) => x.id === p.id)) return prev;
-                return [{ ...p, views: 0 }, ...prev];
-              });
-            }
-            return;
-          }
-
-          if (myOnly && p.user_id !== userIdRef.current) return;
-
           setPosts((prev) => {
             if (prev.some((x) => x.id === p.id)) return prev;
-            return [{ ...p, views: p.views ?? 0 }, ...prev];
+
+            return [
+              {
+                ...p,
+                views: p.views ?? 0,
+              },
+              ...prev,
+            ];
           });
         }
       )
 
-      // UPDATE
+      /* ================= UPDATE ================= */
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "posts" },
         (payload: any) => {
           const updated = payload.new;
 
-          if (updated.status !== "ready") return;
-
-          setPosts((prev) => {
-            const exists = prev.find((p) => p.id === updated.id);
-
-            // 🔥 if missing → force insert
-            if (!exists) {
-              return [{ ...updated, views: updated.views ?? 0 }, ...prev];
-            }
-
-            return prev.map((p) =>
-              p.id === updated.id
-                ? {
-                    ...p,
-                    ...updated,
-                    views: updated.views ?? p.views ?? 0,
-                  }
-                : p
-            );
-          });
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === updated.id ? { ...p, ...updated } : p
+            )
+          );
         }
       )
 
-      // DELETE
+      /* ================= DELETE ================= */
       .on(
         "postgres_changes",
         { event: "DELETE", schema: "public", table: "posts" },
@@ -127,18 +107,15 @@ export default function Reels() {
         }
       )
 
-      // ✅ subscribe LAST
       .subscribe();
 
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+      supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [myOnly]);
+  }, []);
 
   /* ================= LOAD POSTS ================= */
   const loadPosts = async (reset = false) => {
@@ -202,14 +179,14 @@ export default function Reels() {
     loadingMore.current = false;
   };
 
-  /* ================= AUTO REFRESH (VERY IMPORTANT) ================= */
+  /* ================= INIT ================= */
   useEffect(() => {
-    const interval = setInterval(() => {
-      loadPosts(true);
-    }, 15000); // every 15s
+    loadPosts(true);
+  }, [myOnly]);
 
-    return () => clearInterval(interval);
-  }, []);
+  useEffect(() => {
+    if (page !== 0) loadPosts();
+  }, [page]);
 
   /* ================= DELETE ================= */
   const handleDelete = async (id: string) => {
@@ -226,18 +203,8 @@ export default function Reels() {
     if (!ok) return;
 
     setPosts((p) => p.filter((x) => x.id !== id));
-
     await supabase.from("posts").delete().eq("id", id);
   };
-
-  /* ================= INIT ================= */
-  useEffect(() => {
-    loadPosts(true);
-  }, [myOnly]);
-
-  useEffect(() => {
-    if (page !== 0) loadPosts();
-  }, [page]);
 
   /* ================= LOADING ================= */
   if (loading && posts.length === 0) {
