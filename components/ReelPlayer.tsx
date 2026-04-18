@@ -5,7 +5,6 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  Easing,
   Image,
   StyleSheet,
   TouchableOpacity,
@@ -17,7 +16,7 @@ const { width, height } = Dimensions.get("window");
 type Props = {
   id: string;
   url: string | null;
-  localUri?: string | File | null;
+  localUri?: string | null;
   active: boolean;
   thumbnail?: string | null;
 };
@@ -29,95 +28,102 @@ export default function ReelPlayer({
   thumbnail,
 }: Props) {
   const [paused, setPaused] = useState(true);
-  const [muted, setMuted] = useState(false); // ✅ default NOT muted
   const [loading, setLoading] = useState(true);
+
+  const mutedRef = useRef(false);
+  const [, forceUpdate] = useState(0);
 
   const opacity = useRef(new Animated.Value(0)).current;
 
-  /* ================= SOURCE ================= */
-  const source = useMemo(() => {
-    if (
-      typeof localUri === "string" &&
-      (localUri.startsWith("file") || localUri.startsWith("blob:"))
-    ) {
-      return { uri: localUri };
-    }
-
-    if (typeof url === "string" && url && !url.includes("undefined")) {
-      return { uri: url };
-    }
-
-    return { uri: "" };
+  /* ================= SAFE VIDEO URL ================= */
+  const videoUrl = useMemo(() => {
+    const raw = localUri || url;
+    if (!raw || typeof raw !== "string") return null;
+    return raw;
   }, [url, localUri]);
 
-  const player = useVideoPlayer(source);
+  /* ================= PLAYER ================= */
+  const player = useVideoPlayer({
+    uri: videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4",
+  });
 
-  /* ================= LOAD ================= */
-  useEffect(() => {
-    if (!player) return;
-
-    setLoading(true);
-    opacity.setValue(0);
-
-    const sub = player.addListener("statusChange", (s) => {
-      if (s.status === "readyToPlay") {
-        setLoading(false);
-
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 200,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }).start();
-      }
-    });
-
-    return () => sub.remove();
-  }, [player]);
-
-  /* ================= AUTOPLAY + SOUND FIX ================= */
-  useEffect(() => {
-    if (!player) return;
-
-    player.loop = true;
-
-    try {
-      if (active) {
-        player.muted = false;       // ✅ ALWAYS unmute when active
-        setMuted(false);            // sync UI
-
-        player.play();
-        setPaused(false);
-      } else {
-        player.pause();
-        player.currentTime = 0;
-
-        setPaused(true);
-      }
-    } catch {}
-  }, [active, player]);
-
-  /* ================= KEEP MUTE SYNC ================= */
+  /* ================= RESET WHEN VIDEO CHANGES ================= */
   useEffect(() => {
     if (!player) return;
 
     try {
-      player.muted = muted;
+      player.pause();
+      player.currentTime = 0;
     } catch {}
-  }, [muted, player]);
+  }, [videoUrl, player]);
 
-  /* ================= CLEANUP ================= */
+  /* ================= CLEAN UNMOUNT ================= */
   useEffect(() => {
     return () => {
       try {
-        player?.pause();
+        player?.pause?.();
+        player.currentTime = 0;
       } catch {}
     };
   }, [player]);
 
-  /* ================= ACTIONS ================= */
+  /* ================= LOADING (NO duration dependency) ================= */
+  useEffect(() => {
+    if (!videoUrl) return;
+
+    setLoading(true);
+    opacity.setValue(0);
+
+    // fallback loader (reliable across web + apk)
+    const timer = setTimeout(() => {
+      setLoading(false);
+
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [videoUrl, active]);
+
+  /* ================= AUTOPLAY ================= */
+  useEffect(() => {
+    if (!player || !videoUrl) return;
+
+    player.loop = true;
+
+    if (active) {
+      try {
+        player.muted = mutedRef.current;
+        player.play();
+        setPaused(false);
+      } catch (e) {
+        console.log("play error:", e);
+      }
+    } else {
+      try {
+        player.pause();
+        player.currentTime = 0;
+      } catch {}
+      setPaused(true);
+    }
+  }, [active, player, videoUrl]);
+
+  /* ================= CONTROLS ================= */
+  const toggleMute = () => {
+    mutedRef.current = !mutedRef.current;
+
+    try {
+      player.muted = mutedRef.current;
+    } catch {}
+
+    forceUpdate((p) => p + 1);
+  };
+
   const togglePlay = () => {
-    if (!player) return;
+    if (!videoUrl) return;
 
     try {
       if (paused) {
@@ -130,10 +136,6 @@ export default function ReelPlayer({
     } catch {}
   };
 
-  const toggleMute = () => {
-    setMuted((prev) => !prev); // ✅ simple + synced
-  };
-
   /* ================= UI ================= */
   return (
     <TouchableOpacity
@@ -141,41 +143,37 @@ export default function ReelPlayer({
       onPress={togglePlay}
       style={styles.container}
     >
-      {/* THUMBNAIL */}
-      {!player && thumbnail && (
+      {/* Thumbnail fallback */}
+      {!videoUrl && thumbnail && (
         <Image source={{ uri: thumbnail }} style={styles.video} />
       )}
 
-      {/* VIDEO */}
-      {player && (
+      {/* Video */}
+      {videoUrl && (
         <Animated.View style={[styles.video, { opacity }]}>
-          <VideoView
-            player={player}
-            style={styles.video}
-            contentFit="cover"
-          />
+          <VideoView player={player} style={styles.video} />
         </Animated.View>
       )}
 
-      {/* LOADER */}
-      {player && loading && (
+      {/* Loader */}
+      {videoUrl && loading && (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="white" />
         </View>
       )}
 
-      {/* PLAY ICON */}
-      {paused && player && !loading && (
+      {/* Play icon */}
+      {paused && videoUrl && !loading && (
         <View style={styles.playButton}>
           <Ionicons name="play" size={80} color="white" />
         </View>
       )}
 
-      {/* VOLUME */}
-      {player && (
+      {/* Mute button */}
+      {videoUrl && (
         <TouchableOpacity style={styles.volume} onPress={toggleMute}>
           <Ionicons
-            name={muted ? "volume-mute" : "volume-high"}
+            name={mutedRef.current ? "volume-mute" : "volume-high"}
             size={26}
             color="white"
           />

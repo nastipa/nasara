@@ -3,7 +3,7 @@ import { Platform } from "react-native";
 const BASE_URL = "https://nasara-upload-server.onrender.com";
 const MAX_SIZE_MB = 20;
 
-/* ================= STEP 4: PRELOAD HELPER ================= */
+/* ================= PRELOAD HELPER ================= */
 const preloadVideo = (url: string) => {
   if (Platform.OS !== "web") return;
 
@@ -13,11 +13,13 @@ const preloadVideo = (url: string) => {
     video.preload = "auto";
     video.muted = true;
     video.playsInline = true;
+    video.load(); // ✅ important
   } catch (e) {
     console.log("preload failed:", e);
   }
 };
 
+/* ================= MAIN UPLOAD ================= */
 export const uploadVideo = async (
   fileOrUri: any,
   onProgress?: (p: number) => void
@@ -32,18 +34,26 @@ export const uploadVideo = async (
       file = fileOrUri;
     } 
     else if (fileOrUri instanceof Blob) {
-      file = new File([fileOrUri], "video.webm", { type: "video/webm" });
+      // ✅ FORCE MP4
+      file = new File([fileOrUri], `video_${Date.now()}.mp4`, {
+        type: "video/mp4",
+      });
     } 
     else if (fileOrUri?.uri) {
       const response = await fetch(fileOrUri.uri);
       const blob = await response.blob();
-      file = new File([blob], "video.mp4", { type: blob.type });
+
+      file = new File([blob], `video_${Date.now()}.mp4`, {
+        type: "video/mp4",
+      });
     } 
     else {
-      throw new Error("Invalid file");
+      throw new Error("Invalid file input");
     }
 
-    if (file.size / (1024 * 1024) > MAX_SIZE_MB) {
+    /* ===== SIZE CHECK ===== */
+    const sizeMB = file.size / (1024 * 1024);
+    if (sizeMB > MAX_SIZE_MB) {
       throw new Error("Max 20MB allowed");
     }
 
@@ -62,12 +72,12 @@ export const uploadVideo = async (
     }
 
     if (!uri) {
-      throw new Error("Invalid file");
+      throw new Error("Invalid file input");
     }
 
     formData.append("file", {
       uri,
-      type: "video/mp4",
+      type: "video/mp4", // ✅ force mp4
       name: `video_${Date.now()}.mp4`,
     } as any);
   }
@@ -78,20 +88,24 @@ export const uploadVideo = async (
     body: formData,
   });
 
+  if (!res.ok) {
+    throw new Error("Upload request failed");
+  }
+
   const data = await res.json();
 
-  if (!data.success || !data.url) {
+  if (!data?.success || !data?.url) {
     throw new Error("Upload failed");
   }
 
   const videoUrl = data.url;
 
-  /* ================= STEP 4 APPLY PRELOAD ================= */
+  /* ================= PRELOAD ================= */
   preloadVideo(videoUrl);
 
   return {
     video: videoUrl,
-    thumbnail: videoUrl + "#t=1",
+    thumbnail: videoUrl + "#t=1", // ⚠️ optional, backend thumbnail is better
     public_id: null,
   };
 };
