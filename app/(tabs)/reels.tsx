@@ -10,21 +10,10 @@ import {
 import ReelsFeed from "../../components/ReelsFeed";
 import { supabase } from "../../lib/supabase";
 
-type Post = {
-  id: string;
-  media_url: string | null;
-  local_uri?: string | null;
-  thumbnail_url?: string | null;
-  caption?: string;
-  user_id: string;
-  views?: number;
-  status?: string;
-};
-
 const PAGE_SIZE = 8;
 
 export default function Reels() {
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [posts, setPosts] = useState<any[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -34,8 +23,9 @@ export default function Reels() {
   const loadingMore = useRef(false);
   const channelRef = useRef<any>(null);
   const ids = useRef(new Set<string>());
+  const mounted = useRef(false);
 
-  /* ================= GET USER ================= */
+  /* ================= USER ================= */
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       userIdRef.current = data?.user?.id ?? null;
@@ -50,83 +40,77 @@ export default function Reels() {
     setPosts([]);
   }, [myOnly]);
 
-  /* ================= REALTIME (FIXED FOREVER) ================= */
+  /* ================= REALTIME (FINAL FIX) ================= */
   useEffect(() => {
-    if (channelRef.current) return; // 🔥 DO NOT RECREATE
+  let channel: any;
 
-    const channel = supabase
-      .channel("reels-sync-global")
+  const setup = async () => {
+    // 🧠 ALWAYS CLEAN FIRST
+    if (channelRef.current) {
+      await supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
 
+    // 🔥 CREATE ONLY ONCE
+    channel = supabase.channel("reels-global");
+
+    channel
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "posts" },
+        { event: "*", schema: "public", table: "posts" },
         (payload: any) => {
-          const p = payload.new;
+          const newRow = payload.new;
+          const oldRow = payload.old;
 
-          if (p.status !== "ready") return; // 🔥 ONLY READY
+          if (payload.eventType === "INSERT") {
+            setPosts((prev) => {
+              if (prev.some((p) => p.id === newRow.id)) return prev;
+              return [{ ...newRow, views: 0 }, ...prev];
+            });
+          }
 
-          if (myOnly && p.user_id !== userIdRef.current) return;
+          if (payload.eventType === "UPDATE") {
+            setPosts((prev) =>
+              prev.map((p) =>
+                p.id === newRow.id ? { ...p, ...newRow } : p
+              )
+            );
+          }
 
-          setPosts((prev) => {
-            if (prev.some((x) => x.id === p.id)) return prev;
-            return [{ ...p, views: p.views ?? 0 }, ...prev];
-          });
+          if (payload.eventType === "DELETE") {
+            setPosts((prev) =>
+              prev.filter((p) => p.id !== oldRow.id)
+            );
+          }
         }
       )
-
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "posts" },
-        (payload: any) => {
-          const updated = payload.new;
-
-          if (updated.status !== "ready") return;
-
-          setPosts((prev) =>
-            prev.map((p) =>
-              p.id === updated.id
-                ? { ...p, ...updated }
-                : p
-            )
-          );
-        }
-      )
-
-      .on(
-        "postgres_changes",
-        { event: "DELETE", schema: "public", table: "posts" },
-        (payload: any) => {
-          const id = payload.old?.id;
-          if (!id) return;
-
-          setPosts((prev) => prev.filter((p) => p.id !== id));
-        }
-      )
-
-      .subscribe();
+      .subscribe(); // ✅ ONLY ONCE HERE
 
     channelRef.current = channel;
+  };
 
-    return () => {
-      supabase.removeChannel(channel);
+  setup();
+
+  return () => {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
       channelRef.current = null;
-    };
-  }, []);
-
+    }
+  };
+}, []); // ⚠️ IMPORTANT: EMPTY DEPENDENCY ONLY
   /* ================= LOAD POSTS ================= */
   const loadPosts = async (reset = false) => {
     if (loadingMore.current) return;
     loadingMore.current = true;
 
     try {
-      const currentPage = reset ? 0 : page;
-      const from = currentPage * PAGE_SIZE;
+      const from = page * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
 
       let query = supabase
         .from("posts")
         .select("*")
-        .eq("status", "ready") // 🔥 CRITICAL FIX
+        .eq("status", "ready")
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -136,10 +120,7 @@ export default function Reels() {
 
       const { data, error } = await query;
 
-      if (error) {
-        console.log(error);
-        return;
-      }
+      if (error) return console.log(error);
 
       if (data) {
         setLoading(false);
@@ -150,26 +131,16 @@ export default function Reels() {
             ids.current.add(p.id);
 
             return {
-              id: p.id,
-              user_id: p.user_id,
-              media_url: p.media_url,
-              local_uri: null,
-              thumbnail_url: p.thumbnail_url,
-              caption: p.caption,
+              ...p,
               views: p.views ?? 0,
-              status: p.status,
             };
           });
 
-        setPosts((prev) =>
-          reset ? formatted : [...prev, ...formatted]
-        );
+        setPosts((prev) => (reset ? formatted : [...prev, ...formatted]));
       }
-    } catch (e) {
-      console.log(e);
+    } finally {
+      loadingMore.current = false;
     }
-
-    loadingMore.current = false;
   };
 
   /* ================= INIT ================= */
@@ -199,7 +170,7 @@ export default function Reels() {
     await supabase.from("posts").delete().eq("id", id);
   };
 
-  /* ================= LOADING ================= */
+  /* ================= LOADER ================= */
   if (loading && posts.length === 0) {
     return (
       <View style={styles.loader}>
