@@ -20,7 +20,6 @@ type Props = {
   localUri?: string | null;
   active: boolean;
   thumbnail?: string | null;
-  onView?: (id: string) => void;
 };
 
 export default function ReelPlayer({
@@ -29,7 +28,6 @@ export default function ReelPlayer({
   localUri,
   active,
   thumbnail,
-  onView,
 }: Props) {
   const [paused, setPaused] = useState(true);
   const [muted, setMuted] = useState(false);
@@ -37,42 +35,55 @@ export default function ReelPlayer({
 
   const opacity = useRef(new Animated.Value(0)).current;
 
-  /* ================= SAFE SOURCE ================= */
-  const source = useMemo(() => {
-    const raw = localUri || url;
+  /* ================= FIX 1 + 2: SAFE SOURCE (LOCAL FIRST) ================= */
+  const videoUrl = useMemo(() => {
+    if (localUri && typeof localUri === "string") {
+      if (
+        localUri.startsWith("file") ||
+        localUri.startsWith("blob") ||
+        localUri.startsWith("http")
+      ) {
+        return localUri;
+      }
+    }
 
-    if (!raw || typeof raw !== "string") return null;
-    if (raw.includes("undefined")) return null;
+    if (url && typeof url === "string" && !url.includes("undefined")) {
+      return url;
+    }
 
-    return { uri: raw };
+    return null;
   }, [url, localUri]);
 
-  const player = useVideoPlayer(source);
+  const player = useVideoPlayer(
+    videoUrl ? { uri: videoUrl } : null
+  );
 
-  /* ================= REAL LOAD DETECTION ================= */
+  /* ================= FIX 3: REAL LOAD DETECTION ================= */
   useEffect(() => {
     if (!player) return;
 
     setLoading(true);
     opacity.setValue(0);
 
-    const sub = player.addListener("statusChange", (status) => {
-      if (status.status === "readyToPlay") {
-        setLoading(false);
+    const sub = player.addListener("statusChange", (s) => {
+      if (s.status === "readyToPlay") {
+        requestAnimationFrame(() => {
+          setLoading(false);
 
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }).start();
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 200,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }).start();
+        });
       }
     });
 
     return () => sub.remove();
   }, [player]);
 
-  /* ================= AUTOPLAY ================= */
+  /* ================= FIX 4: AUTOPLAY ================= */
   useEffect(() => {
     if (!player) return;
 
@@ -81,12 +92,8 @@ export default function ReelPlayer({
     try {
       if (active) {
         player.muted = false;
-        setMuted(false);
-
         player.play();
         setPaused(false);
-
-        if (onView) onView(id);
       } else {
         player.pause();
         player.currentTime = 0;
@@ -95,7 +102,7 @@ export default function ReelPlayer({
     } catch {}
   }, [active, player]);
 
-  /* ================= MUTE ================= */
+  /* ================= MUTE SYNC ================= */
   useEffect(() => {
     if (!player) return;
 
@@ -113,7 +120,6 @@ export default function ReelPlayer({
     };
   }, [player]);
 
-  /* ================= ACTIONS ================= */
   const togglePlay = () => {
     if (!player) return;
 
@@ -126,11 +132,8 @@ export default function ReelPlayer({
     }
   };
 
-  const toggleMute = () => {
-    setMuted((prev) => !prev);
-  };
+  const toggleMute = () => setMuted((p) => !p);
 
-  /* ================= UI ================= */
   return (
     <TouchableOpacity
       activeOpacity={1}
@@ -143,13 +146,9 @@ export default function ReelPlayer({
       )}
 
       {/* Video */}
-      {player && source && (
+      {player && videoUrl && (
         <Animated.View style={[styles.video, { opacity }]}>
-          <VideoView
-            player={player}
-            style={styles.video}
-            contentFit="cover"
-          />
+          <VideoView player={player} style={styles.video} contentFit="cover" />
         </Animated.View>
       )}
 
@@ -168,26 +167,19 @@ export default function ReelPlayer({
       )}
 
       {/* Volume */}
-      {player && (
-        <TouchableOpacity style={styles.volume} onPress={toggleMute}>
-          <Ionicons
-            name={muted ? "volume-mute" : "volume-high"}
-            size={26}
-            color="white"
-          />
-        </TouchableOpacity>
-      )}
+      <TouchableOpacity style={styles.volume} onPress={toggleMute}>
+        <Ionicons
+          name={muted ? "volume-mute" : "volume-high"}
+          size={26}
+          color="white"
+        />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
 
-/* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: {
-    width,
-    height,
-    backgroundColor: "black",
-  },
+  container: { width, height, backgroundColor: "black" },
   video: {
     width: "100%",
     height: "100%",

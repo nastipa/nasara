@@ -250,40 +250,52 @@ export default function CreateReel() {
 
   /* POST (FIXED) */
   const postReel = async () => {
-    if (!video) return Alert.alert("Select video first");
+  if (!video) return;
 
-    setLoading(true);
-    setProgress(0);
+  setLoading(true);
+  setProgress(0);
 
-    try {
-      const { data } = await supabase.auth.getUser();
-      if (!data?.user) throw new Error("Login required");
+  try {
+    const { data } = await supabase.auth.getUser();
+    if (!data?.user) return;
 
-      const thumbnail = await generateThumbnail();
+    const thumbnail = await generateThumbnail();
 
-      // UPLOAD FIRST
-      const result = await uploadWithProgress(video.uri);
-
-      // INSERT AFTER READY
-      const { error } = await (supabase as any).from("posts").insert({
+    /* ================= FIX 5: INSERT FIRST ================= */
+    const { data: newPost } = await (supabase as any)
+      .from("posts")
+      .insert({
         user_id: data.user.id,
         caption,
+        local_uri: video.uri, // 🔥 IMPORTANT (instant playback)
+        thumbnail_url: thumbnail,
+        status: "uploading",
+        views: 0,
+      })
+      .select()
+      .single();
+
+    router.replace("/reels");
+
+    /* ================= UPLOAD ================= */
+    const result = await uploadWithProgress(video.uri);
+
+    /* ================= FINAL UPDATE ================= */
+    await (supabase as any)
+      .from("posts")
+      .update({
         media_url: result.video,
         thumbnail_url: result.thumbnail || thumbnail,
         status: "ready",
-        views: 0,
-      });
+      })
+      .eq("id", newPost.id);
 
-      if (error) throw error;
+  } catch (e) {
+    console.log(e);
+  }
 
-      router.replace("/reels");
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    }
-
-    setLoading(false);
-  };
-
+  setLoading(false);
+};
   /* UI */
   return (
     <View style={styles.container}>
