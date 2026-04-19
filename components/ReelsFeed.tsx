@@ -12,6 +12,7 @@ import {
   ViewToken,
 } from "react-native";
 
+import { supabase } from "../lib/supabase";
 import FollowButton from "./FollowButton";
 import LikeButton from "./LikeButton";
 import ReelPlayer from "./ReelPlayer";
@@ -50,8 +51,9 @@ export default function ReelsFeed({
   const router = useRouter();
 
   const viewed = useRef<Set<string>>(new Set());
-  const preloaded = useRef<Set<string>>(new Set());
   const watchTimers = useRef<Record<string, any>>({});
+  const preloaded = useRef<Set<string>>(new Set());
+
   const [feed, setFeed] = useState<ReelType[]>([]);
 
   /* ================= SAFE FEED ================= */
@@ -60,16 +62,25 @@ export default function ReelsFeed({
       setFeed([]);
       return;
     }
-    setFeed(reels);
+
+    setFeed((prev) => {
+      const map = new Map(prev.map((r) => [r.id, r]));
+      return reels.map((r) => {
+        const existing = map.get(r.id);
+        return existing
+          ? { ...r, views: existing.views ?? r.views }
+          : r;
+      });
+    });
   }, [reels]);
 
-  /* ================= KEEP REF UPDATED ================= */
+  /* ================= KEEP REF ================= */
   const feedRef = useRef<ReelType[]>([]);
   useEffect(() => {
     feedRef.current = feed;
   }, [feed]);
 
-  /* ================= VIEW TRACK (NO RPC) ================= */
+  /* ================= VIEW TRACK (REAL DB) ================= */
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (!viewableItems.length) return;
@@ -82,7 +93,7 @@ export default function ReelsFeed({
       const reel = feedRef.current[index];
       if (!reel) return;
 
-      // clear other timers
+      // 🔥 clear other timers
       Object.keys(watchTimers.current).forEach((id) => {
         if (id !== reel.id) {
           clearTimeout(watchTimers.current[id]);
@@ -90,20 +101,28 @@ export default function ReelsFeed({
         }
       });
 
-      // count view once after 2s
+      // 🔥 count view once
       if (!viewed.current.has(reel.id)) {
         if (watchTimers.current[reel.id]) return;
 
-        watchTimers.current[reel.id] = setTimeout(() => {
+        watchTimers.current[reel.id] = setTimeout(async () => {
           viewed.current.add(reel.id);
 
-          setFeed((prev) =>
-            prev.map((item) =>
-              item.id === reel.id
-                ? { ...item, views: (item.views ?? 0) + 1 }
-                : item
-            )
-          );
+          try {
+            await (supabase as any).rpc("increment_reel_views", {
+              post_id_input: reel.id,
+            });
+
+            setFeed((prev) =>
+              prev.map((item) =>
+                item.id === reel.id
+                  ? { ...item, views: (item.views ?? 0) + 1 }
+                  : item
+              )
+            );
+          } catch (e) {
+            console.log("VIEW ERROR:", e);
+          }
 
           delete watchTimers.current[reel.id];
         }, 2000);
@@ -130,6 +149,7 @@ export default function ReelsFeed({
           const v = document.createElement("video");
           v.src = src;
           v.preload = "metadata";
+          v.muted = true;
         }
       });
     },
@@ -149,6 +169,7 @@ export default function ReelsFeed({
         <ReelPlayer
           id={item.id}
           url={item.media_url}
+          localUri={item.local_uri}
           active={isActive}
           thumbnail={item.thumbnail_url}
         />
@@ -198,7 +219,6 @@ export default function ReelsFeed({
   /* ================= UI ================= */
   return (
     <View style={{ flex: 1, backgroundColor: "black" }}>
-      {/* TOP TAB */}
       <View style={styles.topBar}>
         <Text
           onPress={() => setMyOnly(false)}
@@ -215,7 +235,6 @@ export default function ReelsFeed({
         </Text>
       </View>
 
-      {/* FEED */}
       <FlatList
         data={feed}
         keyExtractor={(item) => item.id}

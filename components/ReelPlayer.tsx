@@ -32,46 +32,45 @@ export default function ReelPlayer({
   onView,
 }: Props) {
   const [paused, setPaused] = useState(true);
-  const [muted, setMuted] = useState(false); // 🔥 NOT muted by default
+  const [muted, setMuted] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const opacity = useRef(new Animated.Value(0)).current;
 
-  /* ================= SAFE URL ================= */
-  const videoUrl = useMemo(() => {
+  /* ================= SAFE SOURCE ================= */
+  const source = useMemo(() => {
     const raw = localUri || url;
 
     if (!raw || typeof raw !== "string") return null;
     if (raw.includes("undefined")) return null;
 
-    return raw;
+    return { uri: raw };
   }, [url, localUri]);
 
-  /* ================= PLAYER ================= */
-  const player = useVideoPlayer(
-    videoUrl ? { uri: videoUrl } : null
-  );
+  const player = useVideoPlayer(source);
 
-  /* ================= LOAD ================= */
+  /* ================= REAL LOAD DETECTION ================= */
   useEffect(() => {
-    if (!videoUrl) return;
+    if (!player) return;
 
     setLoading(true);
     opacity.setValue(0);
 
-    const t = setTimeout(() => {
-      setLoading(false);
+    const sub = player.addListener("statusChange", (status) => {
+      if (status.status === "readyToPlay") {
+        setLoading(false);
 
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 250,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }, 400); // 🔥 prevents black screen stuck
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }).start();
+      }
+    });
 
-    return () => clearTimeout(t);
-  }, [videoUrl]);
+    return () => sub.remove();
+  }, [player]);
 
   /* ================= AUTOPLAY ================= */
   useEffect(() => {
@@ -82,10 +81,11 @@ export default function ReelPlayer({
     try {
       if (active) {
         player.muted = false;
+        setMuted(false);
+
         player.play();
         setPaused(false);
 
-        // 🔥 trigger view once active
         if (onView) onView(id);
       } else {
         player.pause();
@@ -143,7 +143,7 @@ export default function ReelPlayer({
       )}
 
       {/* Video */}
-      {player && videoUrl && (
+      {player && source && (
         <Animated.View style={[styles.video, { opacity }]}>
           <VideoView
             player={player}
@@ -168,13 +168,15 @@ export default function ReelPlayer({
       )}
 
       {/* Volume */}
-      <TouchableOpacity style={styles.volume} onPress={toggleMute}>
-        <Ionicons
-          name={muted ? "volume-mute" : "volume-high"}
-          size={26}
-          color="white"
-        />
-      </TouchableOpacity>
+      {player && (
+        <TouchableOpacity style={styles.volume} onPress={toggleMute}>
+          <Ionicons
+            name={muted ? "volume-mute" : "volume-high"}
+            size={26}
+            color="white"
+          />
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 }

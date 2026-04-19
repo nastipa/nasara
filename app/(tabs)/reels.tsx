@@ -33,6 +33,7 @@ export default function Reels() {
   const userIdRef = useRef<string | null>(null);
   const loadingMore = useRef(false);
   const channelRef = useRef<any>(null);
+  const ids = useRef(new Set<string>());
 
   /* ================= GET USER ================= */
   useEffect(() => {
@@ -41,67 +42,76 @@ export default function Reels() {
     });
   }, []);
 
-  /* ================= RESET INDEX ================= */
+  /* ================= RESET ================= */
   useEffect(() => {
     setActiveIndex(0);
+    setPage(0);
+    ids.current.clear();
+    setPosts([]);
   }, [myOnly]);
 
-  /* ================= REALTIME ================= */
+  /* ================= REALTIME (FIXED FOREVER) ================= */
   useEffect(() => {
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
+    if (channelRef.current) return; // 🔥 DO NOT RECREATE
 
     const channel = supabase
-  .channel("reels-sync-" + Date.now())
+      .channel("reels-sync-global")
 
-  .on(
-    "postgres_changes",
-    { event: "INSERT", schema: "public", table: "posts" },
-    (payload : any) => {
-      const p = payload.new;
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "posts" },
+        (payload: any) => {
+          const p = payload.new;
 
-      setPosts((prev) => {
-        if (prev.some((x) => x.id === p.id)) return prev;
-        return [{ ...p, views: 0 }, ...prev];
-      });
-    }
-  )
+          if (p.status !== "ready") return; // 🔥 ONLY READY
 
-  .on(
-    "postgres_changes",
-    { event: "UPDATE", schema: "public", table: "posts" },
-    (payload) => {
-      const updated = payload.new;
+          if (myOnly && p.user_id !== userIdRef.current) return;
 
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === updated.id ? { ...p, ...updated } : p
-        )
-      );
-    }
-  )
+          setPosts((prev) => {
+            if (prev.some((x) => x.id === p.id)) return prev;
+            return [{ ...p, views: p.views ?? 0 }, ...prev];
+          });
+        }
+      )
 
-  .on(
-    "postgres_changes",
-    { event: "DELETE", schema: "public", table: "posts" },
-    (payload) => {
-      const id = payload.old?.id;
-      setPosts((prev) => prev.filter((p) => p.id !== id));
-    }
-  )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "posts" },
+        (payload: any) => {
+          const updated = payload.new;
 
-  .subscribe();
+          if (updated.status !== "ready") return;
+
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === updated.id
+                ? { ...p, ...updated }
+                : p
+            )
+          );
+        }
+      )
+
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "posts" },
+        (payload: any) => {
+          const id = payload.old?.id;
+          if (!id) return;
+
+          setPosts((prev) => prev.filter((p) => p.id !== id));
+        }
+      )
+
+      .subscribe();
+
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+      supabase.removeChannel(channel);
+      channelRef.current = null;
     };
-  }, [myOnly]);
+  }, []);
 
   /* ================= LOAD POSTS ================= */
   const loadPosts = async (reset = false) => {
@@ -116,7 +126,7 @@ export default function Reels() {
       let query = supabase
         .from("posts")
         .select("*")
-        .in("status", ["ready", "uploading", "failed"])// ✅ only ready for feed
+        .eq("status", "ready") // 🔥 CRITICAL FIX
         .order("created_at", { ascending: false })
         .range(from, to);
 
@@ -134,18 +144,26 @@ export default function Reels() {
       if (data) {
         setLoading(false);
 
-        const formatted = data.map((p: any) => ({
-          id: p.id,
-          user_id: p.user_id,
-          media_url: p.media_url,
-          local_uri: null,
-          thumbnail_url: p.thumbnail_url,
-          caption: p.caption,
-          views: p.views ?? 0,
-          status: p.status,
-        }));
+        const formatted = data
+          .filter((p: any) => !ids.current.has(p.id))
+          .map((p: any) => {
+            ids.current.add(p.id);
 
-        setPosts(reset ? formatted : [...posts, ...formatted]);
+            return {
+              id: p.id,
+              user_id: p.user_id,
+              media_url: p.media_url,
+              local_uri: null,
+              thumbnail_url: p.thumbnail_url,
+              caption: p.caption,
+              views: p.views ?? 0,
+              status: p.status,
+            };
+          });
+
+        setPosts((prev) =>
+          reset ? formatted : [...prev, ...formatted]
+        );
       }
     } catch (e) {
       console.log(e);
