@@ -1,14 +1,14 @@
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Image,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -141,28 +141,38 @@ export default function OffersTab() {
      ACCEPT / REJECT
   ============================ */
   const updateOfferStatus = async (
-    offerId: string,
-    newStatus: "accepted" | "rejected"
-  ) => {
-    setUpdatingId(offerId);
+  offerId: string,
+  newStatus: "accepted" | "rejected"
+) => {
+  setUpdatingId(offerId);
 
-    const { error } = await (supabase as any)
-      .from("offers")
-      .update({
-        status: newStatus,
-        counter_price: null,
-        last_counter_by: null,
-      })
-      .eq("id", offerId);
+  const current = offers.find((o) => o.id === offerId);
 
-    if (error) {
-      Alert.alert("Update failed", error.message);
-    }
-
-    await loadOffers();
-    setUpdatingId(null);
+  const updateData: any = {
+    status: newStatus,
+    last_counter_by: null,
   };
 
+  // 🔥 FIX: apply counter price for BOTH accept and reject
+  if (current?.counter_price) {
+    updateData.price = current.counter_price;
+  }
+
+  // clear counter after decision
+  updateData.counter_price = null;
+
+  const { error } = await (supabase as any)
+    .from("offers")
+    .update(updateData)
+    .eq("id", offerId);
+
+  if (error) {
+    Alert.alert("Update failed", error.message);
+  }
+
+  await loadOffers();
+  setUpdatingId(null);
+};
   /* ============================
      COUNTER OFFER
   ============================ */

@@ -28,6 +28,16 @@ type ReelType = {
   thumbnail_url?: string | null;
 };
 
+type Props = {
+  reels: ReelType[];
+  activeIndex: number;
+  setActiveIndex: (index: number) => void;
+  loadMore: () => void;
+  myOnly: boolean;
+  setMyOnly: (v: boolean) => void;
+  onDelete?: (id: string) => void;
+};
+
 export default function ReelsFeed({
   reels,
   activeIndex,
@@ -36,32 +46,30 @@ export default function ReelsFeed({
   myOnly,
   setMyOnly,
   onDelete,
-}: any) {
+}: Props) {
   const router = useRouter();
 
   const viewed = useRef<Set<string>>(new Set());
   const preloaded = useRef<Set<string>>(new Set());
   const watchTimers = useRef<Record<string, any>>({});
   const [feed, setFeed] = useState<ReelType[]>([]);
-  
 
-  /* ================= SAFE SET FEED ================= */
+  /* ================= SAFE FEED ================= */
   useEffect(() => {
     if (!Array.isArray(reels)) {
       setFeed([]);
       return;
     }
-
-    // ✅ DIRECT REPLACE (NO MERGE BUG)
     setFeed(reels);
   }, [reels]);
 
-  /* ================= VIEW TRACK ================= */
+  /* ================= KEEP REF UPDATED ================= */
   const feedRef = useRef<ReelType[]>([]);
   useEffect(() => {
     feedRef.current = feed;
   }, [feed]);
 
+  /* ================= VIEW TRACK (NO RPC) ================= */
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (!viewableItems.length) return;
@@ -82,14 +90,12 @@ export default function ReelsFeed({
         }
       });
 
+      // count view once after 2s
       if (!viewed.current.has(reel.id)) {
         if (watchTimers.current[reel.id]) return;
 
         watchTimers.current[reel.id] = setTimeout(() => {
           viewed.current.add(reel.id);
-
-          // optional RPC
-          // supabase.rpc("increment_reel_views", { post_id_input: reel.id });
 
           setFeed((prev) =>
             prev.map((item) =>
@@ -116,7 +122,6 @@ export default function ReelsFeed({
 
       around.forEach((item) => {
         const src = item.media_url;
-
         if (!src || preloaded.current.has(item.id)) return;
 
         preloaded.current.add(item.id);
@@ -136,7 +141,7 @@ export default function ReelsFeed({
   }, [activeIndex, feed]);
 
   /* ================= ITEM ================= */
-  const renderItem = ({ item, index }: any) => {
+  const renderItem = ({ item, index }: { item: ReelType; index: number }) => {
     const isActive = index === activeIndex;
 
     return (
@@ -193,6 +198,7 @@ export default function ReelsFeed({
   /* ================= UI ================= */
   return (
     <View style={{ flex: 1, backgroundColor: "black" }}>
+      {/* TOP TAB */}
       <View style={styles.topBar}>
         <Text
           onPress={() => setMyOnly(false)}
@@ -209,6 +215,7 @@ export default function ReelsFeed({
         </Text>
       </View>
 
+      {/* FEED */}
       <FlatList
         data={feed}
         keyExtractor={(item) => item.id}
@@ -235,6 +242,7 @@ export default function ReelsFeed({
   );
 }
 
+/* ================= STYLES ================= */
 const styles = StyleSheet.create({
   topBar: {
     position: "absolute",

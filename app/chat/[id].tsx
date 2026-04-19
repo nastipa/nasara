@@ -97,35 +97,47 @@ export default function ChatRoom() {
 
   /* ================= REALTIME ================= */
   useEffect(() => {
-    if (!roomId) return;
+  if (!roomId) return;
 
-    const channel = (supabase as any)
-      .channel("chat_" + roomId)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "messages", filter: "room_id=eq." + roomId },
-        async (payload: any) => {
-          const msg = payload.new as Message;
+  const channel = (supabase as any)
+    .channel("chat_" + roomId)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: "room_id=eq." + roomId,
+      },
+      async (payload: any) => {
+        const msg = payload.new as Message;
 
-          setMessages((prev) => [...prev, msg]);
+        // ✅ FIX: prevent duplicates
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
 
-          if (msg.sender_id !== userId && Platform.OS !== "web") {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: "New Message",
-                body: msg.text || "📎 Media",
-                sound: "default",
-              },
-              trigger: null,
-            });
-          }
+        if (msg.sender_id !== userId && Platform.OS !== "web") {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "New Message",
+              body: msg.text || "📎 Media",
+              sound: "default",
+            },
+            trigger: null,
+          });
         }
-      )
-      .subscribe();
+      }
+    )
+    .subscribe();
 
-    return () => (supabase as any).removeChannel(channel);
-  }, [roomId, userId]);
-
+  return () => (supabase as any).removeChannel(channel);
+}, [roomId, userId]);
+/* ================= AUTO SCROLL ================= */
+useEffect(() => {
+  flatRef.current?.scrollToEnd({ animated: true });
+}, [messages]);
   /* ================= ONLINE ================= */
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
@@ -142,61 +154,204 @@ export default function ChatRoom() {
   };
 
   /* ================= SEND ================= */
-  const sendText = async () => {
-    if (!text.trim() || !userId) return;
 
-    await (supabase as any).from("messages").insert({
-      room_id: roomId,
-      sender_id: userId,
-      text,
-    });
+const messageIds = useRef<Set<number>>(new Set());
 
-    setText("");
+const sendText = async () => {
+  if (!text.trim() || !userId) return;
+
+  const tempId = Date.now();
+
+  const tempMessage: Message = {
+    id: tempId,
+    room_id: roomId,
+    sender_id: userId,
+    text: text.trim(),
+    image_url: null,
+    file_url: null,
+    file_name: null,
+    reaction: null,
+    seen: false,
+    created_at: new Date().toISOString(),
   };
 
-  const sendImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
-    if (res.canceled || !userId) return;
+  // ✅ instant UI (WhatsApp feel)
+  setMessages((prev) => [...prev, tempMessage]);
+  messageIds.current.add(tempId);
 
+  setText("");
+
+  try {
+    const { data, error } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        text: tempMessage.text,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (data) {
+      // replace temp with real message
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? data : m))
+      );
+
+      messageIds.current.add(data.id);
+    }
+  } catch (err) {
+    console.log("Send failed:", err);
+
+    // rollback if failed
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+};
+
+const sendImage = async () => {
+  const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
+  if (res.canceled || !userId) return;
+
+  const tempId = Date.now();
+
+  const tempMessage: Message = {
+    id: tempId,
+    room_id: roomId,
+    sender_id: userId,
+    text: null,
+    image_url: res.assets[0].uri,
+    file_url: null,
+    file_name: null,
+    reaction: null,
+    seen: false,
+    created_at: new Date().toISOString(),
+  };
+
+  setMessages((prev) => [...prev, tempMessage]);
+  messageIds.current.add(tempId);
+
+  try {
     const url = await uploadVideo(res.assets[0].uri);
 
-    await (supabase as any).from("messages").insert({
-      room_id: roomId,
-      sender_id: userId,
-      image_url: url,
-    });
+    const { data } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        image_url: url,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? data : m))
+      );
+      messageIds.current.add(data.id);
+    }
+  } catch {
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+};
+
+const sendCamera = async () => {
+  const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+  if (res.canceled || !userId) return;
+
+  const tempId = Date.now();
+
+  const tempMessage: Message = {
+    id: tempId,
+    room_id: roomId,
+    sender_id: userId,
+    text: null,
+    image_url: res.assets[0].uri,
+    file_url: null,
+    file_name: null,
+    reaction: null,
+    seen: false,
+    created_at: new Date().toISOString(),
   };
 
-  const sendCamera = async () => {
-    const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (res.canceled || !userId) return;
+  setMessages((prev) => [...prev, tempMessage]);
+  messageIds.current.add(tempId);
 
+  try {
     const url = await uploadVideo(res.assets[0].uri);
 
-    await (supabase as any).from("messages").insert({
-      room_id: roomId,
-      sender_id: userId,
-      image_url: url,
-    });
+    const { data } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        image_url: url,
+      })
+      .select()
+      .single();
+
+    if (data) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? data : m))
+      );
+      messageIds.current.add(data.id);
+    }
+  } catch {
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+};
+
+const sendFile = async () => {
+  const res = await DocumentPicker.getDocumentAsync({});
+  if (res.canceled || !userId) return;
+
+  const file = res.assets[0];
+  const tempId = Date.now();
+
+  const tempMessage: Message = {
+    id: tempId,
+    room_id: roomId,
+    sender_id: userId,
+    text: null,
+    image_url: null,
+    file_url: file.uri,
+    file_name: file.name,
+    reaction: null,
+    seen: false,
+    created_at: new Date().toISOString(),
   };
 
-  const sendFile = async () => {
-    const res = await DocumentPicker.getDocumentAsync({});
-    if (res.canceled || !userId) return;
+  setMessages((prev) => [...prev, tempMessage]);
+  messageIds.current.add(tempId);
 
-    const blob = await (await fetch(res.assets[0].uri)).blob();
-    const path =` ${userId}/${Date.now()}_${res.assets[0].name}`;
+  try {
+    const blob = await (await fetch(file.uri)).blob();
+    const path = `${userId}/${Date.now()}_${file.name}`;
 
     await (supabase as any).storage.from("chat-files").upload(path, blob);
 
-    await (supabase as any).from("messages").insert({
-      room_id: roomId,
-      sender_id: userId,
-      file_url: path,
-      file_name: res.assets[0].name,
-    });
-  };
+    const { data } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        file_url: path,
+        file_name: file.name,
+      })
+      .select()
+      .single();
 
+    if (data) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? data : m))
+      );
+      messageIds.current.add(data.id);
+    }
+  } catch {
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+};
   /* ================= REACTION ================= */
   const addReaction = async (id: number, emoji: string) => {
     await (supabase as any).from("messages").update({ reaction: emoji }).eq("id", id);
@@ -396,7 +551,7 @@ export default function ChatRoom() {
                         </TouchableOpacity>
                       </View>
                     )}
-
+                    
                     {/* SEEN TICK */}
                     <Text style={{ fontSize: 10, marginTop: 4 }}>
                       {new Date(item.created_at).toLocaleTimeString()} {item.seen ? "✓" : ""}
