@@ -65,7 +65,7 @@ export default function Terms() {
       <View style={styles.section}>
         <Text style={styles.heading}>8. Contact</Text>
         <Text style={styles.text}>
-          Email: support@nasara.app
+          Email: dinnanitipa@gmail.com
         </Text>
       </View>
 
