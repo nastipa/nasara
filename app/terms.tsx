@@ -1,81 +1,71 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-export default function Privacy() {
+export default function Terms() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Privacy Policy</Text>
+      <Text style={styles.title}>Terms of Service</Text>
       <Text style={styles.date}>Effective Date: April 2026</Text>
 
       <Text style={styles.paragraph}>
-        Nasara (“we”, “our”, “us”) operates the Nasara platform. This Privacy Policy explains how we collect, use, and protect your information.
+        By using Nasara, you agree to these Terms of Service.
       </Text>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>1. Information We Collect</Text>
+        <Text style={styles.heading}>1. Acceptable Use</Text>
         <Text style={styles.text}>
-          • Account information (email, user ID){"\n"}
-          • User content (videos, captions){"\n"}
-          • Device and usage data{"\n"}
-          • Camera, microphone, storage (only when used)
+          You agree not to:
+          {"\n"}• Post illegal or harmful content
+          {"\n"}• Harass or abuse other users
+          {"\n"}• Violate intellectual property rights
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>2. How We Use Your Information</Text>
+        <Text style={styles.heading}>2. Accounts</Text>
         <Text style={styles.text}>
-          • Provide and improve the platform{"\n"}
-          • Enable video uploads and sharing{"\n"}
-          • Personalize user experience{"\n"}
-          • Maintain safety and prevent abuse
+          You are responsible for maintaining your account and keeping your login details secure.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>3. User Content</Text>
+        <Text style={styles.heading}>3. Content Ownership</Text>
         <Text style={styles.text}>
-          Content you upload may be publicly visible to other users.
+          You retain ownership of your content but grant us permission to display and distribute it within the app.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>4. Third-Party Services</Text>
+        <Text style={styles.heading}>4. Content Moderation</Text>
         <Text style={styles.text}>
-          We use services such as Supabase and cloud hosting providers to run the platform.
+          We reserve the right to remove content or suspend accounts that violate our policies.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>5. Data Sharing</Text>
+        <Text style={styles.heading}>5. Termination</Text>
         <Text style={styles.text}>
-          We do not sell your personal data. Data may be shared only to operate the service.
+          Accounts may be suspended or terminated if terms are violated.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>6. Account Deletion</Text>
+        <Text style={styles.heading}>6. Disclaimer</Text>
         <Text style={styles.text}>
-          You can delete your account at any time from settings.
+          The app is provided “as is” without warranties of any kind.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>7. Security</Text>
+        <Text style={styles.heading}>7. Changes</Text>
         <Text style={styles.text}>
-          We take reasonable steps to protect your data, but no system is 100% secure.
+          We may update these terms at any time. Continued use means you accept the changes.
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.heading}>8. Children</Text>
+        <Text style={styles.heading}>8. Contact</Text>
         <Text style={styles.text}>
-          This app is not intended for users under 13 years old.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>9. Contact</Text>
-        <Text style={styles.text}>
-          Email: dinnanitipa@gmail.com
+          Email: support@nasara.app
         </Text>
       </View>
 

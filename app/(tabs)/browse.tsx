@@ -123,13 +123,13 @@ useEffect(() => {
   /* ================= CATEGORY LIST ================= */
   const categories = [
     "All",
-    "phones",
+     "education",
     "electronics",
     "fashion",
-    "cars",
+    "vehicles",
     "real estate",
-    "furniture",
-    "home Appliances",
+    "food & grocery",
+    "home & living",
     "jobs",
     "services",
   ];

@@ -8,11 +8,12 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -262,19 +263,57 @@ following_id:String(user)
 Alert.alert("Followed");
 
 };
-  const handleLogout = async () => {
-    Alert.alert("Logout", "Are you sure you want to log out?", [
-      { text: "Cancel" },
+/* ================= DELETE ACCOUNT ================= */
+const handleDeleteAccount = async () => {
+  try {
+    const confirm =
+      Platform.OS === "web"
+        ? window.confirm("Are you sure you want to delete your account?")
+        : await new Promise<boolean>((res) => {
+            Alert.alert(
+              "Delete Account",
+              "This action is permanent. Continue?",
+              [
+                { text: "Cancel", onPress: () => res(false) },
+                { text: "Delete", style: "destructive", onPress: () => res(true) },
+              ]
+            );
+          });
+
+    if (!confirm) return;
+
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+
+    if (!token) {
+      Alert.alert("Error", "Not authenticated");
+      return;
+    }
+
+    const res = await fetch(
+      "https://nasara-upload-server.onrender.com/delete-account",
       {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          await supabase.auth.signOut();
-          router.replace("/browse");
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // 🔥 SECURE
         },
-      },
-    ]);
-  };
+      }
+    );
+
+    const result = await res.json();
+
+    if (!res.ok) throw new Error(result.error || "Delete failed");
+
+    Alert.alert("Account deleted");
+
+    // 🔥 LOG USER OUT
+    await supabase.auth.signOut();
+
+  } catch (e: any) {
+    Alert.alert("Error", e.message || "Delete failed");
+  }
+};
 
   /* ===== SAVE WHATSAPP ===== */
   const saveWhatsappNumber = async () => {
@@ -553,6 +592,31 @@ Follow
     </View>
   </View>
 </Modal>
+<View style={{ marginTop: 40, paddingHorizontal: 20 }}>
+
+  {/* Privacy Policy */}
+  <TouchableOpacity
+    onPress={() => router.push("/privacy")}
+    style={styles.linkItem}
+  >
+    <Text style={styles.linkText}>🔒 Privacy Policy</Text>
+  </TouchableOpacity>
+
+  {/* Terms */}
+  <TouchableOpacity
+    onPress={() => router.push("/terms")}
+    style={styles.linkItem}
+  >
+    <Text style={styles.linkText}>📜 Terms of Service</Text>
+  </TouchableOpacity>
+<TouchableOpacity
+  onPress={handleDeleteAccount}
+  style={styles.deleteBtn}
+>
+  <Text style={styles.deleteText}>🗑 Delete Account</Text>
+</TouchableOpacity>
+
+</View>
 
       {/* ===== WHATSAPP MODAL ===== */}
       <Modal visible={showWhatsappModal} transparent animationType="slide">
@@ -709,6 +773,30 @@ const styles = StyleSheet.create({
 },
 iconText: {
   fontSize: 28,
-
   },
+  linkItem: {
+  paddingVertical: 15,
+  borderBottomWidth: 1,
+  borderBottomColor: "#222",
+},
+
+linkText: {
+  color: "white",
+  fontSize: 16,
+},
+
+deleteBtn: {
+  marginTop: 30,
+  backgroundColor: "#ff3b30",
+  padding: 15,
+  alignItems: "center",
+  borderRadius: 8,
+},
+
+deleteText: {
+  color: "white",
+  fontWeight: "bold",
+},
+
+  
 });

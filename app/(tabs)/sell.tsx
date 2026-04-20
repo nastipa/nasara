@@ -40,15 +40,15 @@ export default function Sell() {
   const [isNegotiable, setIsNegotiable] = useState(false);
 
   const categories = [
-    "phones",
-    "electronics",
-    "fashion",
-    "cars",
-    "real estate",
-    "furniture",
-    "home Appliances",
-    "jobs",
-    "services",
+    "Education",
+    "Electronics",
+    "Fashion",
+    "Vehicles",
+    "Real Estate",
+    "Food & Grocery",
+    "Home & Living",
+    "Jobs",
+    "Services",
   ];
 
   /* ================= LOCATION ================= */
