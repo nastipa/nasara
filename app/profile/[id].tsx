@@ -1,5 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -13,10 +13,10 @@ import {
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
-// ================= FAST CLOUDINARY IMAGE UPLOAD =================
+/* ================= CLOUDINARY ================= */
 async function uploadToCloudinary(file: any): Promise<string> {
-  const CLOUD_NAME = "ajars"; // your Cloudinary cloud name
-  const PRESET = "ajars_avatars"; // upload preset
+  const CLOUD_NAME = "ajars";
+  const PRESET = "ajars_avatars";
   const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
 
   const formData = new FormData();
@@ -41,60 +41,126 @@ async function uploadToCloudinary(file: any): Promise<string> {
       try {
         const data = JSON.parse(xhr.response);
         if (!data.secure_url) reject(new Error("Upload failed"));
-        else resolve(data.secure_url + "?t=" + Date.now()); // cache bust
-      } catch (e) {
+        else resolve(data.secure_url + "?t=" + Date.now());
+      } catch {
         reject(new Error("Upload failed"));
       }
     };
 
-    xhr.onerror = () => reject(new Error("Network upload error"));
+    xhr.onerror = () => reject(new Error("Network error"));
     xhr.send(formData);
   });
 }
 
-// ================= EDIT PROFILE COMPONENT =================
-export default function EditProfile() {
+export default function ProfileScreen() {
   const router = useRouter();
+
+  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
+  const profileId = Array.isArray(id) ? id[0] : id;
+
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [avatar, setAvatar] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
-  // LOAD USER + PROFILE
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.auth.getUser();
-      const uid = data.user?.id ?? null;
-      setUserId(uid);
+  const [isMe, setIsMe] = useState(false);
 
-      if (!uid) return;
+  const [isFollowing, setIsFollowing] = useState(false);
 
-      const { data: profile } = await (supabase as any)
-        .from("profiles")
+  /* ================= LOAD PROFILE ================= */
+ useEffect(() => {
+  const load = async () => {
+    const { data } = await supabase.auth.getUser();
+    const myId = data.user?.id ?? null;
+
+    setSessionId(myId);
+
+    // ✅ STRICT: ONLY fallback if no param
+    const targetId = profileId ?? myId;
+
+    if (!targetId) return;
+
+    setIsMe(myId === targetId);
+
+    const { data: profile, error } = await (supabase as any)
+      .from("profiles")
+      .select("*")
+      .eq("id", targetId)
+      .maybeSingle();
+
+    if (error) {
+      console.log("Profile error:", error.message);
+      return;
+    }
+
+    if (profile) {
+      setFullName(profile.full_name || "");
+      setPhone(profile.phone || "");
+      setLocation(profile.location || "");
+      setAvatar(profile.avatar_url || null);
+    }
+
+    // FOLLOW CHECK
+    if (myId && targetId && myId !== targetId) {
+      const { data } = await supabase
+        .from("follows")
         .select("*")
-        .eq("id", uid)
-        .single();
+        .eq("follower_id", myId)
+        .eq("following_id", targetId)
+        .maybeSingle();
 
-      if (profile) {
-        setFullName(profile.full_name || "");
-        setPhone(profile.phone || "");
-        setLocation(profile.location || "");
-        setAvatar(profile.avatar_url || null);
-      }
-    };
+      setIsFollowing(!!data);
+    }
+  };
 
-    load();
-  }, []);
+  load();
+}, [profileId]);
 
-  // PICK IMAGE
+  /* ================= FOLLOW USER ================= */
+  const followUser = async () => {
+    if (!sessionId || !profileId) return;
+
+    const { error } = await (supabase as any).from("follows").insert({
+      follower_id: sessionId,
+      following_id: profileId,
+    });
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    setIsFollowing(true);
+    Alert.alert("Followed");
+  };
+
+  /* ================= UNFOLLOW ================= */
+  const unfollowUser = async () => {
+    if (!sessionId || !profileId) return;
+
+    const { error } = await supabase
+      .from("follows")
+      .delete()
+      .eq("follower_id", sessionId)
+      .eq("following_id", profileId);
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
+    }
+
+    setIsFollowing(false);
+  };
+
+  /* ================= PICK IMAGE ================= */
   const pickAvatar = async () => {
+    if (!isMe) return;
+
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
       quality: 0.7,
-      base64: Platform.OS === "web",
     });
 
     if (!res.canceled) {
@@ -102,34 +168,23 @@ export default function EditProfile() {
     }
   };
 
-  // SAVE PROFILE
+  /* ================= SAVE ================= */
   const saveProfile = async () => {
-    if (!userId) return;
-
-    setSaving(true);
+    if (!sessionId || !isMe) return;
 
     let avatar_url = avatar;
 
-    if (avatar && (avatar.startsWith("file") || avatar?.startsWith("blob"))) {
-      try {
-        const uploaded = await uploadToCloudinary(avatar);
-        avatar_url = uploaded;
-      } catch (e: any) {
-        Alert.alert("Upload Error", e.message);
-        setSaving(false);
-        return;
-      }
+    if (avatar && (avatar.startsWith("file") || avatar.startsWith("blob"))) {
+      avatar_url = await uploadToCloudinary(avatar);
     }
 
     const { error } = await (supabase as any).from("profiles").upsert({
-      id: userId,
+      id: sessionId,
       full_name: fullName,
       phone,
       location,
       avatar_url,
     });
-
-    setSaving(false);
 
     if (error) {
       Alert.alert("Error", error.message);
@@ -139,10 +194,10 @@ export default function EditProfile() {
     router.back();
   };
 
+  /* ================= UI ================= */
   return (
     <View style={styles.container}>
-      {/* AVATAR */}
-      <TouchableOpacity onPress={pickAvatar}>
+      <TouchableOpacity disabled={!isMe} onPress={pickAvatar}>
         <Image
           source={{
             uri:
@@ -151,28 +206,68 @@ export default function EditProfile() {
           }}
           style={styles.avatar}
         />
-        <Text style={styles.changeText}>Change Avatar</Text>
-      </TouchableOpacity>
-
-      {/* INPUTS */}
-      <Text style={styles.label}>Full Name</Text>
-      <TextInput value={fullName} onChangeText={setFullName} style={styles.input} />
-
-      <Text style={styles.label}>Phone</Text>
-      <TextInput value={phone} onChangeText={setPhone} style={styles.input} />
-
-      <Text style={styles.label}>Location</Text>
-      <TextInput value={location} onChangeText={setLocation} style={styles.input} />
-
-      <TouchableOpacity onPress={saveProfile} disabled={saving}>
-        <Text style={styles.saveBtn}>
-          {saving ? "Saving..." : "Save Profile"}
+        <Text style={styles.changeText}>
+          {isMe ? "Change Avatar" : "Profile"}
         </Text>
       </TouchableOpacity>
+
+      <TextInput value={fullName} editable={isMe} style={styles.input} />
+      <TextInput value={phone} editable={isMe} style={styles.input} />
+      <TextInput value={location} editable={isMe} style={styles.input} />
+
+      {/* ================= FOLLOW BUTTON ================= */}
+      {!isMe && sessionId && profileId && (
+        <TouchableOpacity
+          onPress={isFollowing ? unfollowUser : followUser}
+          style={{
+            backgroundColor: isFollowing ? "#ef4444" : "#2563eb",
+            padding: 12,
+            borderRadius: 8,
+            marginTop: 10,
+          }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>
+            {isFollowing ? "Unfollow" : "Follow"}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ================= SAVE ================= */}
+      {isMe && (
+        <TouchableOpacity onPress={saveProfile}>
+          <Text style={styles.saveBtn}>Save Profile</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ================= REPORT ================= */}
+      {!isMe && (
+        <TouchableOpacity
+          onPress={() =>
+            router.push({
+              pathname: "/report",
+              params: {
+                reportedUserId: profileId,
+                type: "user",
+              },
+            })
+          }
+          style={{
+            marginTop: 12,
+            backgroundColor: "#ef4444",
+            padding: 10,
+            borderRadius: 8,
+          }}
+        >
+          <Text style={{ color: "white", textAlign: "center" }}>
+            🚨 Report User
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
+/* ================= STYLES ================= */
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
 
@@ -190,22 +285,20 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  label: { fontWeight: "600", marginBottom: 6 },
-
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
-    padding: 14,
+    padding: 12,
+    marginBottom: 10,
     borderRadius: 8,
-    marginBottom: 16,
   },
 
   saveBtn: {
     textAlign: "center",
-    color: "white",
     backgroundColor: "#16a34a",
-    padding: 14,
+    color: "white",
+    padding: 12,
     borderRadius: 8,
-    fontWeight: "600",
+    marginTop: 10,
   },
 });

@@ -1,113 +1,131 @@
 import { useRouter } from "expo-router";
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { supabase } from "../lib/supabase";
 
-export default function Settings() {
+export default function SettingsScreen() {
   const router = useRouter();
 
-  /* ================= DELETE ACCOUNT ================= */
-  const deleteAccount = async () => {
-    const confirm =
-      Platform.OS === "web"
-        ? window.confirm("Delete your account permanently?")
-        : await new Promise<boolean>((res) => {
-            Alert.alert(
-              "Delete Account",
-              "This action is permanent. Continue?",
-              [
-                { text: "Cancel", onPress: () => res(false) },
-                { text: "Delete", style: "destructive", onPress: () => res(true) },
-              ]
-            );
-          });
+const logoutUser = async () => {
+  try {
+    await supabase.auth.signOut();
 
-    if (!confirm) return;
+    // ✅ Redirect to browse after logout
+    router.replace("/browse");
 
-    try {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
+  } catch (error: any) {
+    Alert.alert("Logout Error", error.message);
+  }
+};
+  /* DELETE ACCOUNT */
+  const handleDelete = async () => {
+    Alert.alert(
+      "Delete Account",
+      "This action is permanent. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Yes, Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const { data } = await supabase.auth.getSession();
+              const token = data.session?.access_token;
 
-      if (!user) {
-        Alert.alert("Error", "User not found");
-        return;
-      }
+              await fetch(
+                "https://nasara-upload-server.onrender.com/delete-account",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization:` Bearer ${token}`,
+                  },
+                }
+              );
 
-      // 🔥 DELETE USER DATA FIRST (important)
-      await supabase.from("posts").delete().eq("user_id", user.id);
-
-      // ⚠️ Supabase does NOT allow client-side user deletion securely
-      // So we sign out instead and you handle deletion server-side later
-
-      await supabase.auth.signOut();
-
-      Alert.alert("Account removed", "Your account has been deleted");
-
-      router.replace("/"); // go to home/login
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to delete account");
-    }
+              await supabase.auth.signOut();
+              router.replace("/(auth)/login");
+            } catch (e) {
+              Alert.alert("Error", "Failed to delete account");
+            }
+          },
+        },
+      ]
+    );
   };
 
-  /* ================= UI ================= */
   return (
     <View style={styles.container}>
-
-      <Text style={styles.title}>Settings</Text>
+      <Text style={styles.title}>⚙️ Settings</Text>
 
       {/* PRIVACY */}
-      <Pressable
+      <TouchableOpacity
         style={styles.item}
         onPress={() => router.push("/privacy")}
       >
-        <Text style={styles.text}>Privacy Policy</Text>
-      </Pressable>
+        <Text style={styles.text}>🔒 Privacy Policy</Text>
+      </TouchableOpacity>
 
       {/* TERMS */}
-      <Pressable
+      <TouchableOpacity
         style={styles.item}
         onPress={() => router.push("/terms")}
       >
-        <Text style={styles.text}>Terms of Service</Text>
-      </Pressable>
+        <Text style={styles.text}>📜 Terms of Service</Text>
+      </TouchableOpacity>
 
-      {/* DELETE ACCOUNT */}
-      <Pressable style={styles.deleteBtn} onPress={deleteAccount}>
-        <Text style={styles.deleteText}>Delete Account</Text>
-      </Pressable>
-
+      {/* DELETE (SAFE ZONE) */}
+      <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
+        <Text style={styles.deleteText}>🗑 Delete Account</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+  onPress={async () => {
+    await supabase.auth.signOut();
+    router.replace("/browse");
+  }}
+  style={{
+    backgroundColor: "#ef4444",
+    padding: 14,
+    borderRadius: 10,
+    marginTop: 20,
+  }}
+>
+  <Text style={{ color: "white", textAlign: "center", fontWeight: "bold" }}>
+    Logout
+  </Text>
+</TouchableOpacity>
     </View>
   );
 }
 
-/* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "black",
-    padding: 20,
-  },
+  container: { flex: 1, padding: 20 },
+
   title: {
-    color: "white",
     fontSize: 22,
     fontWeight: "bold",
-    marginBottom: 30,
+    marginBottom: 20,
   },
+
   item: {
-    paddingVertical: 15,
+    padding: 15,
     borderBottomWidth: 1,
-    borderColor: "#222",
+    borderBottomColor: "#ddd",
   },
+
   text: {
-    color: "white",
     fontSize: 16,
+    color: "#000",
+    fontWeight: "500",
   },
+
   deleteBtn: {
     marginTop: 40,
-    backgroundColor: "red",
+    backgroundColor: "#dc2626",
     padding: 15,
+    borderRadius: 10,
     alignItems: "center",
-    borderRadius: 8,
   },
+
   deleteText: {
     color: "white",
     fontWeight: "bold",

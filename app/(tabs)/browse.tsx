@@ -37,7 +37,8 @@ type Item = {
   location?: string | null;
   category?: string | null;
   negotiable?: boolean;
-    seller_phone?: string | null; // ✅ ADD THIS
+  seller_phone?: string | null; // ✅ ADD THIS
+  user_id?: string; // ✅ ADD THIS
   url?: string | null;
   type?: "item" | "ad" | "banner" | "promoted" | "boosted";
 };
@@ -334,7 +335,7 @@ const deleteSpecialItem = async (item: Item) => {
 
     let query = supabase
       .from("items_live")
-     .select("id,title,price,image_url,video_url,location,category,is_negotiable, seller_phone,created_at")
+     .select("id,title,price,image_url,video_url,location,category,is_negotiable, seller_phone,user_id,created_at")
       .eq("status", "active")
       .order("created_at", { ascending: false });
 
@@ -366,6 +367,7 @@ const deleteSpecialItem = async (item: Item) => {
       category: i.category,
       negotiable: Boolean(i.is_negotiable),
       seller_phone: i.seller_phone,
+      user_id: i.user_id, // ✅ ADD THIS
       type: "item",
     }));
 
@@ -590,6 +592,7 @@ useEffect(() => {
                 category: item.category,
                 negotiable: Boolean(item.is_negotiable),
                 seller_phone: item.seller_phone,
+                user_id: item.user_id, // ✅ ADD THIS
                 type: "item",
               },
               ...prev.slice(0, MAX_FEED_ITEMS),
@@ -640,6 +643,21 @@ useEffect(() => {
   });
 
   return () => subscription.remove();
+}, []);
+/* ================= AUTO REDIRECT + STATE UPDATE ================= */
+useEffect(() => {
+  const { data: listener } = supabase.auth.onAuthStateChange(
+    (_event, session) => {
+      setUser(session?.user ?? null);
+
+      // ✅ If logged out → stay on browse
+      if (!session) {
+        router.replace("/browse");
+      }
+    }
+  );
+
+  return () => listener.subscription.unsubscribe();
 }, []);
   /* ================= REALTIME LIVE STREAMS ================= */
   useEffect(() => {
@@ -788,8 +806,11 @@ style={{ backgroundColor: "#0f172a" }}
                     Tap to Watch 🎥
                   </Text>
                 </TouchableOpacity>
+
               ))}
+              
             </View>
+            
           ) : (
             <Text style={{ marginBottom: 15, color: "#cbd5e1" }}>
               No sellers are live right now.
@@ -805,20 +826,42 @@ style={{ backgroundColor: "#0f172a" }}
   }}
 >
   {/* Row 1: Logo */}
+  <View
+  style={{
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  }}
+>
   <Text
     style={{
       fontSize: 20,
       fontWeight: "bold",
       color: "white",
-      marginBottom: 10,
     }}
   >
     ✨ Nasara
   </Text>
+
+  <TouchableOpacity
+    onPress={() => router.push("/settings")}
+    style={{
+      backgroundColor: "#111827",
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+    }}
+  >
+    <Text style={{ color: "white", fontWeight: "bold" }}>
+      ⚙️ Settings
+    </Text>
+  </TouchableOpacity>
+</View>
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/aYfWnyGG1XaELRkHxJ8QpV.apk"
+      "https://expo.dev/artifacts/eas/jgNhwhgbr5mSHjjYbAybGi.apk"
     )
   }
   style={{
@@ -852,56 +895,21 @@ style={{ backgroundColor: "#0f172a" }}
   />
 
   {/* Row 3: Buttons */}
-  {!user ? (
-    <TouchableOpacity
-      onPress={() => router.push("/(auth)/login")}
-      style={{
-        backgroundColor: "#22c55e",
-        paddingVertical: 10,
-        borderRadius: 10,
-        alignItems: "center",
-      }}
-    >
-      <Text style={{ color: "white", fontWeight: "bold" }}>Sign In</Text>
-    </TouchableOpacity>
-  ) : (
-    <View
-      style={{
-        flexDirection: "row",
-        gap: 10,
-      }}
-    >
-      <TouchableOpacity
-        onPress={() => router.push("/profile")}
-        style={{
-          flex: 1,
-          backgroundColor: "#f97316",
-          paddingVertical: 10,
-          borderRadius: 10,
-          alignItems: "center",
-        }}
-      >
-        <Text style={{ color: "white", fontWeight: "bold" }}>
-          Profile
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={logoutUser}
-        style={{
-          flex: 1,
-          backgroundColor: "#ef4444",
-          paddingVertical: 10,
-          borderRadius: 10,
-          alignItems: "center",
-        }}
-      >
-        <Text style={{ color: "white", fontWeight: "bold" }}>
-          Logout
-        </Text>
-      </TouchableOpacity>
-    </View>
-  )}
+  {!user && (
+  <TouchableOpacity
+    onPress={() => router.push("/(auth)/login")}
+    style={{
+      backgroundColor: "#22c55e",
+      paddingVertical: 10,
+      borderRadius: 10,
+      alignItems: "center",
+    }}
+  >
+    <Text style={{ color: "white", fontWeight: "bold" }}>
+      Sign In / Create Account
+    </Text>
+  </TouchableOpacity>
+)}
 </LinearGradient>
         
 
@@ -1054,6 +1062,36 @@ style={{ backgroundColor: "#0f172a" }}
     </Text>
   </TouchableOpacity>
 )}
+<TouchableOpacity
+  onPress={() => {
+    if (!item.user_id) {
+      Alert.alert("Error", "User not found");
+      return;
+    }
+
+    router.push({
+      pathname: "/profile/[id]",
+      params: { id: item.user_id },
+    });
+  }}
+  style={{
+    marginTop: 6,
+    backgroundColor: "#111827",
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: "center",
+  }}
+>
+  <Text
+    style={{
+      color: "white",
+      fontSize: 12,
+      fontWeight: "bold",
+    }}
+  >
+    👤 View Profile
+  </Text>
+</TouchableOpacity>
             
           </View>
         </TouchableOpacity>

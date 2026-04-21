@@ -56,6 +56,7 @@ export default function ProfileScreen() {
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  
 
   /* ===== MOMO ===== */
   const [momoName, setMomoName] = useState("");
@@ -184,15 +185,30 @@ if (error) {
 
   /* ================= LIVE STREAM ================= */
   const loadLiveStream = async (userId: string) => {
-    const { data } = await (supabase as any)
-      .from("live_streams")
-      .select("id")
-      .eq("seller_id", userId)
-      .eq("status", "live")
-      .maybeSingle();
+  const { data, error } = await (supabase as any)
+    .from("live_streams")
+    .select("id, user_id, status, created_at")
+    .eq("status", "live");
 
-    setLiveStreamId(data?.id ?? null);
-  };
+  if (error) {
+    console.log("Live stream error:", error.message);
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    setLiveStreamId(null);
+    return;
+  }
+
+  // ✅ Match SAME logic as Browse
+  const userStream = data.find(
+    (s: any) => s.user_id === userId
+  );
+
+  console.log("PROFILE STREAM FOUND:", userStream);
+
+  setLiveStreamId(userStream?.id ?? null);
+};
   // ===== LOAD USER STATS =====
 const loadStats = async (userId: string) => {
   const { data } = await (supabase as any)
@@ -243,7 +259,7 @@ const loadEarnings = async (userId: string) => {
 
   }, [session, user])
 );
-
+ 
   /* ================= LOGOUT ================= */
   const followUser = async () => {
 
@@ -544,16 +560,7 @@ Follow
           }}
         />
 
-        <ActionTile
-          label="Watch Video 📺"
-         bg="#0ea5e9"
-          onPress={() => {
-            setShowActionsModal(false);
-            if (liveStreamId) {
-              router.push(`/watch-video/${liveStreamId}`);
-            }
-          }}
-        />
+       
 
         <ActionTile
           label="My Auctions 🔥"
@@ -563,6 +570,7 @@ Follow
             router.push("/auctions"); // app/auction/index
           }}
         />
+        
  
       </View>
 
@@ -594,29 +602,8 @@ Follow
 </Modal>
 <View style={{ marginTop: 40, paddingHorizontal: 20 }}>
 
-  {/* Privacy Policy */}
-  <TouchableOpacity
-    onPress={() => router.push("/privacy")}
-    style={styles.linkItem}
-  >
-    <Text style={styles.linkText}>🔒 Privacy Policy</Text>
-  </TouchableOpacity>
-
-  {/* Terms */}
-  <TouchableOpacity
-    onPress={() => router.push("/terms")}
-    style={styles.linkItem}
-  >
-    <Text style={styles.linkText}>📜 Terms of Service</Text>
-  </TouchableOpacity>
-<TouchableOpacity
-  onPress={handleDeleteAccount}
-  style={styles.deleteBtn}
->
-  <Text style={styles.deleteText}>🗑 Delete Account</Text>
-</TouchableOpacity>
-
 </View>
+
 
       {/* ===== WHATSAPP MODAL ===== */}
       <Modal visible={showWhatsappModal} transparent animationType="slide">
