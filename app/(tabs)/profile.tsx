@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { registerForPushNotifications } from "../../lib/push";
 
 import { supabase } from "../../lib/supabase";
 
@@ -107,7 +108,27 @@ const [earnings, setEarnings] = useState(0);
   }
 
 });
+
   }, []);
+  /* ================= PUSH NOTIFICATION  ================= */
+  useEffect(() => {
+  const saveToken = async () => {
+    const token = await registerForPushNotifications();
+    if (!token) return;
+
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
+
+    if (!user) return;
+
+    await (supabase as any)
+      .from("profiles")
+      .update({ push_token: token })
+      .eq("id", user.id);
+  };
+
+  saveToken();
+}, []);
 
   /* ================= LOAD PROFILE ================= */
   const loadProfile = async (userId: string) => {

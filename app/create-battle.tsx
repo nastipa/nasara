@@ -26,13 +26,13 @@ export default function CreateBattle() {
 
   const categories = [
     "Music",
-    "Comedy",
+    "Auto & Vehicles",
     "Sports",
-    "Food",
+    "Food & Grocery",
     "Fashion",
     "Politics",
     "Electronics",
-    "Education",
+    "Education & Health",
   ];
 
   function getDurationMs() {
@@ -47,96 +47,133 @@ export default function CreateBattle() {
   }
 
   const createBattle = async () => {
-    if (!title || !compare || !category || !durationValue) {
-      Alert.alert("Fill all fields");
+  if (loading) return; // 🔥 prevent duplicates
+
+  if (!title || !compare || !category || !durationValue) {
+    Alert.alert("Fill all fields");
+    return;
+  }
+
+  let names = compare
+    .split(/vs/i)
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0 && n.toLowerCase() !== "vs");
+
+  names = [...new Set(names)];
+
+  names = names.map(
+    (n) => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase()
+  );
+
+  if (names.length < 2) {
+    Alert.alert("Minimum 2 participants");
+    return;
+  }
+
+  if (names.length > 10) {
+    Alert.alert("Maximum 10 participants");
+    return;
+  }
+
+  const durationMs = getDurationMs();
+  if (!durationMs) {
+    Alert.alert("Invalid duration");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
+
+    if (!user) {
+      Alert.alert("Login required");
+      setLoading(false);
       return;
     }
 
-    let names = compare
-      .split(/vs/i)
-      .map((n) => n.trim())
-      .filter((n) => n.length > 0 && n.toLowerCase() !== "vs");
+    const endTime = new Date(Date.now() + durationMs + 5000);
 
-    // Remove duplicates
-    names = [...new Set(names)];
+    const { data, error } = await (supabase as any)
+      .from("battles")
+      .insert({
+        title,
+        compare_text: compare,
+        category,
+        end_time: endTime.toISOString(),
+        creator_id: user.id,
+        status: "active",
+      })
+      .select()
+      .single();
 
-    // Format names nicely
-    names = names.map(
-      (n) => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase()
-    );
-
-    if (names.length < 2) {
-      Alert.alert("Minimum 2 participants");
+    if (error || !data) {
+      Alert.alert("Error creating battle");
+      setLoading(false);
       return;
     }
 
-    if (names.length > 10) {
-      Alert.alert("Maximum 10 participants");
+    const payload = names.map((name) => ({
+      battle_id: data.id,
+      name,
+      votes: 0,
+    }));
+
+    const { error: candidateError } = await (supabase as any)
+      .from("candidates")
+      .insert(payload);
+
+    if (candidateError) {
+      Alert.alert(candidateError.message);
+      setLoading(false);
       return;
     }
 
-    const durationMs = getDurationMs();
-    if (!durationMs) {
-      Alert.alert("Invalid duration");
-      return;
-    }
+    /* ================= NOTIFICATIONS (FOLLOWERS ONLY) ================= */
+    /* ================= NOTIFICATIONS (GLOBAL + PUSH) ================= */
 
-    setLoading(true);
+// 1️⃣ SAVE IN DATABASE (ALL USERS)
+const { data: users } = await (supabase as any)
+  .from("profiles")
+  .select("id");
 
-    try {
-      const { data: authData } = await supabase.auth.getUser();
-      const user = authData?.user;
+if (users) {
+  const inserts = users.map((u: any) => ({
+    user_id: u.id,
+    type: "battle",
+    title: "⚔️ New Battle",
+    body: title,
+    ref_id: data.id,
+    read: false,
+  }));
 
-      if (!user) {
-        Alert.alert("Login required");
-        return;
-      }
+  await (supabase as any).from("notifications").insert(inserts);
+}
 
-      const endTime = new Date(Date.now() + durationMs + 5000);
+// 2️⃣ SEND PUSH NOTIFICATION (SERVER)
+await fetch("https://nasara-upload-server.onrender.com/send-push", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    type: "battle", // 🔥 used in Step 7
+    title: "⚔️ New Battle",
+    body: title,
+    ref_id: data.id,
+  }),
+});
 
-      const { data, error } = await (supabase as any)
-        .from("battles")
-        .insert({
-          title,
-          compare_text: compare,
-          category,
-          end_time: endTime.toISOString(),
-          creator_id: user.id,
-          status: "active",
-        })
-        .select()
-        .single();
+    Alert.alert("Battle Created 🚀");
+    router.replace("/battle");
 
-      if (error || !data) {
-        Alert.alert("Error creating battle");
-        return;
-      }
+  } catch (err: any) {
+    Alert.alert(err.message);
+  }
 
-      const payload = names.map((name) => ({
-        battle_id: data.id,
-        name,
-        votes: 0,
-      }));
-
-      const { error: candidateError } = await (supabase as any)
-        .from("candidates")
-        .insert(payload);
-
-      if (candidateError) {
-        Alert.alert(candidateError.message);
-        return;
-      }
-
-      Alert.alert("Battle Created 🚀");
-      router.replace("/battle");
-
-    } catch (err: any) {
-      Alert.alert(err.message);
-    }
-
-    setLoading(false);
-  };
-
+  setLoading(false);
+};
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.box}>

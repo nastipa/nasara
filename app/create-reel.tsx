@@ -195,55 +195,87 @@ export default function CreateReel() {
 
   /* ================= POST (FULL FIX) ================= */
   const postReel = async () => {
-    if (!video) return;
+  if (!video) return;
 
-    setLoading(true);
-    setProgress(0);
+  setLoading(true);
+  setProgress(0);
 
-    const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser();
 
-if (error || !data?.user?.id) {
-  Alert.alert("Login required");
-  setLoading(false);
-  return;
+  if (error || !data?.user?.id) {
+    Alert.alert("Login required");
+    setLoading(false);
+    return;
+  }
+
+  const userId = data.user.id;
+
+  const thumbnail = await generateThumbnail();
+
+  // 1. CREATE POST FIRST
+  const { data: newPost } = await (supabase as any)
+    .from("posts")
+    .insert({
+      user_id: userId,
+      caption,
+      status: "uploading",
+      views: 0,
+    })
+    .select()
+    .single();
+
+  // 2. GO TO REELS SCREEN
+  router.replace("/reels");
+
+  // 3. UPLOAD VIDEO
+  const result = await uploadVideo(video.uri, (p) => {
+    setProgress(p);
+  });
+
+  // 4. MARK AS READY
+  await (supabase as any)
+    .from("posts")
+    .update({
+      media_url: result.video,
+      thumbnail_url: result.thumbnail || thumbnail,
+      status: "ready",
+    })
+    .eq("id", newPost.id);
+
+  /* ================= NOTIFICATIONS (GLOBAL + PUSH) ================= */
+
+// 1️⃣ SAVE IN DATABASE
+const { data: users } = await (supabase as any)
+  .from("profiles")
+  .select("id");
+
+if (users) {
+  const inserts = users.map((u: any) => ({
+    user_id: u.id,
+    type: "reel", // 🔥 change here
+    title: "🎥 New Reel", // 🔥 change here
+    body: caption || "New reel uploaded", // 🔥 change here
+    ref_id: newPost.id,
+    read: false,
+  }));
+
+  await (supabase as any).from("notifications").insert(inserts);
 }
 
-const userId = data.user.id;
+// 2️⃣ PUSH
+await fetch("https://nasara-upload-server.onrender.com/send-push", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    type: "reel", // 🔥 MUST MATCH
+    title: "🎥 New Reel",
+    body: caption || "New reel uploaded",
+    ref_id: newPost.id,
+  }),
+});
 
-    const thumbnail = await generateThumbnail();
-
-    // 1. CREATE POST FIRST (NO MEDIA YET)
-    const { data: newPost } = await (supabase as any)
-      .from("posts")
-      .insert({
-        user_id: userId,
-        caption,
-        status: "uploading",
-        views: 0,
-      })
-      .select()
-      .single();
-
-    // 2. GO TO REELS IMMEDIATELY
-    router.replace("/reels");
-
-    // 3. UPLOAD IN BACKGROUND WITH PROGRESS
-    const result = await uploadVideo(video.uri, (p) => {
-      setProgress(p);
-    });
-
-    // 4. UPDATE TO READY
-    await (supabase as any)
-      .from("posts")
-      .update({
-        media_url: result.video,
-        thumbnail_url: result.thumbnail || thumbnail,
-        status: "ready",
-      })
-      .eq("id", newPost.id);
-
-    setLoading(false);
-  };
+  setLoading(false);
+};
 
   /* ================= UI ================= */
   return (

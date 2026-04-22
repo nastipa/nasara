@@ -266,6 +266,11 @@ const [showNewPassword, setShowNewPassword] = useState(false);
             New customer? Create Account →
           </Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push("/forgot-password")}>
+       <Text style={{ color: "#2563eb", textAlign: "center", marginTop: 10 }}>
+             Forgot Password?
+          </Text>
+       </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.backButton}

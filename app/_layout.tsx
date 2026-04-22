@@ -1,5 +1,6 @@
 import { Session } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
+import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -35,6 +36,33 @@ export default function RootLayout() {
       subscription.remove();
     };
   }, []);
+
+   /* ================= PUSH HANDLE ================= */
+  useEffect(() => {
+  const subscription = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      const data = response.notification.request.content.data;
+
+      if (data?.type === "battle") {
+        router.push("/battle");
+      }
+
+      if (data?.type === "reel") {
+        router.push("/reels");
+      }
+
+      if (data?.type === "item") {
+        router.push("/browse");
+      }
+
+      if (data?.type === "chat") {
+        router.push("/chat");
+      }
+    }
+  );
+
+  return () => subscription.remove();
+}, []);
 
   /* ================= MOUNT ================= */
   useEffect(() => {

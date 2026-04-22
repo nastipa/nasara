@@ -18,8 +18,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
 import { supabase } from "../../lib/supabase";
 import { uploadVideo } from "../../lib/uploadVideo";
+
 
 type Message = {
   id: number;
@@ -46,6 +48,7 @@ export default function ChatRoom() {
   const [loading, setLoading] = useState(true);
   const [online, setOnline] = useState(false);
   const [typing, setTyping] = useState(false);
+  const [receiverId, setReceiverId] = useState<string | null>(null);
 
   const [showSearch, setShowSearch] = useState(false);
   const [searchText, setSearchText] = useState("");
@@ -102,34 +105,33 @@ export default function ChatRoom() {
   const channel = (supabase as any)
     .channel("chat_" + roomId)
     .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "messages",
-        filter: "room_id=eq." + roomId,
-      },
-      async (payload: any) => {
-        const msg = payload.new as Message;
+  "postgres_changes",
+  {
+    event: "INSERT",
+    schema: "public",
+    table: "messages",
+    filter: "room_id=eq." + roomId,
+  },
+  async (payload: any) => {
+    const msg = payload.new as Message;
 
-        // ✅ FIX: prevent duplicates
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev;
+      return [...prev, msg];
+    });
 
-        if (msg.sender_id !== userId && Platform.OS !== "web") {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: "New Message",
-              body: msg.text || "📎 Media",
-              sound: "default",
-            },
-            trigger: null,
-          });
-        }
-      }
-    )
+    /* ================= PUSH NOTIFICATION ================= */
+    if (msg.sender_id !== userId && Platform.OS !== "web") {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "New Message",
+          body: msg.text || "📩 Message",
+        },
+        trigger: null,
+      });
+    }
+  }
+)
     .subscribe();
 
   return () => (supabase as any).removeChannel(channel);
@@ -281,21 +283,58 @@ const sendCamera = async () => {
   try {
     const url = await uploadVideo(res.assets[0].uri);
 
-    const { data } = await (supabase as any)
-      .from("messages")
-      .insert({
-        room_id: roomId,
-        sender_id: userId,
-        image_url: url,
-      })
-      .select()
-      .single();
+   const { data, error } = await (supabase as any)
+  .from("messages")
+  .insert({
+    room_id: roomId,
+    sender_id: userId,
+    text: tempMessage.text,
+  })
+  .select()
+  .single();
 
-    if (data) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? data : m))
-      );
-      messageIds.current.add(data.id);
+if (error) throw error;
+
+if (data) {
+  // replace temp with real message
+  setMessages((prev) =>
+    prev.map((m) => (m.id === tempId ? data : m))
+  );
+
+  messageIds.current.add(data.id);
+
+  /* ================= NOTIFICATIONS (GLOBAL + PUSH) ================= */
+
+// 1️⃣ SAVE IN DATABASE
+const { data: users } = await supabase
+  .from("profiles")
+  .select("id");
+
+if (users) {
+  const inserts = users.map((u: any) => ({
+    user_id: u.id,
+    type: "chat", // ✅ CHANGED
+    title: "💬 New Message", // ✅ CHANGED
+    body: text, // ✅ CHANGED
+    ref_id: roomId,
+    read: false,
+  }));
+
+  await (supabase as any).from("notifications").insert(inserts);
+}
+
+// 2️⃣ PUSH
+await fetch("https://nasara-upload-server.onrender.com/send-push", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    type: "chat", // ✅ CHANGED
+    title: "💬 New Message", // ✅ CHANGED
+    body: text, // ✅ CHANGED
+    ref_id: roomId,
+  }),
+});
+
     }
   } catch {
     setMessages((prev) => prev.filter((m) => m.id !== tempId));

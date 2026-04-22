@@ -175,7 +175,7 @@ export default function Sell() {
       }
 
       /* ===== INSERT AFTER UPLOAD ===== */
-      const { error } = await (supabase as any).from("items_live").insert({
+      const {data: newItem, error } = await (supabase as any).from("items_live").insert({
         title,
         description,
         price: price ? Number(price) : null,
@@ -193,7 +193,39 @@ export default function Sell() {
       });
 
       if (error) throw error;
+      /* ================= NOTIFICATIONS (GLOBAL + PUSH) ================= */
 
+// 1️⃣ SAVE IN DATABASE
+const { data: users } = await (supabase as any)
+  .from("profiles")
+  .select("id");
+
+const itemId = newItem.id; // ✅ FIXED
+
+if (users) {
+  const inserts = users.map((u: any) => ({
+    user_id: u.id,
+    type: "item",
+    title: "🛒 New Item",
+    body: title || "New item added",
+    ref_id: itemId,
+    read: false,
+  }));
+
+  await (supabase as any).from("notifications").insert(inserts);
+}
+
+// 2️⃣ PUSH
+await fetch("https://nasara-upload-server.onrender.com/send-push", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    type: "item",
+    title: "🛒 New Item",
+    body: title || "New item added",
+    ref_id: itemId,
+  }),
+});
       Alert.alert("Success", "Posted successfully 🚀");
       router.push("/browse");
     } catch (err) {
