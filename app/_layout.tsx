@@ -7,6 +7,9 @@ import { ActivityIndicator, View } from "react-native";
 import { AuthProvider } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
 
+/* 🔥 ADD THIS */
+import { registerPush } from "../lib/registerPush";
+
 export default function RootLayout() {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,32 +40,32 @@ export default function RootLayout() {
     };
   }, []);
 
-   /* ================= PUSH HANDLE ================= */
+  /* ================= PUSH CLICK HANDLE ================= */
   useEffect(() => {
-  const subscription = Notifications.addNotificationResponseReceivedListener(
-    (response) => {
-      const data = response.notification.request.content.data;
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data;
 
-      if (data?.type === "battle") {
-        router.push("/battle");
+        if (data?.type === "battle") {
+          router.push("/battle");
+        }
+
+        if (data?.type === "reel") {
+          router.push("/reels");
+        }
+
+        if (data?.type === "item") {
+          router.push("/browse");
+        }
+
+        if (data?.type === "chat") {
+          router.push("/chat");
+        }
       }
+    );
 
-      if (data?.type === "reel") {
-        router.push("/reels");
-      }
-
-      if (data?.type === "item") {
-        router.push("/browse");
-      }
-
-      if (data?.type === "chat") {
-        router.push("/chat");
-      }
-    }
-  );
-
-  return () => subscription.remove();
-}, []);
+    return () => subscription.remove();
+  }, []);
 
   /* ================= MOUNT ================= */
   useEffect(() => {
@@ -109,6 +112,22 @@ export default function RootLayout() {
     };
   }, []);
 
+  /* ================= 🔥 REGISTER PUSH TOKEN ================= */
+  useEffect(() => {
+    const setupPush = async () => {
+      if (!session?.user) return;
+
+      try {
+        await registerPush(session.user.id);
+        console.log("✅ Push token saved");
+      } catch (err) {
+        console.log("Push setup error:", err);
+      }
+    };
+
+    setupPush();
+  }, [session]);
+
   /* ================= SAFE ROUTING ================= */
   useEffect(() => {
     if (!ready || !mounted) return;
@@ -129,7 +148,6 @@ export default function RootLayout() {
     const isAdmin =
       session?.user?.user_metadata?.role === "admin";
 
-    // 🔒 Not logged in → block protected pages
     if (!session && isProtected) {
       if (!isAuthPage) {
         router.replace("/(auth)/login");
@@ -137,13 +155,11 @@ export default function RootLayout() {
       return;
     }
 
-    // 🔐 Logged in → prevent going back to login/signup
     if (session && isAuthPage) {
       router.replace("/(tabs)/browse");
       return;
     }
 
-    // 🔐 Admin protection
     if (isAdminRoute && !isAdmin) {
       router.replace("/(tabs)/browse");
       return;
@@ -177,7 +193,6 @@ export default function RootLayout() {
         <Stack.Screen name="verify-phone" />
         <Stack.Screen name="(admin)" />
 
-        {/* 🔥 SHARE ROUTES */}
         <Stack.Screen name="item/[id]" />
         <Stack.Screen name="battle-room" />
       </Stack>

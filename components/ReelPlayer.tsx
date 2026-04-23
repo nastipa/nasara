@@ -10,26 +10,33 @@ import {
 
 const { width, height } = Dimensions.get("window");
 
-export default function ReelPlayer({
-  url,
-  active,
-}: any) {
+export default function ReelPlayer({ url, active }: any) {
   const [loading, setLoading] = useState(true);
   const opacity = useRef(new Animated.Value(0)).current;
 
-  // ✅ IMPORTANT SAFE CHECK (FIX WEB CRASH)
+  /* ================= SAFE URL ================= */
   const safeUrl = useMemo(() => {
     if (!url || typeof url !== "string") return null;
     if (url.includes("undefined")) return null;
     return url;
   }, [url]);
 
-  const player = useVideoPlayer(
-    safeUrl ? { uri: safeUrl } : null
-  );
+  /* ================= PLAYER ================= */
+  const player = useVideoPlayer(null);
 
+  /* ================= LOAD VIDEO ================= */
   useEffect(() => {
     if (!player) return;
+
+    if (safeUrl) {
+      player.replace(safeUrl); // 🔥 CRITICAL (fix Android)
+      player.pause(); // start paused
+    } else {
+      player.replace(null);
+    }
+
+    player.loop = true;
+    player.muted = false;
 
     setLoading(true);
 
@@ -41,23 +48,25 @@ export default function ReelPlayer({
         duration: 250,
         useNativeDriver: true,
       }).start();
-    }, 500);
+    }, 400);
 
     return () => clearTimeout(t);
   }, [safeUrl]);
 
+  /* ================= PLAY / PAUSE ================= */
   useEffect(() => {
     if (!player) return;
 
     try {
-      if (active) {
-        player.loop = true;
+      if (active && safeUrl) {
         player.play();
       } else {
         player.pause();
       }
-    } catch {}
-  }, [active, player]);
+    } catch (e) {
+      console.log("Playback error:", e);
+    }
+  }, [active, safeUrl]);
 
   if (!safeUrl) {
     return <View style={styles.container} />;
@@ -65,11 +74,18 @@ export default function ReelPlayer({
 
   return (
     <View style={styles.container}>
-      {player && (
-        <Animated.View style={{ opacity }}>
-          <VideoView player={player} style={styles.video} />
+      {/* 🔥 ANDROID FIX WRAPPER */}
+      <View style={styles.videoWrapper}>
+        <Animated.View style={[styles.videoWrapper, { opacity }]}>
+          <VideoView
+            key={safeUrl} // 🔥 FORCE RE-RENDER (VERY IMPORTANT)
+            player={player}
+            style={styles.video}
+            contentFit="cover"
+            allowsFullscreen={false}
+          />
         </Animated.View>
-      )}
+      </View>
 
       {loading && (
         <View style={styles.loader}>
@@ -80,17 +96,26 @@ export default function ReelPlayer({
   );
 }
 
+/* ================= STYLES ================= */
 const styles = StyleSheet.create({
   container: {
     width,
     height,
     backgroundColor: "black",
   },
-  video: {
-    width,
-    height,
-    position: "absolute",
+
+  videoWrapper: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "black",
   },
+
+  video: {
+    width: "100%",
+    height: "100%",
+    backgroundColor: "black",
+  },
+
   loader: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",

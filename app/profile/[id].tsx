@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { blockUser, isBlocked, unblockUser } from "../../lib/blockUser";
 import { supabase } from "../../lib/supabase";
 
 /* ================= CLOUDINARY ================= */
@@ -68,6 +69,7 @@ export default function ProfileScreen() {
   const [isMe, setIsMe] = useState(false);
 
   const [isFollowing, setIsFollowing] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
   /* ================= LOAD PROFILE ================= */
  useEffect(() => {
@@ -112,11 +114,17 @@ export default function ProfileScreen() {
         .maybeSingle();
 
       setIsFollowing(!!data);
+      // 🔥 BLOCK CHECK
+if (myId && targetId && myId !== targetId) {
+  const result = await isBlocked(targetId);
+  setBlocked(result);
+}
     }
   };
 
   load();
 }, [profileId]);
+
 
   /* ================= FOLLOW USER ================= */
   const followUser = async () => {
@@ -263,6 +271,63 @@ export default function ProfileScreen() {
           </Text>
         </TouchableOpacity>
       )}
+      {/* ================= BLOCK USER ================= */}
+{!isMe && sessionId && profileId && (
+  <TouchableOpacity
+    onPress={() => {
+  if (!profileId) return;
+
+  Alert.alert(
+    blocked ? "Unblock User" : "Block User",
+    blocked
+      ? "Are you sure you want to unblock this user?"
+      : "Are you sure you want to block this user?",
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: blocked ? "Unblock" : "Block",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            if (!blocked) {
+              const { error } = await blockUser(profileId);
+
+              if (error) throw new Error(error);
+
+              setBlocked(true);
+              Alert.alert("Success", "User blocked 🚫");
+            } else {
+              const { error } = await unblockUser(profileId);
+
+              if (error) throw new Error(error);
+
+              setBlocked(false);
+              Alert.alert("Success", "User unblocked ✅");
+            }
+          } catch (err: any) {
+            console.log("Block error:", err);
+            Alert.alert("Error", err.message || "Something went wrong");
+          }
+        },
+      },
+    ]
+  );
+}}
+    style={{
+      marginTop: 10,
+      backgroundColor: blocked ? "#6b7280" : "#111827",
+      padding: 12,
+      borderRadius: 8,
+    }}
+  >
+    <Text style={{ color: "white", textAlign: "center" }}>
+      {blocked ? "Unblock User" : "🚫 Block User"}
+    </Text>
+  </TouchableOpacity>
+)}
     </View>
   );
 }

@@ -131,13 +131,13 @@ export default function ReelsFeed({
   ).current;
 
   const viewabilityConfig = {
-    itemVisiblePercentThreshold: 60,
+    itemVisiblePercentThreshold: 80, // 🔥 stricter = better playback
   };
 
   /* ================= PRELOAD ================= */
   const preloadVideos = useCallback(
     (index: number) => {
-      const around = feed.slice(Math.max(0, index - 1), index + 3);
+      const around = feed.slice(Math.max(0, index - 1), index + 2);
 
       around.forEach((item) => {
         const src = item.media_url;
@@ -167,6 +167,7 @@ export default function ReelsFeed({
     return (
       <View style={{ height, width }}>
         <ReelPlayer
+          key={item.id + "_" + isActive} // 🔥 CRITICAL FIX (Android)
           id={item.id}
           url={item.media_url}
           localUri={item.local_uri}
@@ -237,6 +238,7 @@ export default function ReelsFeed({
 
       <FlatList
         data={feed}
+        extraData={activeIndex} // 🔥 VERY IMPORTANT
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         pagingEnabled
@@ -247,10 +249,10 @@ export default function ReelsFeed({
         viewabilityConfig={viewabilityConfig}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
-        initialNumToRender={3}
-        maxToRenderPerBatch={3}
-        windowSize={5}
-        removeClippedSubviews
+        initialNumToRender={2}
+        maxToRenderPerBatch={2}
+        windowSize={3}
+        removeClippedSubviews={Platform.OS === "android"} // 🔥 fix flicker
         getItemLayout={(_, index) => ({
           length: height,
           offset: height * index,

@@ -56,6 +56,7 @@ export default function ChatRoom() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editText, setEditText] = useState("");
   const [editId, setEditId] = useState<number | null>(null);
+  const [isBlockedUser, setIsBlockedUser] = useState(false);
 
   const [deleteModal, setDeleteModal] = useState<{ visible: boolean; id: number | null }>({
     visible: false,
@@ -189,6 +190,7 @@ const sendText = async () => {
       .insert({
         room_id: roomId,
         sender_id: userId,
+        receiver_id: receiverId,
         text: tempMessage.text,
       })
       .select()
@@ -450,6 +452,15 @@ const sendFile = async () => {
         <ActivityIndicator />
       </View>
     );
+    if (isBlockedUser) {
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <Text style={{ color: "white" }}>
+        This chat is not available
+      </Text>
+    </View>
+  );
+}
 
   return (
     <>
