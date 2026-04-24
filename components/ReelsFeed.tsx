@@ -191,13 +191,14 @@ export default function ReelsFeed({
           <FollowButton userId={item.user_id} />
 
           <Pressable
-            onPress={() =>
-              item.media_url &&
-              Share.share({ message: item.media_url })
-            }
-          >
-            <Text style={styles.icon}>📤</Text>
-          </Pressable>
+  onPress={() =>
+    Share.share({
+      message: `🔥 This is trending on Nasara 👀👇\nhttps://nasara1.vercel.app`,
+    })
+  }
+>
+  <Text style={styles.icon}>📤</Text>
+</Pressable>
 
           <Pressable
             onPress={() =>

@@ -22,6 +22,10 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+  const generateCode = () =>
+  Math.random().toString(36).substring(2, 8).toUpperCase();
+  const [inviteCodeInput, setInviteCodeInput] = useState("");
 
   /* ================= SIGNUP ================= */
   const signUp = async () => {
@@ -33,50 +37,93 @@ export default function SignupScreen() {
     setLoading(true);
 
     try {
+     
       /* ================= CREATE AUTH ACCOUNT ================= */
-      const { data, error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password: password.trim(),
-      });
+const { data, error } = await supabase.auth.signUp({
+  email: email.trim().toLowerCase(),
+  password: password.trim(),
+});
 
-      if (error) {
-        setLoading(false);
-        Alert.alert("Signup failed", error.message);
-        return;
-      }
+if (error) {
+  setLoading(false);
+  Alert.alert("Signup failed", error.message);
+  return;
+}
 
+/* ✅ ADD INVITE LOGIC HERE (EXACT SPOT) */
+let invitedBy = null;
+
+if (inviteCodeInput) {
+  const { data: inviter } = await (supabase as any)
+    .from("profiles")
+    .select("id")
+    .eq("invite_code", inviteCodeInput.trim())
+    .maybeSingle();
+
+  if (inviter) {
+    invitedBy = inviter.id;
+  }
+}
+
+     
       /* ================= CREATE PROFILE ================= */
-      if (data?.user) {
-        const { error: profileError } = await (supabase as any)
-          .from("profiles")
-          .insert([
-            {
-              id: data.user.id,
-              email: email.trim().toLowerCase(),
+if (data?.user) {
+  const newCode = generateCode();
 
-              /* TRUST SYSTEM DEFAULTS */
-              phone_verified: false,
-              human_verified: false,
+  // 🔍 Check if user used invite code
+  let inviter: any = null;
 
-              trust_score: 50,
-              risk_score: 0,
-              verification_level: "tier_0",
+  if (inviteCode.trim()) {
+    const { data: found } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("invite_code", inviteCode.trim().toUpperCase())
+      .single();
 
-              created_at: new Date(),
-            },
-          ]);
+    inviter = found;
+  }
 
-        if (profileError) {
-          console.log("Profile creation error:", profileError.message);
-        }
-      }
+  const { error: profileError } = await (supabase as any)
+    .from("profiles")
+    .insert([
+      {
+        id: data.user.id,
+        email: email.trim().toLowerCase(),
 
+
+        /* TRUST SYSTEM DEFAULTS */
+        phone_verified: false,
+        human_verified: false,
+        trust_score: 50,
+        risk_score: 0,
+        verification_level: "tier_0",
+        invite_code: Math.random().toString(36).substring(2, 8).toUpperCase(),
+           invited_by: invitedBy, // ✅ HERE
+
+        created_at: new Date(),
+      },
+    ]);
+
+  // 🔥 Increase inviter count
+  if (inviter) {
+    await (supabase as any)
+      .from("profiles")
+      .update({
+        invites_count: (inviter.invites_count || 0) + 1,
+      })
+      .eq("id", inviter.id);
+  }
+
+  if (profileError) {
+    console.log("Profile creation error:", profileError.message);
+  }
+}
       setLoading(false);
 
       Alert.alert(
-        "Account Created 🎉",
-        "Please login first. After login, you will verify your phone to activate your account."
-      );
+  "Welcome to Nasara 🚀",
+  "You are an early user! Invite friends and grow with us."
+);
 
       router.replace("/(auth)/login");
     } catch (err: any) {
@@ -122,6 +169,13 @@ export default function SignupScreen() {
            value={password}
            onChangeText={setPassword}
          />
+       <Text style={styles.label}>Invite Code (optional)</Text>
+         <TextInput
+        style={styles.input}
+       placeholder="Enter invite code"
+      value={inviteCode}
+       onChangeText={setInviteCode}
+       />
        
          <TouchableOpacity
            onPress={() => setShowPassword(!showPassword)}

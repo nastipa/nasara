@@ -9,6 +9,7 @@ import {
   Linking,
   Modal,
   Platform,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -57,6 +58,7 @@ export default function ProfileScreen() {
   const [phone, setPhone] = useState("");
   const [location, setLocation] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState("");
   
 
   /* ===== MOMO ===== */
@@ -158,6 +160,11 @@ const [earnings, setEarnings] = useState(0);
       setMomoName(profile.momo_name || "");
       setMomoNumber(profile.momo_number || "");
       setMomoNetwork(profile.momo_network || "");
+      
+  /* ✅ ADD THIS */
+  setInviteCode(profile.invite_code || "");
+
+  setVerificationStatus(profile?.verification_status || "none");
 
       /* PHONE VERIFICATION */
      /* VERIFICATION STATUS (FIXED) */
@@ -430,6 +437,46 @@ const handleDeleteAccount = async () => {
 
       <Text style={styles.title}>{fullName || "Profile"}</Text>
       <Text style={styles.email}>{session.user.email}</Text>
+      {/* ===== INVITE CODE ===== */}
+<View
+  style={{
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 10,
+    marginBottom: 14,
+  }}
+>
+  <Text style={{ fontWeight: "700" }}>Your Invite Code</Text>
+
+  <Text
+    style={{
+      marginTop: 6,
+      fontSize: 16,
+      color: "#2563eb",
+      fontWeight: "bold",
+    }}
+  >
+    {inviteCode || "Not generated"}
+  </Text>
+</View>
+<TouchableOpacity
+  onPress={() =>
+    Share.share({
+      message: `Join Nasara 🚀 using my invite code: ${inviteCode}\nhttps://nasara1.vercel.app`,
+    })
+  }
+  style={{
+    marginBottom: 14,
+    backgroundColor: "#16a34a",
+    padding: 10,
+    borderRadius: 8,
+  }}
+>
+  <Text style={{ color: "white", textAlign: "center" }}>
+    Share Invite
+  </Text>
+</TouchableOpacity>
      
       {session && user && user !== session.user.id && (
 
