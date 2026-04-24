@@ -6,14 +6,13 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
-  Platform,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -64,26 +63,18 @@ export default function Sell() {
   }, []);
 
   /* ================= UPLOAD ================= */
-  const uploadFile = async (uri: string, type: "image" | "video") => {
-    setProgress(10);
-
+ const uploadFile = async (uri: string, type: "image" | "video") => {
+  // ✅ IMAGE → keep using fetch (works fine)
+  if (type === "image") {
     const formData = new FormData();
 
-    if (Platform.OS === "web") {
-      const res = await fetch(uri);
-      const blob = await res.blob();
-      formData.append("file", blob, "file");
-    } else {
-      formData.append("file", {
-        uri,
-        name: type === "image" ? "image.jpg" : "video.mp4",
-        type: type === "image" ? "image/jpeg" : "video/mp4",
-      } as any);
-    }
+    formData.append("file", {
+      uri,
+      name: "image.jpg",
+      type: "image/jpeg",
+    } as any);
 
-    setProgress(40);
-
-    const response = await fetch(
+    const res = await fetch(
       "https://nasara-upload-server.onrender.com/upload",
       {
         method: "POST",
@@ -91,19 +82,55 @@ export default function Sell() {
       }
     );
 
-    setProgress(70);
+    const data = await res.json();
 
-    const data = await response.json();
-
-    if (!data?.url || !data.url.startsWith("http")) {
-      throw new Error("Invalid upload URL");
-    }
-
-    setProgress(100);
+    if (!data?.url) throw new Error("Image upload failed");
 
     return data.url;
-  };
+  }
 
+  // 🔥 VIDEO → use XHR (FIX)
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+
+    const fileUri = uri.startsWith("file://") ? uri : `file://${uri}`;
+
+    formData.append("file", {
+      uri: fileUri,
+      name: "video.mp4",
+      type: "video/mp4",
+    } as any);
+
+    xhr.open("POST", "https://nasara-upload-server.onrender.com/upload");
+
+    xhr.onload = () => {
+      try {
+        if (xhr.status !== 200) {
+          console.log("VIDEO UPLOAD FAIL:", xhr.responseText);
+          return reject("Video upload failed");
+        }
+
+        const data = JSON.parse(xhr.responseText);
+
+        if (!data?.url) {
+          return reject("Invalid video response");
+        }
+
+        resolve(data.url);
+      } catch (e) {
+        reject("Invalid JSON");
+      }
+    };
+
+    xhr.onerror = () => {
+      console.log("XHR VIDEO ERROR");
+      reject("Network error");
+    };
+
+    xhr.send(formData);
+  });
+};
   /* ================= PICKERS ================= */
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -118,64 +145,73 @@ export default function Sell() {
   };
 
   const pickVideo = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      quality: 0.5,
-    });
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+    quality: 1,
+  });
 
-    if (!result.canceled) {
-      setVideoUri(result.assets[0].uri);
-      setImageUri(null);
+  if (!result.canceled) {
+    const asset = result.assets[0];
+
+    // 🔥 BLOCK LARGE VIDEOS
+    if (asset.fileSize && asset.fileSize > 50 * 1024 * 1024) {
+      Alert.alert("Video too large", "Max allowed is 50MB");
+      return;
     }
-  };
 
+    setVideoUri(asset.uri);
+    setImageUri(null);
+  }
+};
   /* ================= POST ================= */
   const postItem = async () => {
-    if (!title || !phone) {
-      Alert.alert("Error", "Title and phone are required");
-      return;
+  if (!title || !phone) {
+    Alert.alert("Error", "Title and phone are required");
+    return;
+  }
+
+  if (!category) {
+    Alert.alert("Error", "Select a category");
+    return;
+  }
+
+  setLoading(true);
+  setUploading(true);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    Alert.alert("Login required");
+    setLoading(false);
+    setUploading(false);
+    return;
+  }
+
+  try {
+    let imageUrl = null;
+    let videoUrl = null;
+
+    /* ===== UPLOAD ===== */
+    if (imageUri) {
+      const compressed = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [{ resize: { width: 800 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+      );
+
+      imageUrl = await uploadFile(compressed.uri, "image");
     }
 
-    if (!category) {
-      Alert.alert("Error", "Select a category");
-      return;
+    if (videoUri) {
+      videoUrl = await uploadFile(videoUri, "video");
     }
 
-    setLoading(true);
-    setUploading(true);
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      Alert.alert("Login required");
-      setLoading(false);
-      setUploading(false);
-      return;
-    }
-
-    try {
-      let imageUrl = null;
-      let videoUrl = null;
-
-      /* ===== UPLOAD FIRST (CRITICAL FIX) ===== */
-      if (imageUri) {
-        const compressed = await ImageManipulator.manipulateAsync(
-          imageUri,
-          [{ resize: { width: 800 } }],
-          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-        );
-
-        imageUrl = await uploadFile(compressed.uri, "image");
-      }
-
-      if (videoUri) {
-        videoUrl = await uploadFile(videoUri, "video");
-      }
-
-      /* ===== INSERT AFTER UPLOAD ===== */
-      const {data: newItem, error } = await (supabase as any).from("items_live").insert({
+    /* ===== INSERT (FIXED) ===== */
+    const { data: newItem, error } = await (supabase as any)
+      .from("items_live")
+      .insert({
         title,
         description,
         price: price ? Number(price) : null,
@@ -190,53 +226,64 @@ export default function Sell() {
         category,
         status: "active",
         created_at: new Date().toISOString(),
-      });
+      })
+      .select()
+      .single(); // 🔥 IMPORTANT
 
-      if (error) throw error;
-      /* ================= NOTIFICATIONS (GLOBAL + PUSH) ================= */
+    if (error) throw error;
 
-// 1️⃣ SAVE IN DATABASE
-const { data: users } = await (supabase as any)
-  .from("profiles")
-  .select("id");
+    const itemId = newItem.id;
 
-const itemId = newItem.id; // ✅ FIXED
+    /* ===== SUCCESS UI FIRST (FAST) ===== */
+    Alert.alert("Success", "Posted successfully 🚀");
+    router.push("/browse");
 
-if (users) {
-  const inserts = users.map((u: any) => ({
-    user_id: u.id,
-    type: "item",
-    title: "🛒 New Item",
-    body: title || "New item added",
-    ref_id: itemId,
-    read: false,
-  }));
+    /* ===== NOTIFICATIONS (NON-BLOCKING 🔥) ===== */
+    setTimeout(async () => {
+      try {
+        const { data: users } = await (supabase as any)
+          .from("profiles")
+          .select("id");
 
-  await (supabase as any).from("notifications").insert(inserts);
-}
+        if (users) {
+          const inserts = users.map((u: any) => ({
+            user_id: u.id,
+            type: "item",
+            title: "🛒 New Item",
+            body: title || "New item added",
+            ref_id: itemId,
+            read: false,
+          }));
 
-// 2️⃣ PUSH
-await fetch("https://nasara-upload-server.onrender.com/send-push", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    type: "item",
-    title: "🛒 New Item",
-    body: title || "New item added",
-    ref_id: itemId,
-  }),
-});
-      Alert.alert("Success", "Posted successfully 🚀");
-      router.push("/browse");
-    } catch (err) {
-      console.log("POST ERROR:", err);
-      Alert.alert("Error", "Upload failed");
-    }
+          await (supabase as any)
+            .from("notifications")
+            .insert(inserts);
+        }
 
-    setLoading(false);
-    setUploading(false);
-    setProgress(0);
-  };
+        // push (don't await)
+        fetch("https://nasara-upload-server.onrender.com/send-push", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "item",
+            title: "🛒 New Item",
+            body: title || "New item added",
+            ref_id: itemId,
+          }),
+        }).catch(() => {});
+      } catch (e) {
+        console.log("NOTIFY ERROR:", e);
+      }
+    }, 0);
+  } catch (err) {
+    console.log("POST ERROR:", err);
+    Alert.alert("Error", "Upload failed");
+  }
+
+  setLoading(false);
+  setUploading(false);
+  setProgress(0);
+};
 
   /* ================= UI ================= */
   return (
