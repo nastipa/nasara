@@ -12,10 +12,9 @@ import {
   View,
 } from "react-native";
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import CommentLikeButton from "../components/CommentLikeButton";
 import { supabase } from "../lib/supabase";
-
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Comment = {
   id: string;
@@ -30,10 +29,12 @@ export default function CommentsPage() {
   const router = useRouter();
   const { postId } = useLocalSearchParams();
 
+  const insets = useSafeAreaInsets();
+
   const [comments, setComments] = useState<Comment[]>([]);
   const [message, setMessage] = useState("");
   const [replyTo, setReplyTo] = useState<string | null>(null);
- const insets = useSafeAreaInsets();
+
   /* ================= LOAD ================= */
   useEffect(() => {
     if (!postId) return;
@@ -41,7 +42,7 @@ export default function CommentsPage() {
     loadComments();
 
     const channel = (supabase as any)
-      .channel("comments-live")
+      .channel(`comments-live-${postId}`)
       .on(
         "postgres_changes",
         {
@@ -52,7 +53,13 @@ export default function CommentsPage() {
         },
         (payload: any) => {
           const newComment = payload.new as Comment;
-          setComments((prev) => [...prev, newComment]);
+
+          setComments((prev) => {
+            if (prev.find((c) => c.id === newComment.id)) {
+              return prev;
+            }
+            return [...prev, newComment];
+          });
         }
       )
       .subscribe();
@@ -62,6 +69,7 @@ export default function CommentsPage() {
     };
   }, [postId]);
 
+  /* ================= LOAD COMMENTS ================= */
   async function loadComments() {
     const { data } = await supabase
       .from("comments")
@@ -69,14 +77,16 @@ export default function CommentsPage() {
       .eq("post_id", postId)
       .order("created_at", { ascending: true });
 
-    if (data) setComments(data);
+    if (data) {
+      setComments(data);
+    }
   }
 
   /* ================= SEND ================= */
   async function sendComment() {
     if (!message.trim()) return;
 
-    const text = message;
+    const text = message.trim();
 
     setMessage("");
     setReplyTo(null);
@@ -86,19 +96,35 @@ export default function CommentsPage() {
 
     if (!userId || !postId) return;
 
-    await (supabase as any).from("comments").insert({
-      post_id: postId,
-      user_id: userId,
-      text,
-      parent_id: replyTo,
-    });
+    const { error } = await (supabase as any)
+      .from("comments")
+      .insert({
+        post_id: postId,
+        user_id: userId,
+        text,
+        parent_id: replyTo,
+      });
+
+    if (error) {
+      console.log("COMMENT ERROR:", error.message);
+    }
   }
 
   /* ================= DELETE ================= */
   async function deleteComment(commentId: string) {
-    await supabase.from("comments").delete().eq("id", commentId);
+    const { error } = await supabase
+      .from("comments")
+      .delete()
+      .eq("id", commentId);
 
-    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    if (error) {
+      console.log("DELETE ERROR:", error.message);
+      return;
+    }
+
+    setComments((prev) =>
+      prev.filter((c) => c.id !== commentId)
+    );
   }
 
   /* ================= STRUCTURE ================= */
@@ -113,26 +139,28 @@ export default function CommentsPage() {
 
     return (
       <View style={{ marginBottom: 14 }}>
-        {/* MAIN COMMENT */}
         <View style={styles.commentRow}>
           <View style={styles.commentContent}>
             <Text style={styles.text}>{item.text}</Text>
 
             <View style={styles.actions}>
-              <TouchableOpacity onPress={() => setReplyTo(item.id)}>
+              <TouchableOpacity
+                onPress={() => setReplyTo(item.id)}
+              >
                 <Text style={styles.reply}>Reply</Text>
               </TouchableOpacity>
 
               <CommentLikeButton commentId={item.id} />
 
-              <TouchableOpacity onPress={() => deleteComment(item.id)}>
+              <TouchableOpacity
+                onPress={() => deleteComment(item.id)}
+              >
                 <Text style={styles.delete}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
-        {/* REPLIES */}
         {replies.map((reply) => (
           <View key={reply.id} style={styles.replyRow}>
             <Text style={styles.text}>{reply.text}</Text>
@@ -147,49 +175,74 @@ export default function CommentsPage() {
     <TouchableWithoutFeedback onPress={() => router.back()}>
       <View style={styles.overlay}>
         <TouchableWithoutFeedback>
-         <KeyboardAvoidingView
-  behavior={Platform.OS === "ios" ? "padding" : "height"}
-  keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
-  style={styles.sheet}
->
+          <KeyboardAvoidingView
+            behavior={
+              Platform.OS === "ios" ? "padding" : "height"
+            }
+            keyboardVerticalOffset={
+              Platform.OS === "ios" ? 80 : 20
+            }
+            style={styles.sheet}
+          >
             {/* HEADER */}
             <View style={styles.header}>
               <Text style={styles.title}>Comments</Text>
             </View>
 
-            {/* COMMENTS LIST */}
+            {/* COMMENTS */}
             <FlatList
               data={rootComments}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => renderComment(item)}
               ListEmptyComponent={
-                <Text style={styles.empty}>No comments yet</Text>
+                <Text style={styles.empty}>
+                  No comments yet
+                </Text>
               }
-              contentContainerStyle={{ paddingBottom: 20 }}
               showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                paddingBottom: 100, // FIX: leaves space for input
+              }}
             />
 
-            {/* REPLY LABEL */}
+            {/* REPLYING */}
             {replyTo && (
-              <Text style={styles.replying}>Replying...</Text>
+              <Text style={styles.replying}>
+                Replying...
+              </Text>
             )}
 
-            {/* INPUT BAR (FIXED LIKE TIKTOK) */}
-            <View style={styles.inputContainer}>
-  <View style={styles.inputRow}>
-    <TextInput
-      placeholder="Add a comment..."
-      value={message}
-      onChangeText={setMessage}
-      style={styles.input}
-      placeholderTextColor="#999"
-    />
+            {/* INPUT BAR */}
+            <View
+              style={[
+                styles.inputContainer,
+                {
+                  paddingBottom:
+                    Platform.OS === "android"
+                      ? Math.max(insets.bottom, 16)
+                      : insets.bottom,
+                },
+              ]}
+            >
+              <View style={styles.inputRow}>
+                <TextInput
+                  placeholder="Add a comment..."
+                  value={message}
+                  onChangeText={setMessage}
+                  style={styles.input}
+                  placeholderTextColor="#999"
+                />
 
-    <TouchableOpacity onPress={sendComment} style={styles.sendButton}>
-      <Text style={styles.sendText}>Send</Text>
-    </TouchableOpacity>
-  </View>
-</View>
+                <TouchableOpacity
+                  onPress={sendComment}
+                  style={styles.sendButton}
+                >
+                  <Text style={styles.sendText}>
+                    Send
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
       </View>
@@ -198,6 +251,7 @@ export default function CommentsPage() {
 }
 
 /* ================= STYLES ================= */
+
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -207,7 +261,7 @@ const styles = StyleSheet.create({
 
   sheet: {
     height: "85%",
-    backgroundColor: "#000", // 🔥 TikTok dark mode
+    backgroundColor: "#000",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingTop: 10,
@@ -279,32 +333,33 @@ const styles = StyleSheet.create({
   },
 
   inputContainer: {
-  backgroundColor: "#fff",
-  paddingHorizontal: 10,
-  paddingVertical: 8,
-  borderTopWidth: 1,
-  borderColor: "#ddd",
-},
+    backgroundColor: "#fff",
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderColor: "#ddd",
+  },
 
-inputRow: {
-  flexDirection: "row",
-  alignItems: "center",
-},
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
 
-input: {
-  flex: 1,
-  height: 40,
-  backgroundColor: "#f2f2f2",
-  borderRadius: 20,
-  paddingHorizontal: 14,
-},
+  input: {
+    flex: 1,
+    height: 40,
+    backgroundColor: "#f2f2f2",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+  },
 
-sendButton: {
-  marginLeft: 8,
-},
+  sendButton: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+  },
 
-sendText: {
-  color: "#007AFF",
-  fontWeight: "600",
-},
+  sendText: {
+    color: "#007AFF",
+    fontWeight: "600",
+  },
 });
