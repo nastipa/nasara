@@ -6,22 +6,128 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
+/* ================= PRO UPLOAD ================= */
+const uploadFile = async (
+  uri: string,
+  type: "image" | "video",
+  onProgress?: (p: number) => void
+): Promise<string> => {
+  const isWeb = Platform.OS === "web";
+  const MAX_RETRIES = 2;
+
+  const uploadOnce = async (): Promise<string> => {
+    /* ========= WEB ========= */
+    if (isWeb) {
+      const res = await fetch(uri);
+      const blob = await res.blob();
+
+      const formData = new FormData();
+      formData.append(
+        "file",
+        new File(
+          [blob],
+          type === "image" ? "image.jpg" : "video.mp4",
+          { type: blob.type }
+        )
+      );
+
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.open(
+          "POST",
+          "https://nasara-upload-server.onrender.com/upload"
+        );
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onProgress) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+
+        xhr.onload = () => {
+          try {
+            if (xhr.status !== 200) return reject("Upload failed");
+            const data = JSON.parse(xhr.responseText);
+            if (!data?.url) return reject("Invalid response");
+            resolve(data.url);
+          } catch {
+            reject("Invalid JSON");
+          }
+        };
+
+        xhr.onerror = () => reject("Network error");
+        xhr.send(formData);
+      });
+    }
+
+    /* ========= MOBILE ========= */
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const formData = new FormData();
+
+      formData.append("file", {
+        uri: uri.startsWith("file://") ? uri : `file://${uri}`,
+        name: type === "image" ? "image.jpg" : "video.mp4",
+        type: type === "image" ? "image/jpeg" : "video/mp4",
+      } as any);
+
+      xhr.open(
+        "POST",
+        "https://nasara-upload-server.onrender.com/upload"
+      );
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        try {
+          if (xhr.status !== 200) return reject("Upload failed");
+          const data = JSON.parse(xhr.responseText);
+          if (!data?.url) return reject("Invalid response");
+          resolve(data.url);
+        } catch {
+          reject("Invalid JSON");
+        }
+      };
+
+      xhr.onerror = () => reject("Network error");
+      xhr.send(formData);
+    });
+  };
+
+  for (let i = 0; i <= MAX_RETRIES; i++) {
+    try {
+      return await uploadOnce();
+    } catch (err) {
+      if (i === MAX_RETRIES) throw err;
+    }
+  }
+
+  throw new Error("Upload failed");
+};
+
+/* ================= COMPONENT ================= */
 export default function Sell() {
   const router = useRouter();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [price, setPrice] = useState(""); // OPTIONAL
+  const [price, setPrice] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
 
@@ -62,185 +168,105 @@ export default function Sell() {
     })();
   }, []);
 
-  /* ================= UPLOAD ================= */
- const uploadFile = async (uri: string, type: "image" | "video") => {
-  // ✅ IMAGE → keep using fetch (works fine)
-  if (type === "image") {
-    const formData = new FormData();
-
-    formData.append("file", {
-      uri,
-      name: "image.jpg",
-      type: "image/jpeg",
-    } as any);
-
-    const res = await fetch(
-      "https://nasara-upload-server.onrender.com/upload",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    const data = await res.json();
-
-    if (!data?.url) throw new Error("Image upload failed");
-
-    return data.url;
-  }
-
-  // 🔥 VIDEO → use XHR (FIX)
-  return new Promise<string>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const formData = new FormData();
-
-    const fileUri = uri.startsWith("file://") ? uri : `file://${uri}`;
-
-    formData.append("file", {
-      uri: fileUri,
-      name: "video.mp4",
-      type: "video/mp4",
-    } as any);
-
-    xhr.open("POST", "https://nasara-upload-server.onrender.com/upload");
-
-    xhr.onload = () => {
-      try {
-        if (xhr.status !== 200) {
-          console.log("VIDEO UPLOAD FAIL:", xhr.responseText);
-          return reject("Video upload failed");
-        }
-
-        const data = JSON.parse(xhr.responseText);
-
-        if (!data?.url) {
-          return reject("Invalid video response");
-        }
-
-        resolve(data.url);
-      } catch (e) {
-        reject("Invalid JSON");
-      }
-    };
-
-    xhr.onerror = () => {
-      console.log("XHR VIDEO ERROR");
-      reject("Network error");
-    };
-
-    xhr.send(formData);
-  });
-};
-  /* ================= PICKERS ================= */
+  /* ================= PICK ================= */
   const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
+    const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.6,
     });
 
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
+    if (!res.canceled) {
+      setImageUri(res.assets[0].uri);
       setVideoUri(null);
     }
   };
 
   const pickVideo = async () => {
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-    quality: 1,
-  });
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+    });
 
-  if (!result.canceled) {
-    const asset = result.assets[0];
+    if (!res.canceled) {
+      setVideoUri(res.assets[0].uri);
+      setImageUri(null);
+    }
+  };
 
-    // 🔥 BLOCK LARGE VIDEOS
-    if (asset.fileSize && asset.fileSize > 50 * 1024 * 1024) {
-      Alert.alert("Video too large", "Max allowed is 50MB");
+  /* ================= POST ================= */
+  const postItem = async () => {
+    if (loading) return;
+
+    if (!title || !phone || !category) {
+      Alert.alert("Fill required fields");
       return;
     }
 
-    setVideoUri(asset.uri);
-    setImageUri(null);
-  }
-};
-  /* ================= POST ================= */
-  const postItem = async () => {
-  if (!title || !phone) {
-    Alert.alert("Error", "Title and phone are required");
-    return;
-  }
+    setLoading(true);
+    setUploading(true);
+    setProgress(0);
 
-  if (!category) {
-    Alert.alert("Error", "Select a category");
-    return;
-  }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-  setLoading(true);
-  setUploading(true);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    Alert.alert("Login required");
-    setLoading(false);
-    setUploading(false);
-    return;
-  }
-
-  try {
-    let imageUrl = null;
-    let videoUrl = null;
-
-    /* ===== UPLOAD ===== */
-    if (imageUri) {
-      const compressed = await ImageManipulator.manipulateAsync(
-        imageUri,
-        [{ resize: { width: 800 } }],
-        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-      );
-
-      imageUrl = await uploadFile(compressed.uri, "image");
+    if (!user) {
+      Alert.alert("Login required");
+      return;
     }
 
-    if (videoUri) {
-      videoUrl = await uploadFile(videoUri, "video");
-    }
+    try {
+      let imageUrl = null;
+      let videoUrl = null;
 
-    /* ===== INSERT (FIXED) ===== */
-    const { data: newItem, error } = await (supabase as any)
-      .from("items_live")
-      .insert({
-        title,
-        description,
-        price: price ? Number(price) : null,
-        location,
-        latitude,
-        longitude,
-        seller_phone: phone,
-        image_url: imageUrl,
-        video_url: videoUrl,
-        user_id: user.id,
-        is_negotiable: isNegotiable,
-        category,
-        status: "active",
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single(); // 🔥 IMPORTANT
+      /* ===== PARALLEL UPLOAD ===== */
+      const [img, vid] = await Promise.all([
+        imageUri
+          ? (async () => {
+              const compressed = await ImageManipulator.manipulateAsync(
+                imageUri,
+                [{ resize: { width: 800 } }],
+                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+              );
+              return await uploadFile(compressed.uri, "image", setProgress);
+            })()
+          : null,
 
-    if (error) throw error;
+        videoUri
+          ? uploadFile(videoUri, "video", setProgress)
+          : null,
+      ]);
 
-    const itemId = newItem.id;
+      imageUrl = img;
+      videoUrl = vid;
 
-    /* ===== SUCCESS UI FIRST (FAST) ===== */
-    Alert.alert("Success", "Posted successfully 🚀");
-    router.push("/browse");
+      const { data: newItem, error } = await (supabase as any)
+        .from("items_live")
+        .insert({
+          title,
+          description,
+          price: price ? Number(price) : null,
+          location,
+          latitude,
+          longitude,
+          seller_phone: phone,
+          image_url: imageUrl,
+          video_url: videoUrl,
+          user_id: user.id,
+          is_negotiable: isNegotiable,
+          category,
+          status: "active",
+        })
+        .select()
+        .single();
 
-    /* ===== NOTIFICATIONS (NON-BLOCKING 🔥) ===== */
-    setTimeout(async () => {
-      try {
+      if (error) throw error;
+
+      /* ===== FAST UI ===== */
+      Alert.alert("Success 🚀");
+      router.replace("/browse");
+
+      /* ===== NOTIFICATIONS ===== */
+      setTimeout(async () => {
         const { data: users } = await (supabase as any)
           .from("profiles")
           .select("id");
@@ -250,8 +276,8 @@ export default function Sell() {
             user_id: u.id,
             type: "item",
             title: "🛒 New Item",
-            body: title || "New item added",
-            ref_id: itemId,
+            body: title,
+            ref_id: newItem.id,
             read: false,
           }));
 
@@ -260,30 +286,24 @@ export default function Sell() {
             .insert(inserts);
         }
 
-        // push (don't await)
         fetch("https://nasara-upload-server.onrender.com/send-push", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "item",
             title: "🛒 New Item",
-            body: title || "New item added",
-            ref_id: itemId,
+            body: title,
+            ref_id: newItem.id,
           }),
         }).catch(() => {});
-      } catch (e) {
-        console.log("NOTIFY ERROR:", e);
-      }
-    }, 0);
-  } catch (err) {
-    console.log("POST ERROR:", err);
-    Alert.alert("Error", "Upload failed");
-  }
+      }, 0);
+    } catch (err) {
+      Alert.alert("Upload failed");
+    }
 
-  setLoading(false);
-  setUploading(false);
-  setProgress(0);
-};
+    setUploading(false);
+    setLoading(false);
+  }
 
   /* ================= UI ================= */
   return (

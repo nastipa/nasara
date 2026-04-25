@@ -9,320 +9,302 @@ import {
   TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
-  View
+  View,
 } from "react-native";
 
 import CommentLikeButton from "../components/CommentLikeButton";
 import { supabase } from "../lib/supabase";
 
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 type Comment = {
-id: string
-post_id: string
-user_id: string
-text: string
-parent_id: string | null
-created_at: string
-}
+  id: string;
+  post_id: string;
+  user_id: string;
+  text: string;
+  parent_id: string | null;
+  created_at: string;
+};
 
-export default function CommentsPage(){
+export default function CommentsPage() {
+  const router = useRouter();
+  const { postId } = useLocalSearchParams();
 
-const router = useRouter()
-const { postId } = useLocalSearchParams()
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [message, setMessage] = useState("");
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+ const insets = useSafeAreaInsets();
+  /* ================= LOAD ================= */
+  useEffect(() => {
+    if (!postId) return;
 
-const [comments,setComments] = useState<Comment[]>([])
-const [message,setMessage] = useState("")
-const [replyTo,setReplyTo] = useState<string | null>(null)
+    loadComments();
 
-useEffect(()=>{
+    const channel = (supabase as any)
+      .channel("comments-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "comments",
+          filter: `post_id=eq.${postId}`,
+        },
+        (payload: any) => {
+          const newComment = payload.new as Comment;
+          setComments((prev) => [...prev, newComment]);
+        }
+      )
+      .subscribe();
 
-if(!postId) return
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [postId]);
 
-loadComments()
+  async function loadComments() {
+    const { data } = await supabase
+      .from("comments")
+      .select("*")
+      .eq("post_id", postId)
+      .order("created_at", { ascending: true });
 
-const channel = supabase
-.channel("comments-live")
-.on(
-"postgres_changes",
-{
-event:"INSERT",
-schema:"public",
-table:"comments",
-filter:`post_id=eq.${postId}`
-},
-(payload)=>{
-const newComment = payload.new as Comment
-setComments(prev=>[...prev,newComment])
-}
-)
-.subscribe()
+    if (data) setComments(data);
+  }
 
-return ()=>{
-supabase.removeChannel(channel)
-}
+  /* ================= SEND ================= */
+  async function sendComment() {
+    if (!message.trim()) return;
 
-},[postId])
+    const text = message;
 
-async function loadComments(){
+    setMessage("");
+    setReplyTo(null);
 
-const { data,error } = await supabase
-.from("comments")
-.select("*")
-.eq("post_id",postId)
-.order("created_at",{ascending:true})
+    const { data } = await supabase.auth.getUser();
+    const userId = data.user?.id;
 
-if(!error && data){
-setComments(data)
-}
+    if (!userId || !postId) return;
 
-}
+    await (supabase as any).from("comments").insert({
+      post_id: postId,
+      user_id: userId,
+      text,
+      parent_id: replyTo,
+    });
+  }
 
-async function sendComment(){
+  /* ================= DELETE ================= */
+  async function deleteComment(commentId: string) {
+    await supabase.from("comments").delete().eq("id", commentId);
 
-if(!message.trim()) return
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+  }
 
-const text = message
+  /* ================= STRUCTURE ================= */
+  const rootComments = comments.filter((c) => !c.parent_id);
 
-setMessage("")
-setReplyTo(null)
+  const getReplies = (id: string) =>
+    comments.filter((c) => c.parent_id === id);
 
-const { data:userData } = await supabase.auth.getUser()
-const userId = userData.user?.id
+  /* ================= RENDER ================= */
+  const renderComment = (item: Comment) => {
+    const replies = getReplies(item.id);
 
-if(!userId || !postId) return
+    return (
+      <View style={{ marginBottom: 14 }}>
+        {/* MAIN COMMENT */}
+        <View style={styles.commentRow}>
+          <View style={styles.commentContent}>
+            <Text style={styles.text}>{item.text}</Text>
 
-const { error } = await (supabase as any)
-.from("comments")
-.insert({
-post_id:postId,
-user_id:userId,
-text:text,
-parent_id:replyTo
-})
+            <View style={styles.actions}>
+              <TouchableOpacity onPress={() => setReplyTo(item.id)}>
+                <Text style={styles.reply}>Reply</Text>
+              </TouchableOpacity>
 
-if(error){
-console.log("COMMENT ERROR",error)
-}
+              <CommentLikeButton commentId={item.id} />
 
-}
+              <TouchableOpacity onPress={() => deleteComment(item.id)}>
+                <Text style={styles.delete}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
 
-async function deleteComment(commentId:string){
+        {/* REPLIES */}
+        {replies.map((reply) => (
+          <View key={reply.id} style={styles.replyRow}>
+            <Text style={styles.text}>{reply.text}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
 
-const { error } = await supabase
-.from("comments")
-.delete()
-.eq("id",commentId)
-
-if(error){
-console.log("DELETE ERROR",error)
-return
-}
-
-setComments(prev=>prev.filter(c=>c.id !== commentId))
-
-}
-
-
-
-const rootComments = comments.filter(c=>!c.parent_id)
-
-const getReplies = (id:string)=>{
-return comments.filter(c=>c.parent_id === id)
-}
-
-const renderComment = (item:Comment)=>{
-
-const replies = getReplies(item.id)
-
-return(
-
-<View>
-
-<View style={styles.comment}>
-
-<Text style={styles.text}>{item.text}</Text>
-
-<View style={styles.actions}>
-
-<TouchableOpacity onPress={()=>setReplyTo(item.id)}>
-<Text style={styles.reply}>Reply</Text>
-</TouchableOpacity>
-
-<CommentLikeButton commentId={item.id} />
-
-<TouchableOpacity onPress={()=>deleteComment(item.id)}>
-<Text style={styles.delete}>Delete</Text>
-</TouchableOpacity>
-
-</View>
-
-</View>
-
-{replies.map(reply=>(
-
-<View key={reply.id} style={styles.replyBox}>
-<Text style={styles.text}>{reply.text}</Text>
-</View>
-
-))}
-
-</View>
-
-)
-
-}
-
-return(
-
-<TouchableWithoutFeedback onPress={()=>router.back()}>
-
-<View style={styles.overlay}>
-
-<TouchableWithoutFeedback>
-
-<KeyboardAvoidingView
-behavior={Platform.OS==="ios"?"padding":undefined}
-style={styles.sheet}
+  /* ================= UI ================= */
+  return (
+    <TouchableWithoutFeedback onPress={() => router.back()}>
+      <View style={styles.overlay}>
+        <TouchableWithoutFeedback>
+         <KeyboardAvoidingView
+  behavior={Platform.OS === "ios" ? "padding" : "height"}
+  keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+  style={styles.sheet}
 >
+            {/* HEADER */}
+            <View style={styles.header}>
+              <Text style={styles.title}>Comments</Text>
+            </View>
 
-<Text style={styles.title}>Comments</Text>
+            {/* COMMENTS LIST */}
+            <FlatList
+              data={rootComments}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => renderComment(item)}
+              ListEmptyComponent={
+                <Text style={styles.empty}>No comments yet</Text>
+              }
+              contentContainerStyle={{ paddingBottom: 20 }}
+              showsVerticalScrollIndicator={false}
+            />
 
-<FlatList
-data={rootComments}
-keyExtractor={(item)=>item.id}
-renderItem={({item})=>renderComment(item)}
-ListEmptyComponent={
-<Text style={styles.empty}>No comments yet</Text>
-}
-style={{flex:1}}
-/>
+            {/* REPLY LABEL */}
+            {replyTo && (
+              <Text style={styles.replying}>Replying...</Text>
+            )}
 
-{replyTo && (
-<Text style={styles.replying}>Replying to comment</Text>
-)}
+            {/* INPUT BAR (FIXED LIKE TIKTOK) */}
+            <View style={styles.inputContainer}>
+  <View style={styles.inputRow}>
+    <TextInput
+      placeholder="Add a comment..."
+      value={message}
+      onChangeText={setMessage}
+      style={styles.input}
+      placeholderTextColor="#999"
+    />
 
-<View style={styles.inputRow}>
-
-<TextInput
-placeholder="Add a comment..."
-value={message}
-onChangeText={setMessage}
-style={styles.input}
-/>
-
-<TouchableOpacity
-onPress={sendComment}
-style={styles.sendButton}
->
-
-<Text style={styles.sendText}>Send</Text>
-
-</TouchableOpacity>
-
+    <TouchableOpacity onPress={sendComment} style={styles.sendButton}>
+      <Text style={styles.sendText}>Send</Text>
+    </TouchableOpacity>
+  </View>
 </View>
-
-</KeyboardAvoidingView>
-
-</TouchableWithoutFeedback>
-
-</View>
-
-</TouchableWithoutFeedback>
-
-)
-
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </View>
+    </TouchableWithoutFeedback>
+  );
 }
 
+/* ================= STYLES ================= */
 const styles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
 
-overlay:{
-flex:1,
-backgroundColor:"rgba(0,0,0,0.4)",
-justifyContent:"flex-end"
+  sheet: {
+    height: "85%",
+    backgroundColor: "#000", // 🔥 TikTok dark mode
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 10,
+  },
+
+  header: {
+    alignItems: "center",
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderColor: "#222",
+  },
+
+  title: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+
+  commentRow: {
+    paddingHorizontal: 14,
+    marginTop: 10,
+  },
+
+  commentContent: {
+    backgroundColor: "#111",
+    padding: 10,
+    borderRadius: 10,
+  },
+
+  replyRow: {
+    marginLeft: 30,
+    marginTop: 6,
+    backgroundColor: "#0d0d0d",
+    padding: 8,
+    borderRadius: 8,
+  },
+
+  text: {
+    color: "white",
+    fontSize: 14,
+  },
+
+  actions: {
+    flexDirection: "row",
+    gap: 15,
+    marginTop: 6,
+  },
+
+  reply: {
+    color: "#aaa",
+    fontSize: 12,
+  },
+
+  delete: {
+    color: "#ff4d4d",
+    fontSize: 12,
+  },
+
+  replying: {
+    color: "#aaa",
+    paddingLeft: 14,
+    marginBottom: 6,
+  },
+
+  empty: {
+    textAlign: "center",
+    marginTop: 40,
+    color: "#aaa",
+  },
+
+  inputContainer: {
+  backgroundColor: "#fff",
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+  borderTopWidth: 1,
+  borderColor: "#ddd",
 },
 
-sheet:{
-height:"80%",
-backgroundColor:"#fff",
-borderTopLeftRadius:20,
-borderTopRightRadius:20,
-padding:16
+inputRow: {
+  flexDirection: "row",
+  alignItems: "center",
 },
 
-title:{
-fontSize:16,
-fontWeight:"600",
-marginBottom:10,
-textAlign:"center"
+input: {
+  flex: 1,
+  height: 40,
+  backgroundColor: "#f2f2f2",
+  borderRadius: 20,
+  paddingHorizontal: 14,
 },
 
-comment:{
-padding:10,
-backgroundColor:"#f2f2f2",
-borderRadius:8,
-marginBottom:6
+sendButton: {
+  marginLeft: 8,
 },
 
-replyBox:{
-marginLeft:20,
-padding:8,
-backgroundColor:"#e8e8e8",
-borderRadius:6,
-marginBottom:6
+sendText: {
+  color: "#007AFF",
+  fontWeight: "600",
 },
-
-text:{
-fontSize:14
-},
-
-actions:{
-flexDirection:"row",
-justifyContent:"space-between",
-marginTop:5
-},
-
-reply:{
-color:"#007AFF"
-},
-
-delete:{
-color:"red"
-},
-
-replying:{
-color:"#888",
-marginBottom:5
-},
-
-empty:{
-textAlign:"center",
-marginTop:40,
-color:"#888"
-},
-
-inputRow:{
-flexDirection:"row",
-alignItems:"center",
-paddingVertical:6,
-borderTopWidth:1,
-borderColor:"#ddd"
-},
-
-input:{
-flex:1,
-height:36,
-backgroundColor:"#f2f2f2",
-borderRadius:18,
-paddingHorizontal:12
-},
-
-sendButton:{
-marginLeft:8,
-paddingHorizontal:10
-},
-
-sendText:{
-color:"#007AFF",
-fontWeight:"600"
-}
-
-})
+});
