@@ -1,11 +1,11 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -75,8 +75,8 @@ export default function AuctionsScreen() {
               </Text>
 
               <Text style={{ marginTop: 5, color: "gray" }}>
-                Starting Price: GH₵ {item.start_price}
-              </Text>
+  Starting Price: GH₵ {Number(item.starting_price || 0)}
+</Text>
 
               <Text style={{ marginTop: 5 }}>Tap to Join ▶️</Text>
             </TouchableOpacity>

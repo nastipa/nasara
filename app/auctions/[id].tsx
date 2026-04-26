@@ -20,10 +20,12 @@ type AuctionRoom = {
   title: string;
   seller_id: string;
   status: string;
+   starting_price?: number;
   duration_minutes?: number;
   created_at?: string;
   image_url?: string | null;
   video_url?: string | null;
+ 
 };
 
 type Bid = {
@@ -127,7 +129,10 @@ export default function AuctionRoomScreen() {
     if (data) setBids(data);
   };
 
-  const highestBid = bids.length > 0 ? bids[0].bid_amount : 0;
+  const highestBid =
+  bids.length > 0
+    ? bids[0].bid_amount
+    : Number(room?.starting_price || 0);
 
   /* ================= PLACE BID ================= */
 
@@ -139,13 +144,19 @@ export default function AuctionRoomScreen() {
 
     const numericAmount = Number(bidAmount);
 
-    if (!numericAmount || numericAmount <= highestBid) {
-      Alert.alert(
-        "Bid Too Low",
-        `Bid must be higher than GH₵ ${highestBid}`
-      );
-      return;
-    }
+    const MIN_INCREMENT = 10;
+
+if (!numericAmount || numericAmount < highestBid + MIN_INCREMENT) {
+  Alert.alert(
+    "Bid Too Low",
+    `Minimum bid is GH₵ ${highestBid + MIN_INCREMENT}`
+  );
+  return;
+}
+if (userId === room?.seller_id) {
+  Alert.alert("You cannot bid on your own auction");
+  return;
+}
 
     const { error } = await (supabase as any).from("auction_bids").insert({
       auction_id: id,
@@ -157,6 +168,9 @@ export default function AuctionRoomScreen() {
     if (!error) {
       setBidAmount("");
       loadBids();
+      if (timeLeft < 10) {
+  setTimeLeft((prev) => prev + 10);
+}
     }
   };
 
@@ -271,6 +285,17 @@ export default function AuctionRoomScreen() {
           🔨 {room.title}
         </Text>
 
+<Text
+  style={{
+    marginTop: 10,
+    fontWeight: "bold",
+    fontSize: 16,
+    color: "#16a34a",
+  }}
+>
+  🏁 Starting Price: GH₵ {room.starting_price || 0}
+</Text>
+
         {!auctionEnded && (
           <Text style={{ marginTop: 6, color: "red", fontWeight: "bold" }}>
             ⏳ {minutes}:{seconds < 10 ? `0${seconds}` : seconds}
@@ -302,10 +327,23 @@ export default function AuctionRoomScreen() {
             allowsFullscreen
           />
         ) : null}
-
+        <Text
+  style={{
+    marginTop: 10,
+    fontWeight: "bold",
+    fontSize: 16,
+    color: "#16a34a",
+  }}
+>
+  🏁 Starting Price: GH₵ {Number(room?.starting_price || 0)}
+</Text>
         <Text style={{ marginTop: 10, fontWeight: "bold" }}>
+          
           Highest Bid: GH₵ {highestBid}
         </Text>
+        <Text style={{ marginTop: 5, color: "#555" }}>
+  Next minimum bid: GH₵ {highestBid + 10}
+</Text>
 
         {!isSeller && !auctionEnded && (
           <View style={{ marginTop: 20 }}>
@@ -313,7 +351,7 @@ export default function AuctionRoomScreen() {
               value={bidAmount}
               onChangeText={setBidAmount}
               keyboardType="numeric"
-              placeholder={`Higher than ${highestBid}`}
+              placeholder={`Enter amount (min GH₵ ${highestBid})`}
               style={{
                 borderWidth: 1,
                 borderColor: "#ddd",
@@ -360,6 +398,11 @@ export default function AuctionRoomScreen() {
               <Text style={{ fontWeight: "bold" }}>
                 GH₵ {item.bid_amount}
               </Text>
+              {index === 0 && (
+  <Text style={{ color: "green", fontWeight: "bold" }}>
+    🏆 Leading
+  </Text>
+)}
 
               <Text>Status: {item.status}</Text>
 
