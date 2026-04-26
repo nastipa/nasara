@@ -59,6 +59,9 @@ export default function ProfileScreen() {
   const [location, setLocation] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState("");
+  const [coins, setCoins] = useState(0);
+  const [boostCredits, setBoostCredits] = useState(0);
+  const [invitesCount, setInvitesCount] = useState(0);
   
 
   /* ===== MOMO ===== */
@@ -155,6 +158,9 @@ const [earnings, setEarnings] = useState(0);
       setFullName(profile.full_name || "");
       setPhone(profile.phone || "");
       setLocation(profile.location || "");
+      setCoins(profile.coins || 0);
+      setBoostCredits(profile.boost_credits || 0);
+      setInvitesCount(profile.invites_count || 0);
       setAvatarUrl(profile.avatar_url || null);
       setWhatsappNumber(profile.whatsapp_number || "");
       setMomoName(profile.momo_name || "");
@@ -437,6 +443,27 @@ const handleDeleteAccount = async () => {
 
       <Text style={styles.title}>{fullName || "Profile"}</Text>
       <Text style={styles.email}>{session.user.email}</Text>
+      <View style={{ flexDirection: "row", justifyContent: "space-around", marginVertical: 15 }}>
+  
+  <View style={{ alignItems: "center" }}>
+    <Text style={{ fontSize: 20 }}>🪙</Text>
+    <Text style={{ fontWeight: "bold" }}>{coins}</Text>
+    <Text>Coins</Text>
+  </View>
+
+  <View style={{ alignItems: "center" }}>
+    <Text style={{ fontSize: 20 }}>⚡</Text>
+    <Text style={{ fontWeight: "bold" }}>{boostCredits}</Text>
+    <Text>Boost</Text>
+  </View>
+
+  <View style={{ alignItems: "center" }}>
+    <Text style={{ fontSize: 20 }}>👥</Text>
+    <Text style={{ fontWeight: "bold" }}>{invitesCount}</Text>
+    <Text>Invites</Text>
+  </View>
+
+</View>
       {/* ===== INVITE CODE ===== */}
 <View
   style={{

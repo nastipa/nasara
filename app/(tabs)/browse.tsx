@@ -24,7 +24,7 @@ import { supabase } from "../../lib/supabase";
 
 /* ================= ULTRA SCALE CONFIG ================= */
 const CACHE_KEY = "BROWSE_ULTRA_CACHE";
-const MAX_FEED_ITEMS = 60;
+const MAX_FEED_ITEMS = 200;
 let isRefreshing = false;
 
 /* ================= TYPES ================= */
@@ -371,11 +371,19 @@ const deleteSpecialItem = async (item: Item) => {
       type: "item",
     }));
 
-const limited = mapped.slice(0, MAX_FEED_ITEMS);
+const limited = mapped;
 
 /* ✅ SAVE CACHE */
 try {
-  await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(limited));
+  const mergedCache = [...items, ...limited];
+const uniqueCache = Array.from(
+  new Map(mergedCache.map((i) => [i.id, i])).values()
+);
+
+await AsyncStorage.setItem(
+  CACHE_KEY,
+  JSON.stringify(uniqueCache.slice(0, MAX_FEED_ITEMS))
+);
 } catch (e) {
   console.log("Cache save error");
 }
@@ -390,7 +398,7 @@ if (reset) {
     const unique = Array.from(
       new Map(merged.map((i) => [i.id, i])).values()
     );
-    return unique.slice(0, MAX_FEED_ITEMS);
+   return unique.slice(0, 300);
   });
 }
 
@@ -595,7 +603,7 @@ useEffect(() => {
                 user_id: item.user_id, // ✅ ADD THIS
                 type: "item",
               },
-              ...prev.slice(0, MAX_FEED_ITEMS),
+              ...prev,
             ];
           });
         }
