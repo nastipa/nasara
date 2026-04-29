@@ -37,6 +37,7 @@ export default function CreateBattle() {
 
   function getDurationMs() {
     const value = Number(durationValue);
+
     if (isNaN(value) || value <= 0) return null;
 
     if (durationType === "minutes") return value * 60000;
@@ -47,136 +48,108 @@ export default function CreateBattle() {
   }
 
   const createBattle = async () => {
-  if (loading) return; // 🔥 prevent duplicates
+    if (loading) return;
 
-  if (!title || !compare || !category || !durationValue) {
-    Alert.alert("Fill all fields");
-    return;
-  }
-
-  let names = compare
-    .split(/vs/i)
-    .map((n) => n.trim())
-    .filter((n) => n.length > 0 && n.toLowerCase() !== "vs");
-
-  names = [...new Set(names)];
-
-  names = names.map(
-    (n) => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase()
-  );
-
-  if (names.length < 2) {
-    Alert.alert("Minimum 2 participants");
-    return;
-  }
-
-  if (names.length > 10) {
-    Alert.alert("Maximum 10 participants");
-    return;
-  }
-
-  const durationMs = getDurationMs();
-  if (!durationMs) {
-    Alert.alert("Invalid duration");
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const { data: authData } = await supabase.auth.getUser();
-    const user = authData?.user;
-
-    if (!user) {
-      Alert.alert("Login required");
-      setLoading(false);
+    if (!title || !compare || !category || !durationValue) {
+      Alert.alert("Fill all fields");
       return;
     }
 
-    const endTime = new Date(Date.now() + durationMs + 5000);
+    let names = compare
+      .split(/vs/i)
+      .map((n) => n.trim())
+      .filter((n) => n.length > 0);
 
-    const { data, error } = await (supabase as any)
-      .from("battles")
-      .insert({
-        title,
-        compare_text: compare,
-        category,
-        end_time: endTime.toISOString(),
-        creator_id: user.id,
-        status: "active",
-      })
-      .select()
-      .single();
+    names = [...new Set(names)];
 
-    if (error || !data) {
-      Alert.alert("Error creating battle");
-      setLoading(false);
+    names = names.map(
+      (n) => n.charAt(0).toUpperCase() + n.slice(1).toLowerCase()
+    );
+
+    if (names.length < 2) {
+      Alert.alert("Minimum 2 participants");
       return;
     }
 
-    const payload = names.map((name) => ({
-      battle_id: data.id,
-      name,
-      votes: 0,
-    }));
-
-    const { error: candidateError } = await (supabase as any)
-      .from("candidates")
-      .insert(payload);
-
-    if (candidateError) {
-      Alert.alert(candidateError.message);
-      setLoading(false);
+    if (names.length > 10) {
+      Alert.alert("Maximum 10 participants");
       return;
     }
 
-    /* ================= NOTIFICATIONS (FOLLOWERS ONLY) ================= */
-    /* ================= NOTIFICATIONS (GLOBAL + PUSH) ================= */
+    const durationMs = getDurationMs();
 
-// 1️⃣ SAVE IN DATABASE (ALL USERS)
-const { data: users } = await (supabase as any)
-  .from("profiles")
-  .select("id");
+    if (!durationMs) {
+      Alert.alert("Invalid duration");
+      return;
+    }
 
-if (users) {
-  const inserts = users.map((u: any) => ({
-    user_id: u.id,
-    type: "battle",
-    title: "⚔️ New Battle",
-    body: title,
-    ref_id: data.id,
-    read: false,
-  }));
+    setLoading(true);
 
-  await (supabase as any).from("notifications").insert(inserts);
-}
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
 
-// 2️⃣ SEND PUSH NOTIFICATION (SERVER)
-await fetch("https://nasara-upload-server.onrender.com/send-push", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    type: "battle", // 🔥 used in Step 7
-    title: "⚔️ New Battle",
-    body: title,
-    ref_id: data.id,
-  }),
-});
+      if (!user) {
+        Alert.alert("Login required");
+        setLoading(false);
+        return;
+      }
 
-   Alert.alert("Battle Created 🚀");
-router.replace("/battle");
+      const endTime = new Date(Date.now() + durationMs);
 
-// 🔥 RUN NOTIFICATIONS IN BACKGROUND
-sendNotifications(data.id, title);
+      /* CREATE BATTLE */
+      const { data, error } = await (supabase as any)
+        .from("battles")
+        .insert({
+          title,
+          compare_text: compare,
+          category,
+          end_time: endTime.toISOString(),
+          creator_id: user.id,
+          status: "active",
+        })
+        .select()
+        .single();
 
-  } catch (err: any) {
-    Alert.alert(err.message);
-  }
+      if (error || !data) {
+        Alert.alert("Error creating battle");
+        setLoading(false);
+        return;
+      }
 
-  setLoading(false);
-};
+      /* CREATE CANDIDATES */
+      const payload = names.map((name) => ({
+        battle_id: data.id,
+        name,
+        votes: 0,
+      }));
+
+      const { error: candidateError } = await (supabase as any)
+        .from("candidates")
+        .insert(payload);
+
+      if (candidateError) {
+        Alert.alert(candidateError.message);
+        setLoading(false);
+        return;
+      }
+
+      /* FAST SUCCESS */
+      Alert.alert("Battle Created 🚀");
+
+      setLoading(false);
+
+      /* GO IMMEDIATELY */
+      router.replace("/battle");
+
+      /* BACKGROUND NOTIFICATIONS */
+      sendNotifications(data.id, title);
+    } catch (err: any) {
+      Alert.alert(err.message);
+      setLoading(false);
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.box}>
@@ -225,7 +198,10 @@ sendNotifications(data.id, title);
 
         <View style={{ flexDirection: "row" }}>
           {["minutes", "hours", "days"].map((type) => (
-            <TouchableOpacity key={type} onPress={() => setDurationType(type)}>
+            <TouchableOpacity
+              key={type}
+              onPress={() => setDurationType(type)}
+            >
               <Text
                 style={[
                   styles.btn,
@@ -251,10 +227,63 @@ sendNotifications(data.id, title);
   );
 }
 
+/* BACKGROUND NOTIFICATIONS */
+const sendNotifications = async (
+  battleId: string,
+  battleTitle: string
+) => {
+  try {
+    setTimeout(async () => {
+      const { data: users } = await supabase
+        .from("profiles")
+        .select("id");
+
+      if (users?.length) {
+        const inserts = users.map((u: any) => ({
+          user_id: u.id,
+          type: "battle",
+          title: "⚔️ New Battle",
+          body: battleTitle,
+          ref_id: battleId,
+          read: false,
+        }));
+
+        await (supabase as any).from("notifications").insert(inserts);
+      }
+
+      fetch("https://nasara-upload-server.onrender.com/send-push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "battle",
+          title: "⚔️ New Battle",
+          body: battleTitle,
+          ref_id: battleId,
+        }),
+      });
+    }, 0);
+  } catch (e) {
+    console.log("Notification error:", e);
+  }
+};
+
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, justifyContent: "center", alignItems: "center" },
-  box: { width: "85%", gap: 10 },
-  input: { borderWidth: 1, padding: 10, borderRadius: 6 },
+  container: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  box: {
+    width: "85%",
+    gap: 10,
+  },
+  input: {
+    borderWidth: 1,
+    padding: 10,
+    borderRadius: 6,
+  },
   btn: {
     backgroundColor: "#000",
     color: "#fff",
@@ -264,45 +293,3 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
 });
-const sendNotifications = async (battleId: string, title: string) => {
-  try {
-    // ⚡ DON'T BLOCK UI
-    setTimeout(async () => {
-
-      // 1️⃣ GET USERS (ONLY IDs)
-      const { data: users } = await supabase
-        .from("profiles")
-        .select("id");
-
-      if (users) {
-        const inserts = users.map((u: any) => ({
-          user_id: u.id,
-          type: "battle",
-          title: "⚔️ New Battle",
-          body: title,
-          ref_id: battleId,
-          read: false,
-        }));
-
-        await (supabase as any).from("notifications").insert(inserts);
-      }
-
-      // 2️⃣ PUSH (NON-BLOCKING)
-      fetch("https://nasara-upload-server.onrender.com/send-push", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          type: "battle",
-          title: "⚔️ New Battle",
-          body: title,
-          ref_id: battleId,
-        }),
-      });
-
-    }, 0);
-  } catch (e) {
-    console.log("Notification error:", e);
-  }
-};

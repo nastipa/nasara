@@ -17,53 +17,58 @@ export default function BattleRoom() {
 
   const [battle, setBattle] = useState<any>(null);
   const [candidates, setCandidates] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [voting, setVoting] = useState(false);
 
   const [payVisible, setPayVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+
   const [selectedCandidate, setSelectedCandidate] = useState<any>(null);
   const [voteInput, setVoteInput] = useState("1");
   const [balance, setBalance] = useState(0);
-
   const [timeLeft, setTimeLeft] = useState("");
+
+  const [paymentInfo, setPaymentInfo] = useState<any>(null);
 
   const momoName = "NASARA MARKET";
   const momoNumber = "0539703374";
   const momoNetwork = "MTN";
+
   const PRICE_PER_VOTE = 5;
 
-  /* ================= LOAD ================= */
-  async function load() {
+  /* ================= LOAD BATTLE ================= */
+  async function loadBattle() {
     if (!id) return;
-    setLoading(true);
 
-    const { data: battleData } = await (supabase as any)
+    const { data } = await supabase
       .from("battles")
       .select("*")
       .eq("id", id)
       .single();
 
-    const isExpired =
-      battleData?.end_time && new Date() > new Date(battleData.end_time);
-
-    if (isExpired) battleData.status = "ended";
-
-    setBattle(battleData);
-
-    const { data: candidateData } = await supabase
-      .from("candidates")
-      .select("*")
-      .eq("battle_id", id);
-
-    setCandidates(candidateData || []);
-
-    await loadBalance();
-    setLoading(false);
+    if (data) {
+      setBattle(data);
+    }
   }
 
-  /* ================= BALANCE ================= */
+  /* ================= LOAD CANDIDATES ================= */
+  async function loadCandidates() {
+    if (!id) return;
+
+    const { data } = await supabase
+      .from("candidates")
+      .select("*")
+      .eq("battle_id", id)
+      .order("votes", { ascending: false });
+
+    setCandidates(data || []);
+  }
+
+  /* ================= LOAD BALANCE ================= */
   async function loadBalance() {
     const { data: authData } = await supabase.auth.getUser();
     const user = authData?.user;
+
     if (!user) return;
 
     const { data } = await supabase
@@ -74,27 +79,53 @@ export default function BattleRoom() {
       .eq("status", "approved");
 
     const total =
-      data?.reduce((sum: number, p: any) => sum + p.remaining_votes, 0) || 0;
+      data?.reduce(
+        (sum: number, item: any) =>
+          sum + (item.remaining_votes || 0),
+        0
+      ) || 0;
 
     setBalance(total);
   }
 
-  /* ================= REALTIME ================= */
+  /* ================= INITIAL LOAD ================= */
+  async function load() {
+    setLoading(true);
+
+    await Promise.all([
+      loadBattle(),
+      loadCandidates(),
+      loadBalance(),
+    ]);
+
+    setLoading(false);
+  }
+
   useEffect(() => {
     load();
+  }, [id]);
 
+  /* ================= REALTIME (OPTIMIZED) ================= */
+  useEffect(() => {
     const channel = supabase
-      .channel("battle-realtime")
+      .channel(`battle-${id}`)
+
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "candidates" },
-        () => load()
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "candidates",
+        },
+        (payload: any) => {
+          setCandidates((prev) =>
+            prev.map((c) =>
+              c.id === payload.new.id ? payload.new : c
+            )
+          );
+        }
       )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "battle_payments" },
-        () => loadBalance()
-      )
+
       .subscribe();
 
     return () => {
@@ -107,64 +138,75 @@ export default function BattleRoom() {
     if (!battle?.end_time) return;
 
     const interval = setInterval(() => {
-      const diff = new Date(battle.end_time).getTime() - new Date().getTime();
+      const diff =
+        new Date(battle.end_time).getTime() - Date.now();
 
       if (diff <= 0) {
         setTimeLeft("⛔ Ended");
+        clearInterval(interval);
         return;
       }
 
-      const minutes = Math.floor(diff / 60000);
-      const seconds = Math.floor((diff % 60000) / 1000);
+      const mins = Math.floor(diff / 60000);
+      const secs = Math.floor((diff % 60000) / 1000);
 
-      setTimeLeft(`${minutes}m ${seconds}s left`);
+      setTimeLeft(`${mins}m ${secs}s left`);
     }, 1000);
 
     return () => clearInterval(interval);
   }, [battle]);
 
-  const totalVotes = candidates.reduce(
-    (sum: number, c: any) => sum + (c.votes || 0),
-    0
-  );
-
-  const percent = (votes: number) =>
-    totalVotes ? Math.round((votes / totalVotes) * 100) : 0;
-
-  function updateLocalVotes(candidateId: string, amount: number) {
-    setCandidates((prev) =>
-      prev.map((c) =>
-        c.id === candidateId
-          ? { ...c, votes: (c.votes || 0) + amount }
-          : c
-      )
-    );
-  }
-
+  /* ================= HELPERS ================= */
   const isEnded = () => {
     if (!battle?.end_time) return false;
     return new Date() > new Date(battle.end_time);
   };
 
+  const totalVotes = candidates.reduce(
+    (sum, c) => sum + (c.votes || 0),
+    0
+  );
+
+  const percent = (votes: number) => {
+    if (!totalVotes) return 0;
+    return Math.round((votes / totalVotes) * 100);
+  };
+
+  function updateLocalVotes(candidateId: string) {
+    setCandidates((prev) =>
+      prev.map((c) =>
+        c.id === candidateId
+          ? { ...c, votes: (c.votes || 0) + 1 }
+          : c
+      )
+    );
+  }
+
   /* ================= VOTE ================= */
   async function vote(candidateId: string) {
+    if (voting) return;
+
     try {
+      setVoting(true);
+
       const { data: authData } = await supabase.auth.getUser();
       const user = authData?.user;
 
       if (!user) {
         Alert.alert("Login required");
+        setVoting(false);
         return;
       }
 
       if (isEnded()) {
         Alert.alert("Battle ended");
+        setVoting(false);
         return;
       }
 
-      /* ================= PAID VOTES ================= */
+      /* PAID VOTE */
       if (balance > 0) {
-        updateLocalVotes(candidateId, 1);
+        updateLocalVotes(candidateId);
 
         await (supabase as any).rpc("increment_vote", {
           candidate_id_input: candidateId,
@@ -185,32 +227,40 @@ export default function BattleRoom() {
           await (supabase as any)
             .from("battle_payments")
             .update({
-              remaining_votes: data.remaining_votes - 1,
+              remaining_votes:
+                data.remaining_votes - 1,
             })
             .eq("id", data.id);
+
+          setBalance((prev) => prev - 1);
         }
 
-        loadBalance();
+        setVoting(false);
         return;
       }
 
-      /* ================= FREE VOTE ================= */
+      /* FREE VOTE CHECK */
       const { data: freeVote } = await supabase
         .from("votes")
-        .select("*")
+        .select("id")
         .eq("battle_id", id)
         .eq("user_id", user.id)
         .eq("is_paid", false)
         .maybeSingle();
 
       if (freeVote) {
-        const selected = candidates.find((c) => c.id === candidateId);
+        const selected = candidates.find(
+          (c) => c.id === candidateId
+        );
+
         setSelectedCandidate(selected);
         setPayVisible(true);
+        setVoting(false);
         return;
       }
 
-      updateLocalVotes(candidateId, 1);
+      /* FREE VOTE */
+      updateLocalVotes(candidateId);
 
       await (supabase as any).from("votes").insert({
         battle_id: id,
@@ -229,95 +279,126 @@ export default function BattleRoom() {
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
+
+    setVoting(false);
   }
 
   /* ================= PAYMENT ================= */
-  const [paymentInfo, setPaymentInfo] = useState<any>(null);
-const [confirmVisible, setConfirmVisible] = useState(false);
+  async function sendPayment() {
+    const { data: authData } = await supabase.auth.getUser();
+    const user = authData?.user;
 
-async function sendPayment() {
-  const { data: authData } = await supabase.auth.getUser();
-  const user = authData?.user;
+    if (!user || !selectedCandidate) return;
 
-  if (!user || !selectedCandidate) return;
+    const votes = parseInt(voteInput) || 1;
+    const total = votes * PRICE_PER_VOTE;
+    const code = "BATTLE-" + Date.now();
 
-  const votes = parseInt(voteInput) || 1;
-  const total = votes * PRICE_PER_VOTE;
-  const code = "BATTLE-" + Date.now();
+    const { error } = await (supabase as any)
+      .from("battle_payments")
+      .insert({
+        user_id: user.id,
+        battle_id: id,
+        candidate_id: selectedCandidate.id,
+        votes,
+        remaining_votes: votes,
+        amount: total,
+        momo_name: momoName,
+        momo_number: momoNumber,
+        network: momoNetwork,
+        code,
+        status: "pending",
+      });
 
-  const { error } = await (supabase as any)
-    .from("battle_payments")
-    .insert({
-      user_id: user.id,
-      battle_id: id,
-      candidate_id: selectedCandidate.id,
+    if (error) {
+      Alert.alert("Payment failed", error.message);
+      return;
+    }
+
+    setPaymentInfo({
       votes,
-      remaining_votes: votes,
-      amount: total,
-      momo_name: momoName,
-      momo_number: momoNumber,
-      network: momoNetwork,
+      total,
       code,
-      status: "pending",
     });
 
-  if (error) {
-    Alert.alert("Payment failed ❌", error.message);
-    return;
+    setPayVisible(false);
+    setConfirmVisible(true);
   }
-
-  // 🔥 SHOW CONFIRMATION MODAL (NOT ALERT)
-  setPaymentInfo({
-    votes,
-    total,
-    code,
-  });
-
-  setConfirmVisible(true);
-  setPayVisible(false);
-}
 
   /* ================= UI ================= */
   if (loading) return <ActivityIndicator />;
-  if (!battle) return <Text>Loading battle...</Text>;
-  if (!candidates.length) return <Text>No candidates</Text>;
+
+  if (!battle) return <Text>Battle not found</Text>;
 
   return (
-    <View style={{ padding: 20, flex: 1 }}>
-      <Text style={{ fontSize: 20, fontWeight: "bold" }}>
+    <View style={{ flex: 1, padding: 20 }}>
+      <Text
+        style={{
+          fontSize: 22,
+          fontWeight: "bold",
+        }}
+      >
         {battle.title}
       </Text>
 
-      <Text style={{ marginBottom: 10, fontWeight: "bold" }}>
-        ⏱️ {timeLeft}
-      </Text>
-
-      <Text style={{ marginBottom: 20 }}>
+      <Text style={{ marginTop: 8 }}>
         {battle.compare_text}
       </Text>
 
-      <Text>You have {balance} extra votes</Text>
+      <Text
+        style={{
+          marginTop: 10,
+          fontWeight: "bold",
+        }}
+      >
+        ⏱️ {timeLeft}
+      </Text>
+
+      <Text style={{ marginVertical: 15 }}>
+        Extra votes: {balance}
+      </Text>
 
       <FlatList
         data={candidates}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <View style={{ marginBottom: 20 }}>
-            <Text>
-              {item.name} ({percent(item.votes || 0)}%)
-            </Text>
-
-            <Text>{item.votes || 0} votes</Text>
-
-            <TouchableOpacity
-              onPress={() => vote(item.id)}
+          <View
+            style={{
+              marginBottom: 20,
+              padding: 15,
+              borderWidth: 1,
+              borderRadius: 10,
+            }}
+          >
+            <Text
               style={{
-                backgroundColor: isEnded() ? "gray" : "black",
-                padding: 10,
-                marginTop: 5,
+                fontWeight: "bold",
               }}
             >
-              <Text style={{ color: "white" }}>
+              {item.name}
+            </Text>
+
+            <Text>
+              {item.votes || 0} votes ({percent(item.votes || 0)}%)
+            </Text>
+
+            <TouchableOpacity
+              disabled={isEnded() || voting}
+              onPress={() => vote(item.id)}
+              style={{
+                backgroundColor:
+                  isEnded() || voting ? "gray" : "black",
+                padding: 12,
+                marginTop: 10,
+                borderRadius: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: "white",
+                  textAlign: "center",
+                }}
+              >
                 {isEnded() ? "Ended" : "Vote"}
               </Text>
             </TouchableOpacity>
@@ -327,84 +408,135 @@ async function sendPayment() {
 
       {/* PAYMENT MODAL */}
       <Modal transparent visible={payVisible}>
-        <View style={{ flex: 1, justifyContent: "center", padding: 20 }}>
-          <View style={{ backgroundColor: "white", padding: 20 }}>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            padding: 20,
+            backgroundColor: "#0007",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "white",
+              padding: 20,
+            }}
+          >
             <Text>Buy Votes</Text>
 
             <TextInput
               value={voteInput}
               onChangeText={setVoteInput}
               keyboardType="numeric"
-              style={{ borderWidth: 1, marginTop: 10 }}
+              style={{
+                borderWidth: 1,
+                marginTop: 10,
+                padding: 10,
+              }}
             />
 
-            <TouchableOpacity onPress={sendPayment}>
-              <Text>Pay</Text>
+            <TouchableOpacity
+              onPress={sendPayment}
+              style={{
+                backgroundColor: "#2563eb",
+                padding: 12,
+                marginTop: 15,
+              }}
+            >
+              <Text
+                style={{
+                  color: "white",
+                  textAlign: "center",
+                }}
+              >
+                Pay
+              </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setPayVisible(false)}>
-              <Text>Cancel</Text>
+            <TouchableOpacity
+              onPress={() => setPayVisible(false)}
+            >
+              <Text
+                style={{
+                  marginTop: 15,
+                  textAlign: "center",
+                  color: "red",
+                }}
+              >
+                Cancel
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* CONFIRM MODAL */}
       <Modal transparent visible={confirmVisible}>
-  <View
-    style={{
-      flex: 1,
-      backgroundColor: "#0008",
-      justifyContent: "center",
-      padding: 20,
-    }}
-  >
-    <View
-      style={{
-        backgroundColor: "white",
-        padding: 20,
-        borderRadius: 10,
-      }}
-    >
-      <Text style={{ fontSize: 18, fontWeight: "bold" }}>
-        Complete Payment 💰
-      </Text>
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            padding: 20,
+            backgroundColor: "#0008",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "white",
+              padding: 20,
+              borderRadius: 10,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: "bold",
+              }}
+            >
+              Complete Payment
+            </Text>
 
-      <Text style={{ marginTop: 10 }}>
-        Buy {paymentInfo?.votes} votes
-      </Text>
+            <Text style={{ marginTop: 10 }}>
+              Buy {paymentInfo?.votes} votes
+            </Text>
 
-      <Text style={{ marginTop: 10, fontWeight: "bold" }}>
-        Pay GH₵ {paymentInfo?.total}
-      </Text>
+            <Text style={{ marginTop: 10 }}>
+              Pay GH₵ {paymentInfo?.total}
+            </Text>
 
-      <Text style={{ marginTop: 15 }}>Send to:</Text>
+            <Text style={{ marginTop: 10 }}>
+              {momoName}
+            </Text>
 
-      <Text style={{ fontWeight: "bold", marginTop: 5 }}>
-        {momoName}
-      </Text>
+            <Text>
+              {momoNumber} ({momoNetwork})
+            </Text>
 
-      <Text>{momoNumber} ({momoNetwork})</Text>
+            <Text style={{ marginTop: 10 }}>
+              Code: {paymentInfo?.code}
+            </Text>
 
-      <Text style={{ marginTop: 15 }}>
-        Code: {paymentInfo?.code}
-      </Text>
-
-      <TouchableOpacity
-        onPress={() => setConfirmVisible(false)}
-        style={{
-          backgroundColor: "#22c55e",
-          padding: 12,
-          marginTop: 20,
-          borderRadius: 8,
-        }}
-      >
-        <Text style={{ color: "white", textAlign: "center" }}>
-          OK
-        </Text>
-      </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setConfirmVisible(false)}
+              style={{
+                backgroundColor: "#22c55e",
+                padding: 12,
+                marginTop: 20,
+                borderRadius: 8,
+              }}
+            >
+              <Text
+                style={{
+                  color: "white",
+                  textAlign: "center",
+                }}
+              >
+                OK
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
-  </View>
-</Modal>
-    </View>
-    
   );
 }
