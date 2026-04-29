@@ -49,7 +49,7 @@ export default function BattleRoom() {
 
     setBattle(battleData);
 
-    const { data: candidateData } = await (supabase as any)
+    const { data: candidateData } = await supabase
       .from("candidates")
       .select("*")
       .eq("battle_id", id);
@@ -60,13 +60,13 @@ export default function BattleRoom() {
     setLoading(false);
   }
 
-  /* ================= LOAD BALANCE ================= */
+  /* ================= BALANCE ================= */
   async function loadBalance() {
-    const { data: authData } = await (supabase as any).auth.getUser();
+    const { data: authData } = await supabase.auth.getUser();
     const user = authData?.user;
     if (!user) return;
 
-    const { data } = await (supabase as any)
+    const { data } = await supabase
       .from("battle_payments")
       .select("remaining_votes")
       .eq("user_id", user.id)
@@ -83,7 +83,7 @@ export default function BattleRoom() {
   useEffect(() => {
     load();
 
-    const channel = (supabase as any)
+    const channel = supabase
       .channel("battle-realtime")
       .on(
         "postgres_changes",
@@ -98,22 +98,25 @@ export default function BattleRoom() {
       .subscribe();
 
     return () => {
-      (supabase as any).removeChannel(channel);
+      supabase.removeChannel(channel);
     };
   }, [id]);
 
-  /* ================= LIVE TIMER ================= */
+  /* ================= TIMER ================= */
   useEffect(() => {
     if (!battle?.end_time) return;
 
     const interval = setInterval(() => {
       const diff = new Date(battle.end_time).getTime() - new Date().getTime();
+
       if (diff <= 0) {
         setTimeLeft("⛔ Ended");
         return;
       }
+
       const minutes = Math.floor(diff / 60000);
       const seconds = Math.floor((diff % 60000) / 1000);
+
       setTimeLeft(`${minutes}m ${seconds}s left`);
     }, 1000);
 
@@ -131,7 +134,9 @@ export default function BattleRoom() {
   function updateLocalVotes(candidateId: string, amount: number) {
     setCandidates((prev) =>
       prev.map((c) =>
-        c.id === candidateId ? { ...c, votes: (c.votes || 0) + amount } : c
+        c.id === candidateId
+          ? { ...c, votes: (c.votes || 0) + amount }
+          : c
       )
     );
   }
@@ -144,8 +149,9 @@ export default function BattleRoom() {
   /* ================= VOTE ================= */
   async function vote(candidateId: string) {
     try {
-      const { data: authData } = await (supabase as any).auth.getUser();
+      const { data: authData } = await supabase.auth.getUser();
       const user = authData?.user;
+
       if (!user) {
         Alert.alert("Login required");
         return;
@@ -156,15 +162,13 @@ export default function BattleRoom() {
         return;
       }
 
-      // ✅ PAID VOTES FIRST
+      /* ================= PAID VOTES ================= */
       if (balance > 0) {
         updateLocalVotes(candidateId, 1);
+
         await (supabase as any).rpc("increment_vote", {
           candidate_id_input: candidateId,
           amount: 1,
-        });
-        await (supabase as any).rpc("increment_battle_votes", {
-          battle_id_input: battle.id,
         });
 
         const { data } = await (supabase as any)
@@ -180,7 +184,9 @@ export default function BattleRoom() {
         if (data) {
           await (supabase as any)
             .from("battle_payments")
-            .update({ remaining_votes: data.remaining_votes - 1 })
+            .update({
+              remaining_votes: data.remaining_votes - 1,
+            })
             .eq("id", data.id);
         }
 
@@ -188,8 +194,8 @@ export default function BattleRoom() {
         return;
       }
 
-      // 🔒 FREE VOTE
-      const { data: freeVote } = await (supabase as any)
+      /* ================= FREE VOTE ================= */
+      const { data: freeVote } = await supabase
         .from("votes")
         .select("*")
         .eq("battle_id", id)
@@ -219,54 +225,62 @@ export default function BattleRoom() {
         candidate_id_input: candidateId,
         amount: 1,
       });
+
     } catch (err: any) {
       Alert.alert("Error", err.message);
     }
   }
 
-  /* ================= SEND PAYMENT ================= */
-  async function sendPayment() {
-    const { data: authData } = await (supabase as any).auth.getUser();
-    const user = authData?.user;
-    if (!user || !selectedCandidate) return;
+  /* ================= PAYMENT ================= */
+  const [paymentInfo, setPaymentInfo] = useState<any>(null);
+const [confirmVisible, setConfirmVisible] = useState(false);
 
-    const votes = parseInt(voteInput) || 1;
-    const total = votes * PRICE_PER_VOTE;
-    const code = "BATTLE-" + Date.now();
+async function sendPayment() {
+  const { data: authData } = await supabase.auth.getUser();
+  const user = authData?.user;
 
-    const { error } = await (supabase as any)
-      .from("battle_payments")
-      .insert({
-        user_id: user.id,
-        battle_id: id,
-        candidate_id: selectedCandidate.id,
-        votes,
-        remaining_votes: votes,
-        amount: total,
-        momo_name: momoName,
-        momo_number: momoNumber,
-        network: momoNetwork,
-        code,
-        status: "pending",
-      });
+  if (!user || !selectedCandidate) return;
 
-    if (error) {
-      Alert.alert("Payment failed ❌", error.message);
-      return;
-    }
+  const votes = parseInt(voteInput) || 1;
+  const total = votes * PRICE_PER_VOTE;
+  const code = "BATTLE-" + Date.now();
 
-    Alert.alert(
-      "Payment Request Sent ✅",
-      `Ad Request Submitted!\n\nPay GH₵${total} to:\n${momoName}\n${momoNumber} (${momoNetwork})\n\nCode: ${code}`
-    );
+  const { error } = await (supabase as any)
+    .from("battle_payments")
+    .insert({
+      user_id: user.id,
+      battle_id: id,
+      candidate_id: selectedCandidate.id,
+      votes,
+      remaining_votes: votes,
+      amount: total,
+      momo_name: momoName,
+      momo_number: momoNumber,
+      network: momoNetwork,
+      code,
+      status: "pending",
+    });
 
-    setPayVisible(false);
+  if (error) {
+    Alert.alert("Payment failed ❌", error.message);
+    return;
   }
+
+  // 🔥 SHOW CONFIRMATION MODAL (NOT ALERT)
+  setPaymentInfo({
+    votes,
+    total,
+    code,
+  });
+
+  setConfirmVisible(true);
+  setPayVisible(false);
+}
 
   /* ================= UI ================= */
   if (loading) return <ActivityIndicator />;
   if (!battle) return <Text>Loading battle...</Text>;
-  if (!candidates.length) return <Text>No candidates found</Text>;
+  if (!candidates.length) return <Text>No candidates</Text>;
 
   return (
     <View style={{ padding: 20, flex: 1 }}>
@@ -275,61 +289,35 @@ export default function BattleRoom() {
       </Text>
 
       <Text style={{ marginBottom: 10, fontWeight: "bold" }}>
-        ⏱ {timeLeft}
+        ⏱️ {timeLeft}
       </Text>
 
-      <Text style={{ marginBottom: 20 }}>{battle.compare_text}</Text>
-      <Text style={{ marginBottom: 10 }}>
-        You have {balance} extra votes
+      <Text style={{ marginBottom: 20 }}>
+        {battle.compare_text}
       </Text>
 
-      {/* ✅ FlatList for all participants */}
+      <Text>You have {balance} extra votes</Text>
+
       <FlatList
         data={candidates}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 30 }}
-        renderItem={({ item: c }) => (
-          <View
-            style={{
-              marginBottom: 20,
-              padding: 15,
-              borderWidth: 1,
-              borderRadius: 10,
-            }}
-          >
-            <Text style={{ fontSize: 16 }}>
-              {c.name} ({percent(c.votes || 0)}%)
+        renderItem={({ item }) => (
+          <View style={{ marginBottom: 20 }}>
+            <Text>
+              {item.name} ({percent(item.votes || 0)}%)
             </Text>
 
-            <View
-              style={{
-                height: 10,
-                backgroundColor: "#eee",
-                marginVertical: 5,
-              }}
-            >
-              <View
-                style={{
-                  width: `${percent(c.votes || 0)}%`,
-                  height: 10,
-                  backgroundColor: "#4ade80",
-                }}
-              />
-            </View>
-
-            <Text>{c.votes || 0} votes</Text>
+            <Text>{item.votes || 0} votes</Text>
 
             <TouchableOpacity
-              disabled={isEnded()}
-              onPress={() => vote(c.id)}
+              onPress={() => vote(item.id)}
               style={{
-                backgroundColor: isEnded() ? "gray" : "#000",
+                backgroundColor: isEnded() ? "gray" : "black",
                 padding: 10,
                 marginTop: 5,
-                borderRadius: 8,
               }}
             >
-              <Text style={{ color: "#fff" }}>
+              <Text style={{ color: "white" }}>
                 {isEnded() ? "Ended" : "Vote"}
               </Text>
             </TouchableOpacity>
@@ -337,64 +325,86 @@ export default function BattleRoom() {
         )}
       />
 
+      {/* PAYMENT MODAL */}
       <Modal transparent visible={payVisible}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "#0007",
-            justifyContent: "center",
-            padding: 20,
-          }}
-        >
+        <View style={{ flex: 1, justifyContent: "center", padding: 20 }}>
           <View style={{ backgroundColor: "white", padding: 20 }}>
-            <Text style={{ fontSize: 18, fontWeight: "bold" }}>
-              Vote Payment
-            </Text>
-
-            <Text style={{ marginTop: 10 }}>Pay To:</Text>
-
-            <Text style={{ fontWeight: "bold" }}>
-              {momoName} - {momoNumber} ({momoNetwork})
-            </Text>
+            <Text>Buy Votes</Text>
 
             <TextInput
               value={voteInput}
               onChangeText={setVoteInput}
               keyboardType="numeric"
-              style={{ borderWidth: 1, padding: 10, marginTop: 10 }}
+              style={{ borderWidth: 1, marginTop: 10 }}
             />
 
-            <Text style={{ marginTop: 12 }}>
-              Total: GH₵ {(parseInt(voteInput) || 1) * PRICE_PER_VOTE}
-            </Text>
-
-            <TouchableOpacity
-              onPress={sendPayment}
-              style={{
-                backgroundColor: "#2563eb",
-                padding: 14,
-                marginTop: 15,
-              }}
-            >
-              <Text style={{ color: "white", textAlign: "center" }}>
-                Generate Payment Code
-              </Text>
+            <TouchableOpacity onPress={sendPayment}>
+              <Text>Pay</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setPayVisible(false)}>
-              <Text
-                style={{
-                  textAlign: "center",
-                  marginTop: 10,
-                  color: "red",
-                }}
-              >
-                Cancel
-              </Text>
+              <Text>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+      <Modal transparent visible={confirmVisible}>
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: "#0008",
+      justifyContent: "center",
+      padding: 20,
+    }}
+  >
+    <View
+      style={{
+        backgroundColor: "white",
+        padding: 20,
+        borderRadius: 10,
+      }}
+    >
+      <Text style={{ fontSize: 18, fontWeight: "bold" }}>
+        Complete Payment 💰
+      </Text>
+
+      <Text style={{ marginTop: 10 }}>
+        Buy {paymentInfo?.votes} votes
+      </Text>
+
+      <Text style={{ marginTop: 10, fontWeight: "bold" }}>
+        Pay GH₵ {paymentInfo?.total}
+      </Text>
+
+      <Text style={{ marginTop: 15 }}>Send to:</Text>
+
+      <Text style={{ fontWeight: "bold", marginTop: 5 }}>
+        {momoName}
+      </Text>
+
+      <Text>{momoNumber} ({momoNetwork})</Text>
+
+      <Text style={{ marginTop: 15 }}>
+        Code: {paymentInfo?.code}
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => setConfirmVisible(false)}
+        style={{
+          backgroundColor: "#22c55e",
+          padding: 12,
+          marginTop: 20,
+          borderRadius: 8,
+        }}
+      >
+        <Text style={{ color: "white", textAlign: "center" }}>
+          OK
+        </Text>
+      </TouchableOpacity>
     </View>
+  </View>
+</Modal>
+    </View>
+    
   );
 }

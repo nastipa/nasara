@@ -45,25 +45,45 @@ export default function BattlePayments() {
 
   /* ================= REALTIME ================= */
   useEffect(() => {
-    load();
-    loadPrice();
-    loadBoosts();
+  load();
+  loadPrice();
+  loadBoosts();
 
-    const channel = (supabase as any)
-      .channel("admin-payments")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "battle_payments" },
-        () => {
-          load();
-        }
-      )
-      .subscribe();
+  const channel = (supabase as any)
+    .channel("admin-payments")
 
-    return () => {
-      (supabase as any).removeChannel(channel);
-    };
-  }, []);
+    // battle payments realtime
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "battle_payments",
+      },
+      () => {
+        load();
+      }
+    )
+
+    // boost requests realtime 🔥 FIX
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "battle_boost",
+      },
+      () => {
+        loadBoosts();
+      }
+    )
+
+    .subscribe();
+
+  return () => {
+    (supabase as any).removeChannel(channel);
+  };
+}, []);
 
   /* ================= APPROVE ================= */
   async function approve(payment: any) {

@@ -165,8 +165,11 @@ await fetch("https://nasara-upload-server.onrender.com/send-push", {
   }),
 });
 
-    Alert.alert("Battle Created 🚀");
-    router.replace("/battle");
+   Alert.alert("Battle Created 🚀");
+router.replace("/battle");
+
+// 🔥 RUN NOTIFICATIONS IN BACKGROUND
+sendNotifications(data.id, title);
 
   } catch (err: any) {
     Alert.alert(err.message);
@@ -261,3 +264,45 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
 });
+const sendNotifications = async (battleId: string, title: string) => {
+  try {
+    // ⚡ DON'T BLOCK UI
+    setTimeout(async () => {
+
+      // 1️⃣ GET USERS (ONLY IDs)
+      const { data: users } = await supabase
+        .from("profiles")
+        .select("id");
+
+      if (users) {
+        const inserts = users.map((u: any) => ({
+          user_id: u.id,
+          type: "battle",
+          title: "⚔️ New Battle",
+          body: title,
+          ref_id: battleId,
+          read: false,
+        }));
+
+        await (supabase as any).from("notifications").insert(inserts);
+      }
+
+      // 2️⃣ PUSH (NON-BLOCKING)
+      fetch("https://nasara-upload-server.onrender.com/send-push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "battle",
+          title: "⚔️ New Battle",
+          body: title,
+          ref_id: battleId,
+        }),
+      });
+
+    }, 0);
+  } catch (e) {
+    console.log("Notification error:", e);
+  }
+};

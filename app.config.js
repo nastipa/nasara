@@ -33,7 +33,7 @@ export default {
     plugins: [
       "expo-router",
       "expo-video",
-
+      "expo-asset",
       [
         "expo-camera",
         {
