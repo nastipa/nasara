@@ -275,6 +275,15 @@ useEffect(() => {
         <View style={{ padding: 16 }}>
           {!isSeller && userId && (
             <>
+            <TouchableOpacity
+                onPress={() => router.push("/sellers/" + item.user_id)}
+                style={{ marginTop: 12 }}
+              >
+                <Text style={{ color: "blue", fontWeight: "700" }}>
+                  View Seller Shop
+                </Text>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={() => {
                   const roomId = getRoomId();
@@ -373,14 +382,6 @@ useEffect(() => {
 
           {isSeller && (
             <>
-              <TouchableOpacity
-                onPress={() => router.push("/sellers/" + item.user_id)}
-                style={{ marginTop: 12 }}
-              >
-                <Text style={{ color: "blue", fontWeight: "700" }}>
-                  View My Seller Shop
-                </Text>
-              </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => {

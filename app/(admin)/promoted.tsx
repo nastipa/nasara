@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { VideoView, useVideoPlayer } from "expo-video";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,7 +11,23 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
+const PromoVideo = ({ url }: { url: string }) => {
+  const player = useVideoPlayer(url);
 
+  return (
+    <VideoView
+      player={player}
+      style={{
+        width: "100%",
+        height: 180,
+        borderRadius: 10,
+        backgroundColor: "black",
+      }}
+      allowsFullscreen
+      allowsPictureInPicture
+    />
+  );
+};
 export default function AdminPromoted() {
   const [loading, setLoading] = useState(true);
   const [promos, setPromos] = useState<any[]>([]);
@@ -136,20 +153,7 @@ export default function AdminPromoted() {
         >
          {/* MEDIA (IMAGE + VIDEO SUPPORT) */}
 {item.items_live?.video_url ? (
-  <video
-    src={item.items_live.video_url}
-    controls
-    autoPlay
-    muted
-    loop
-    playsInline
-    style={{
-      width: "100%",
-      height: 180,
-      borderRadius: 10,
-      backgroundColor: "black",
-    }}
-  />
+  <PromoVideo url={item.items_live.video_url} />
 ) : item.items_live?.image_url ? (
   <Image
     source={{ uri: item.items_live.image_url }}
@@ -173,7 +177,6 @@ export default function AdminPromoted() {
     <Text>No Media</Text>
   </View>
 )}
-
           <Text style={{ fontWeight: "bold", marginTop: 10 }}>
             {item.items_live?.title}
           </Text>
