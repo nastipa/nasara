@@ -31,6 +31,8 @@ export default function AdminDashboard() {
       <Text style={styles.section}>Users</Text>
       <Tile label="View Users" route="/(admin)/users" />
       <Tile label="Ban / Unban User" route="/(admin)/users" />
+      <Tile label="Report" route="/(admin)/report" />
+
 
       <Text style={styles.section}>Marketplace</Text>
       <Tile label="Delete Listings" route="/(admin)/delete-listings" />
