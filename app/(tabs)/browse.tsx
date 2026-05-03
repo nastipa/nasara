@@ -804,77 +804,41 @@ try {
 
     setBanners(cleaned);
   };
- /* ================= REALTIME ITEMS ================= */
+ /* ================= AUTO REFRESH ITEMS ================= */
 useEffect(() => {
-  const channel = (supabase as any)
-    .channel("items-live-" + Date.now())
+  const interval = setInterval(() => {
+    refreshAll();
+  }, 60000);
+
+  return () => clearInterval(interval);
+}, []);
+
+  /* ================= REALTIME LIVE STREAMS ================= */
+useEffect(() => {
+  const channelName =
+    "live-streams-" +
+    Math.random().toString();
+
+  const channel = supabase
+    .channel(channelName)
     .on(
       "postgres_changes",
       {
-        event: "INSERT",
+        event: "*",
         schema: "public",
-        table: "items_live",
+        table: "live_streams",
       },
-      (payload: any) => {
-        const item = payload.new;
-
-        if (item.status !== "active") return;
-
-       setItems(prev => {
-  if (prev.some(x => x.id === String(item.id))) return prev;
-
-  const newItem: Item = {
-    id: String(item.id),
-    title: item.title,
-    price: item.price,
-    image_url: item.image_url,
-    video_url: item.video_url,
-    location: item.location,
-    category: item.category,
-    negotiable: Boolean(item.is_negotiable),
-    seller_phone: item.seller_phone,
-    user_id: item.user_id,
-    created_at: item.created_at,
-    type: "item" as const, // ✅ FIX HERE
-  };
-
-  return [newItem, ...prev].slice(0, 300);
-});
+      () => {
+        loadLiveStreams();
       }
-    )
-    .subscribe();
+    );
+
+  channel.subscribe();
 
   return () => {
     supabase.removeChannel(channel);
   };
 }, []);
-
-  /* ================= REALTIME LIVE STREAMS ================= */
-  useEffect(() => {
-    const channel = supabase
-      .channel(
-        "live-streams-live"
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table:
-            "live_streams",
-        },
-        () => {
-          loadLiveStreams();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(
-        channel
-      );
-    };
-  }, []);
 
   /* ================= APP REFRESH ON RETURN (THROTTLED) ================= */
   useEffect(() => {
@@ -1102,7 +1066,7 @@ style={{ backgroundColor: "#0f172a" }}
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/exWNaEKdm2o39ELPuEGJjv.apk"
+      "https://expo.dev/artifacts/eas/wcoQxyqAdRykSm7dnBgucf.apk"
     )
   }
   style={{

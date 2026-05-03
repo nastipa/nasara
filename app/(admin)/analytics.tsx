@@ -22,7 +22,7 @@ export default function Analytics() {
 
   const [data, setData] = useState<any>({
     users: 0,
-    newUsers: 0,
+    newUsersToday: 0,
     activeUsers: 0,
     items: 0,
 
@@ -32,41 +32,30 @@ export default function Analytics() {
     growth: [],
     labels: [],
 
-    kFactor: 0,
-    retention: 0,
-
     fraudScore: 0,
     trustScore: 0,
 
     fundingScore: 0,
     valuation: 0,
 
+    suspiciousUsers: [],
+    latestUsers: [],
+
     pitch: "",
   });
 
-  /* ================= LOAD ANALYTICS ================= */
   useEffect(() => {
     loadAnalytics();
-
-    const channel = supabase
-      .channel("analytics-live")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "analytics_events" },
-        () => loadAnalytics(false)
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
-  const loadAnalytics = async (showLoading = true) => {
+  const loadAnalytics = async () => {
     try {
-      if (showLoading) setLoading(true);
+      setLoading(true);
 
       const today = new Date();
+      const startToday = new Date();
+      startToday.setHours(0, 0, 0, 0);
+
       const last7: string[] = [];
 
       for (let i = 6; i >= 0; i--) {
@@ -75,29 +64,49 @@ export default function Analytics() {
         last7.push(d.toISOString().split("T")[0]);
       }
 
-      /* ================= CORE DATA ================= */
-      const { count: users } = await supabase
+      /* USERS */
+      const { data: usersData } = await supabase
         .from("profiles")
-        .select("*", { count: "exact", head: true });
+        .select(`
+          id,
+          full_name,
+          phone,
+          created_at,
+          phone_verified
+        `)
+        .order("created_at", {
+          ascending: false,
+        });
 
-      const { count: newUsers } = await supabase
-        .from("analytics_events")
-        .select("*", { count: "exact", head: true })
-        .eq("event", "signup");
+      const users = usersData?.length || 0;
 
-      const { count: activeUsers } = await supabase
-        .from("analytics_events")
-        .select("*", { count: "exact", head: true });
+      /* NEW USERS TODAY */
+      const newUsersToday =
+        usersData?.filter((u: any) => {
+          return (
+            new Date(u.created_at) >= startToday
+          );
+        }).length || 0;
 
-      const { count: items } = await supabase
-        .from("items_live")
-        .select("*", { count: "exact", head: true });
+      /* ACTIVE USERS */
+      const { count: activeUsers } =
+        await supabase
+          .from("analytics_events")
+          .select("*", {
+            count: "exact",
+            head: true,
+          });
 
-      /* ================= REVENUE MODEL ================= */
-      const revenue = (items || 0) * 300;
-      const arpu = users ? revenue / users : 0;
+      /* ITEMS */
+      const { count: items } =
+        await supabase
+          .from("items_live")
+          .select("*", {
+            count: "exact",
+            head: true,
+          });
 
-      /* ================= GROWTH ================= */
+      /* GROWTH */
       let growth: number[] = [];
 
       for (let d of last7) {
@@ -105,47 +114,73 @@ export default function Analytics() {
         const end = new Date(d);
         end.setHours(23, 59, 59);
 
-        const { count } = await supabase
-          .from("analytics_events")
-          .select("*", { count: "exact", head: true })
-          .eq("event", "signup")
-          .gte("created_at", start.toISOString())
-          .lte("created_at", end.toISOString());
+        const count =
+          usersData?.filter((u: any) => {
+            const date = new Date(
+              u.created_at
+            );
 
-        growth.push(count || 0);
+            return (
+              date >= start &&
+              date <= end
+            );
+          }).length || 0;
+
+        growth.push(count);
       }
 
-      /* ================= METRICS ================= */
-      const safeUsers = users ?? 0;
-const safeNewUsers = newUsers ?? 0;
-const safeActiveUsers = activeUsers ?? 0;
+      /* FRAUD DETECTOR */
+      const suspiciousUsers =
+        usersData?.filter((u: any) => {
+          return (
+            !u.phone_verified ||
+            !u.phone ||
+            u.phone.length < 8
+          );
+        }) || [];
 
-const kFactor =
-  safeUsers > 0 ? safeNewUsers / safeUsers : 0;
+      const fraudScore =
+        users > 0
+          ? suspiciousUsers.length / users
+          : 0;
 
-const retention =
-  safeUsers > 0 ? safeActiveUsers / safeUsers : 0;
+      const trustScore =
+        Math.max(0, 1 - fraudScore);
 
-      /* ================= FRAUD DETECTION ================= */
-      const fraudScore = Math.max(0, 1 - retention);
-      const trustScore = Math.max(0, 1 - fraudScore);
+      /* REVENUE */
+      const revenue = (items || 0) * 300;
 
-      /* ================= FUNDING SCORE ================= */
-      const fundingScore = calculateFundingScore({
-        users,
-        revenue,
-        kFactor,
-        retention,
-        fraudScore,
-      });
+      const arpu =
+        users > 0
+          ? revenue / users
+          : 0;
 
-      const valuation = Math.round(revenue * 40 + (users || 0) * 3);
+      /* FUNDING SCORE */
+      const fundingScore =
+        calculateFundingScore({
+          users,
+          revenue,
+          trustScore,
+        });
 
-      const pitch = generatePitch({ users, revenue, kFactor });
+      /* VALUATION */
+      const valuation =
+        Math.round(
+          revenue * 40 +
+            users * 3
+        );
+
+      /* AI PITCH */
+      const pitch =
+        generatePitch({
+          users,
+          revenue,
+          trustScore,
+        });
 
       setData({
         users,
-        newUsers,
+        newUsersToday,
         activeUsers,
         items,
 
@@ -153,10 +188,9 @@ const retention =
         arpu,
 
         growth,
-        labels: last7.map((d) => d.slice(5)),
-
-        kFactor,
-        retention,
+        labels: last7.map((d) =>
+          d.slice(5)
+        ),
 
         fraudScore,
         trustScore,
@@ -164,187 +198,288 @@ const retention =
         fundingScore,
         valuation,
 
+        suspiciousUsers,
+        latestUsers:
+          usersData?.slice(0, 20) || [],
+
         pitch,
       });
     } catch (e) {
-      console.log("Analytics error:", e);
+      console.log(
+        "Analytics error:",
+        e
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  /* ================= PDF GENERATOR ================= */
-  const generatePitchPDF = async () => {
-    try {
+  const generatePitchPDF =
+    async () => {
       const html = `
       <html>
-      <body style="font-family: Arial; padding: 30px;">
+      <body>
+        <h1>Nasara Investor Report</h1>
 
-        <h1>🚀 NASARA INVESTOR PITCH DECK</h1>
-        <h3>Growth + Funding Report</h3>
+        <p>Total Users: ${data.users}</p>
+        <p>New Users Today: ${data.newUsersToday}</p>
+        <p>Revenue: GH₵ ${data.revenue}</p>
+        <p>Trust Score: ${data.trustScore}</p>
+        <p>Fraud Score: ${data.fraudScore}</p>
+        <p>Valuation: GH₵ ${data.valuation}</p>
 
-        <hr/>
-
-        <h2>📊 Overview</h2>
-        <p><b>Users:</b> ${data.users}</p>
-        <p><b>New Users:</b> ${data.newUsers}</p>
-        <p><b>Active Users:</b> ${data.activeUsers}</p>
-        <p><b>Items:</b> ${data.items}</p>
-
-        <h2>💰 Financials</h2>
-        <p><b>Revenue:</b> GH₵ ${data.revenue}</p>
-        <p><b>ARPU:</b> ${data.arpu}</p>
-        <p><b>Valuation:</b> GH₵ ${data.valuation}</p>
-
-        <h2>📈 Growth</h2>
-        <p>${data.growth.join(", ")}</p>
-
-        <h2>⚡ Network Effects</h2>
-        <p><b>K-Factor:</b> ${data.kFactor}</p>
-        <p><b>Retention:</b> ${data.retention}</p>
-
-        <h2>🛡 Risk Analysis</h2>
-        <p><b>Fraud Score:</b> ${data.fraudScore}</p>
-        <p><b>Trust Score:</b> ${data.trustScore}</p>
-
-        <h2>💰 Funding Readiness</h2>
-        <p><b>Funding Score:</b> ${data.fundingScore}/100</p>
-
-        <h2>🧠 AI Pitch</h2>
-        <p>${data.pitch}</p>
-
-        <hr/>
-        <p style="color: gray;">Generated for Nasara Investor System</p>
+        <h2>Latest Users</h2>
+        ${data.latestUsers
+          .map(
+            (u: any) =>
+              <p>${u.full_name} - ${u.phone}</p>
+          )
+          .join("")}
 
       </body>
       </html>
       `;
 
-      const { uri } = await Print.printToFileAsync({ html });
+      const { uri } =
+        await Print.printToFileAsync({
+          html,
+        });
 
       await Sharing.shareAsync(uri);
-    } catch (err) {
-      console.log("PDF error:", err);
-    }
-  };
+    };
 
   if (loading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#22c55e" />
+        <ActivityIndicator />
       </View>
     );
   }
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>📊 NASARA INVESTOR DASHBOARD</Text>
+      <Text style={styles.title}>
+        📊 NASARA ANALYTICS
+      </Text>
 
-      {/* KPI */}
       <View style={styles.grid}>
-        <Card title="Users" value={data.users} />
-        <Card title="Revenue" value={`GH₵ ${data.revenue}`} />
-        <Card title="Funding Score" value={data.fundingScore} />
-        <Card title="Valuation" value={`GH₵ ${data.valuation}`} />
+        <Card
+          title="Users"
+          value={data.users}
+        />
+
+        <Card
+          title="New Today"
+          value={data.newUsersToday}
+        />
+
+        <Card
+          title="Revenue"
+          value={`GH₵ ${data.revenue}`}
+        />
+
+        <Card
+          title="Valuation"
+          value={`GH₵ ${data.valuation}`}
+        />
       </View>
 
-      {/* CHART */}
       <LineChart
         data={{
           labels: data.labels,
-          datasets: [{ data: data.growth }],
+          datasets: [
+            {
+              data:
+                data.growth,
+            },
+          ],
         }}
         width={screenWidth - 40}
         height={220}
         chartConfig={{
-          backgroundGradientFrom: "#020617",
-          backgroundGradientTo: "#020617",
-          color: (o = 1) => `rgba(34,197,94, ${o})`,
+          backgroundGradientFrom:
+            "#020617",
+          backgroundGradientTo:
+            "#020617",
+          color: (o = 1) =>
+            `rgba(34,197,94,${o})`,
         }}
         bezier
       />
 
-      {/* PITCH */}
       <View style={styles.box}>
-        <Text style={styles.text}>{data.pitch}</Text>
+        <Text style={styles.white}>
+          Fraud Score:{" "}
+          {(
+            data.fraudScore *
+            100
+          ).toFixed(1)}
+          %
+        </Text>
+
+        <Text style={styles.white}>
+          Trust Score:{" "}
+          {(
+            data.trustScore *
+            100
+          ).toFixed(1)}
+          %
+        </Text>
       </View>
 
-      {/* PDF BUTTON */}
-      <TouchableOpacity style={styles.button} onPress={generatePitchPDF}>
-        <Text style={styles.buttonText}>📄 Generate Investor Pitch PDF</Text>
+      <View style={styles.box}>
+        <Text style={styles.white}>
+          Latest Users
+        </Text>
+
+        {data.latestUsers.map(
+          (u: any) => (
+            <View
+              key={u.id}
+              style={{
+                marginTop: 8,
+              }}
+            >
+              <Text
+                style={
+                  styles.text
+                }
+              >
+                {u.full_name}
+              </Text>
+
+              <Text
+                style={
+                  styles.text
+                }
+              >
+                {u.phone}
+              </Text>
+            </View>
+          )
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={styles.button}
+        onPress={
+          generatePitchPDF
+        }
+      >
+        <Text
+          style={
+            styles.buttonText
+          }
+        >
+          📄 Export Report
+        </Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
-/* ================= SCORING ENGINE ================= */
-function calculateFundingScore(d: any) {
+function calculateFundingScore(
+  d: any
+) {
   let score = 80;
 
   if (d.users > 100) score += 10;
-  if (d.revenue > 500) score += 15;
-  if (d.kFactor > 0.5) score += 15;
-  if (d.retention > 0.4) score += 10;
-  if (d.fraudScore < 0.2) score += 10;
+  if (d.revenue > 500) score += 10;
+  if (d.trustScore > 0.8)
+    score += 10;
 
   return Math.min(100, score);
 }
 
-/* ================= AI PITCH ================= */
 function generatePitch(d: any) {
-  return `Nasara has ${d.users} users, showing strong early marketplace traction with improving network effects and monetization potential.;`
+  return `Nasara has ${d.users} users and growing with strong marketplace activity and monetization potential.;`
 }
 
-/* ================= CARD ================= */
-function Card({ title, value }: any) {
+function Card({
+  title,
+  value,
+}: any) {
   return (
     <View style={styles.card}>
-      <Text style={styles.sub}>{title}</Text>
-      <Text style={styles.white}>{value}</Text>
+      <Text style={styles.sub}>
+        {title}
+      </Text>
+      <Text style={styles.white}>
+        {value}
+      </Text>
     </View>
   );
 }
 
-/* ================= STYLES ================= */
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#020617", padding: 20 },
-  title: { color: "#22c55e", fontSize: 20 },
+const styles =
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor:
+        "#020617",
+      padding: 20,
+    },
 
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    title: {
+      color: "#22c55e",
+      fontSize: 20,
+      marginBottom: 20,
+    },
 
-  card: {
-    backgroundColor: "#0f172a",
-    padding: 10,
-    borderRadius: 10,
-    width: "48%",
-  },
+    grid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+    },
 
-  sub: { color: "#9ca3af" },
-  white: { color: "#fff" },
+    card: {
+      backgroundColor:
+        "#0f172a",
+      padding: 10,
+      borderRadius: 10,
+      width: "48%",
+    },
 
-  box: {
-    backgroundColor: "#0f172a",
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 10,
-  },
+    sub: {
+      color: "#9ca3af",
+    },
 
-  text: { color: "#cbd5e1" },
+    white: {
+      color: "#fff",
+    },
 
-  button: {
-    backgroundColor: "#22c55e",
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 15,
-    alignItems: "center",
-  },
+    text: {
+      color: "#cbd5e1",
+    },
 
-  buttonText: { color: "#000", fontWeight: "bold" },
+    box: {
+      backgroundColor:
+        "#0f172a",
+      padding: 12,
+      borderRadius: 10,
+      marginTop: 15,
+    },
 
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#020617",
-  },
-});
+    button: {
+      backgroundColor:
+        "#22c55e",
+      padding: 12,
+      borderRadius: 10,
+      marginTop: 20,
+      alignItems:
+        "center",
+    },
+
+    buttonText: {
+      color: "#000",
+      fontWeight: "bold",
+    },
+
+    center: {
+      flex: 1,
+      justifyContent:
+        "center",
+      alignItems:
+        "center",
+    },
+  });

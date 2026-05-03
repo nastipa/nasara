@@ -53,46 +53,60 @@ export default function ChatTab() {
 
   /* ===== LOAD CONVERSATIONS ===== */
   const loadChats = async (uid?: string) => {
-    const currentUserId = uid || userId;
-    if (!currentUserId) return;
+  const currentUserId = uid || userId;
+  if (!currentUserId) return;
 
-    setLoading(true);
+  setLoading(true);
 
-    const { data, error } = await supabase
-      .from("messages")
-      .select("*")
-      .order("created_at", { ascending: false });
+  // 1. GET ROOMS FIRST (correct source of truth)
+  const { data: rooms, error } = await supabase
+    .from("chat_rooms")
+    .select("*")
+    .or(`buyer_id.eq.${currentUserId},seller_id.eq.${currentUserId}`)
+    .order("created_at", { ascending: false });
 
-    if (error || !data) {
-      setLoading(false);
-      return;
-    }
-
-    const map = new Map<string, Conversation>();
-
-    data.forEach((msg: any) => {
-      // Only include chats where this user is part of the room
-      if (!msg.room_id || msg.room_id.indexOf(currentUserId) === -1) return;
-
-      if (!map.has(msg.room_id)) {
-        map.set(msg.room_id, {
-          room_id: msg.room_id,
-          last_message: msg.text || "",
-          unread_count: 0,
-        });
-      }
-
-      // Count unread messages sent by OTHER user
-      if (!msg.read && msg.sender_id !== currentUserId) {
-        const conv = map.get(msg.room_id);
-        if (conv) conv.unread_count += 1;
-      }
-    });
-
-    setConversations(Array.from(map.values()));
+  if (error || !rooms) {
     setLoading(false);
-  };
+    return;
+  }
 
+  // 2. ENRICH EACH ROOM
+  const formatted = await Promise.all(
+    rooms.map(async (room: any) => {
+      const otherId =
+        room.buyer_id === currentUserId
+          ? room.seller_id
+          : room.buyer_id;
+
+      // last message
+      const { data: lastMsg } = await (supabase as any)
+        .from("messages")
+        .select("text, created_at")
+        .eq("room_id", room.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // unread count
+      const { count } = await (supabase as any)
+        .from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("room_id", room.id)
+        .eq("seen", false)
+        .neq("sender_id", currentUserId);
+
+      return {
+        room_id: room.id,
+        last_message: lastMsg?.text || "",
+        last_time: lastMsg?.created_at || "",
+        unread_count: count || 0,
+      };
+    })
+  );
+
+  setConversations(formatted);
+  setLoading(false);
+};
   /* 🔁 AUTO REFRESH WHEN SCREEN IS OPENED */
   useFocusEffect(
     useCallback(() => {

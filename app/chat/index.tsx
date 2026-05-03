@@ -1,27 +1,32 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
 type ChatRoom = {
   id: string;
-  user_id: string;
+  item_id: number;
+  seller_id: string;
+  buyer_id: string;
+  created_at: string;
+
   other_user_id: string;
-  last_message: string | null;
-  last_time: string | null;
-  unread_count: number;
   other_user?: {
     id: string;
     username: string;
     avatar_url?: string | null;
     is_online?: boolean;
   };
+
+  last_message: string | null;
+  last_time: string | null;
+  unread_count: number;
 };
 
 export default function ChatListScreen() {
@@ -30,6 +35,7 @@ export default function ChatListScreen() {
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  
 
   /* ================= LOAD USER ================= */
   useEffect(() => {
@@ -44,18 +50,11 @@ export default function ChatListScreen() {
   const fetchRooms = async () => {
     if (!userId) return;
 
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("chat_rooms")
-      .select(`
-        id,
-        user1,
-        user2,
-        last_message,
-        last_time,
-        messages(count)
-      `)
-      .or(`user1.eq.${userId},user2.eq.${userId}`)
-      .order("last_time", { ascending: false });
+      .select("*")
+      .or(`buyer_id.eq.${userId},seller_id.eq.${userId}`)
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.log("Room error:", error.message);
@@ -67,15 +66,29 @@ export default function ChatListScreen() {
 
     const formatted = await Promise.all(
       data.map(async (room: any) => {
-        const otherId = room.user1 === userId ? room.user2 : room.user1;
+        const otherId =
+          room.seller_id === userId
+            ? room.buyer_id
+            : room.seller_id;
 
+        // 👤 get other user profile
         const { data: profile } = await supabase
           .from("profiles")
           .select("id, username, avatar_url, is_online")
           .eq("id", otherId)
           .single();
 
-        const { count } = await supabase
+        // 💬 get last message
+        const { data: lastMsg } = await (supabase as any)
+          .from("messages")
+          .select("text, created_at")
+          .eq("room_id", room.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        // 🔔 unread count
+        const { count } = await (supabase as any)
           .from("messages")
           .select("*", { count: "exact", head: true })
           .eq("room_id", room.id)
@@ -83,13 +96,12 @@ export default function ChatListScreen() {
           .neq("sender_id", userId);
 
         return {
-          id: room.id,
-          user_id: userId,
+          ...room,
           other_user_id: otherId,
-          last_message: room.last_message,
-          last_time: room.last_time,
-          unread_count: count || 0,
           other_user: profile || null,
+          last_message: lastMsg?.text || null,
+          last_time: lastMsg?.created_at || null,
+          unread_count: count || 0,
         };
       })
     );
@@ -101,6 +113,7 @@ export default function ChatListScreen() {
   useEffect(() => {
     fetchRooms();
   }, [userId]);
+  
 
   /* ================= REALTIME ================= */
   useEffect(() => {
@@ -112,7 +125,7 @@ export default function ChatListScreen() {
         "postgres_changes",
         { event: "*", schema: "public", table: "messages" },
         () => {
-          fetchRooms(); // refresh list instantly
+          fetchRooms();
         }
       )
       .subscribe();
@@ -166,7 +179,6 @@ export default function ChatListScreen() {
                 {item.other_user?.username?.[0] || "U"}
               </Text>
 
-              {/* ONLINE DOT */}
               {item.other_user?.is_online && (
                 <View
                   style={{
@@ -204,7 +216,6 @@ export default function ChatListScreen() {
                 </Text>
               )}
 
-              {/* UNREAD BADGE */}
               {item.unread_count > 0 && (
                 <View
                   style={{

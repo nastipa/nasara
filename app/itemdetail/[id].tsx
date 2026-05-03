@@ -97,27 +97,28 @@ export default function ItemDetail() {
   /* ============================
    VIDEO PLAYER (FIXED)
 ============================ */
-const videoUrl = item?.video_url?.trim() || "";
+  const videoUrl = item?.video_url?.trim() || "";
 
-// ✅ ALWAYS call hook (NO condition)
-const player = useVideoPlayer(
-  videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4", // fallback safe video
-  (p) => {
-    p.loop = true;
-  }
-);
-
-// ✅ CONTROL play safely
-useEffect(() => {
-  if (videoUrl && videoUrl.startsWith("http")) {
-    try {
-      player.replace(videoUrl);
-      player.play();
-    } catch (e) {
-      console.log("Video error:", e);
+  // ✅ ALWAYS call hook (NO condition)
+  const player = useVideoPlayer(
+    videoUrl || "https://www.w3schools.com/html/mov_bbb.mp4",
+    (p) => {
+      p.loop = true;
     }
-  }
-}, [videoUrl]);
+  );
+
+  // ✅ CONTROL play safely
+  useEffect(() => {
+    if (videoUrl && videoUrl.startsWith("http")) {
+      try {
+        player.replace(videoUrl);
+        player.play();
+      } catch (e) {
+        console.log("Video error:", e);
+      }
+    }
+  }, [videoUrl]);
+
   /* ============================
      LOADING STATES
   ============================ */
@@ -140,20 +141,72 @@ useEffect(() => {
   const isSeller = userId === item.user_id;
 
   /* ============================
-     CHAT ROOM ID
+     START CHAT (FIXED)
   ============================ */
-  const getRoomId = function () {
-    if (!userId) return "";
+  const startChat = async () => {
+  if (!userId || !item?.id || !item?.user_id) {
+    console.log("❌ Missing data", { userId, item });
+    return;
+  }
 
-    const buyerId = userId;
-    const sellerId = item.user_id;
-    const itemId = item.id;
+  const buyerId = userId;
+  const sellerId = item.user_id;
 
-    return buyerId < sellerId
-      ? buyerId + "" + sellerId + "" + itemId
-      : sellerId + "" + buyerId + "" + itemId;
-  };
+  try {
+    // 1️⃣ check existing
+    const { data: existing, error: findError } = await (supabase as any)
+      .from("chat_rooms")
+      .select("*")
+      .eq("item_id", item.id)
+      .eq("buyer_id", buyerId)
+      .eq("seller_id", sellerId)
+      .maybeSingle();
 
+    if (findError) {
+      console.log("❌ FIND ERROR:", findError);
+    }
+
+    let roomId = existing?.id;
+
+    // 2️⃣ create if not exist
+    if (!roomId) {
+      const { data: newRoom, error } = await (supabase as any)
+        .from("chat_rooms")
+        .insert({
+          item_id: item.id,
+          buyer_id: buyerId,
+          seller_id: sellerId,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.log("❌ CREATE ERROR FULL:", JSON.stringify(error, null, 2));
+
+        // 🔥 TEMP FIX: still open chat (so you see what's happening)
+        router.push({
+          pathname: "/chat/[id]",
+          params: { id: "roomId" },
+        });
+
+        return;
+      }
+
+      roomId = newRoom.id;
+    }
+
+    console.log("✅ NAVIGATING TO:", roomId);
+
+    // 3️⃣ ALWAYS navigate
+    router.push({
+      pathname: "/chat/[id]",
+      params: { id: roomId },
+    });
+
+  } catch (err) {
+    console.log("❌ CRASH:", err);
+  }
+};
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
@@ -213,34 +266,34 @@ useEffect(() => {
               </Text>
             </TouchableOpacity>
 
-           {videoUrl && videoUrl.startsWith("http") ? (
-  <VideoView
-    player={player}
-    style={{
-      width: "100%",
-      height: "100%",
-    }}
-  />
-) : item.image_url ? (
-  <Image
-    source={{ uri: item.image_url }}
-    style={{
-      width: "100%",
-      height: "100%",
-    }}
-    resizeMode="cover"
-  />
-) : (
-  <View
-    style={{
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-    }}
-  >
-    <Text>No media</Text>
-  </View>
-)}
+            {videoUrl && videoUrl.startsWith("http") ? (
+              <VideoView
+                player={player}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                }}
+              />
+            ) : item.image_url ? (
+              <Image
+                source={{ uri: item.image_url }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                }}
+                resizeMode="cover"
+              />
+            ) : (
+              <View
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Text>No media</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -275,7 +328,7 @@ useEffect(() => {
         <View style={{ padding: 16 }}>
           {!isSeller && userId && (
             <>
-            <TouchableOpacity
+              <TouchableOpacity
                 onPress={() => router.push("/sellers/" + item.user_id)}
                 style={{ marginTop: 12 }}
               >
@@ -285,10 +338,7 @@ useEffect(() => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => {
-                  const roomId = getRoomId();
-                  router.push("/chat/" + roomId);
-                }}
+                onPress={startChat}
                 style={{
                   backgroundColor: "#2563eb",
                   padding: 12,
@@ -382,7 +432,6 @@ useEffect(() => {
 
           {isSeller && (
             <>
-
               <TouchableOpacity
                 onPress={() => {
                   router.push(`/boost/${item.id}`);

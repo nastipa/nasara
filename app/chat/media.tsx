@@ -1,13 +1,13 @@
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    Linking,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Linking,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -15,9 +15,10 @@ import { supabase } from "../../lib/supabase";
 type MediaItem = {
   id: number;
   image_url: string | null;
-  audio_url?: string | null;
+  audio_url: string | null;
   file_url: string | null;
   file_name: string | null;
+  created_at: string;
 };
 
 export default function ChatMediaScreen() {
@@ -26,21 +27,29 @@ export default function ChatMediaScreen() {
 
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
-
-  /* ===== LOAD MEDIA ===== */
+  
+  /* ================= FETCH MEDIA ================= */
   const fetchMedia = async () => {
-    const { data } = await supabase
+    if (!roomId) return;
+
+    setLoading(true);
+
+    const { data, error } = await (supabase as any)
       .from("messages")
-      .select("id,image_url,audio_url,file_url,file_name")
+      .select("id,image_url,audio_url,file_url,file_name,created_at")
       .eq("room_id", roomId)
       .order("created_at", { ascending: false });
 
-    if (!data) return;
+    if (error) {
+      console.log("MEDIA ERROR:", error);
+      setLoading(false);
+      return;
+    }
 
-    const filtered = data.filter(
-      (m: any) =>
-        m.image_url || m.audio_url || m.file_url
-    );
+    const filtered =
+      (data || []).filter(
+        (m:any) => m.image_url || m.audio_url || m.file_url
+      );
 
     setMedia(filtered);
     setLoading(false);
@@ -48,16 +57,48 @@ export default function ChatMediaScreen() {
 
   useEffect(() => {
     fetchMedia();
-  }, []);
+  }, [roomId]);
 
-  /* ===== OPEN FILE ===== */
+  /* ================= REALTIME ================= */
+  useEffect(() => {
+    if (!roomId) return;
+
+    const channel = supabase
+      .channel("media_" + roomId)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const msg = payload.new as MediaItem;
+
+          if (msg.image_url || msg.file_url || msg.audio_url) {
+            setMedia((prev) => [msg, ...prev]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId]);
+  /* ================= OPEN FILE ================= */
   const openFile = async (path: string) => {
-    const { data } = await supabase.storage
-      .from("chat-files")
-      .createSignedUrl(path, 60);
+    try {
+      // IMPORTANT: your upload server gives FULL URL OR PATH
+      const url =
+        path.startsWith("http")
+          ? path
+          : `https://nasara-upload-server.onrender.com/${path}`;
 
-    if (data?.signedUrl) {
-      Linking.openURL(data.signedUrl);
+      Linking.openURL(url);
+    } catch (err) {
+      console.log("Open file error:", err);
     }
   };
 
@@ -77,20 +118,25 @@ export default function ChatMediaScreen() {
         data={media}
         keyExtractor={(item) => item.id.toString()}
         numColumns={3}
+        contentContainerStyle={{ padding: 6 }}
         renderItem={({ item }) => (
           <View style={{ flex: 1, margin: 4 }}>
-            
-            {/* IMAGE */}
+            {/* IMAGE (FIXED: NO VANISHING) */}
             {item.image_url && (
               <Image
                 source={{ uri: item.image_url }}
-                style={{ width: "100%", height: 120, borderRadius: 10 }}
+                style={{
+                  width: "100%",
+                  height: 120,
+                  borderRadius: 10,
+                  backgroundColor: "#111",
+                }}
               />
             )}
 
             {/* AUDIO */}
             {item.audio_url && (
-              <Text style={{ color: "white" }}>🎤 Voice</Text>
+              <Text style={{ color: "white" }}>🎤 Voice message</Text>
             )}
 
             {/* FILE */}
@@ -99,7 +145,7 @@ export default function ChatMediaScreen() {
                 onPress={() => openFile(item.file_url!)}
               >
                 <Text style={{ color: "#60a5fa" }}>
-                  📎 {item.file_name}
+                  📎 {item.file_name || "File"}
                 </Text>
               </TouchableOpacity>
             )}
