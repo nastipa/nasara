@@ -1,68 +1,93 @@
-import { useState } from "react";
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import { Alert, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { supabase } from "../lib/supabase";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [timer, setTimer] = useState(0);
 
-  const sendReset = async () => {
-    if (!email) {
-      Alert.alert("Error", "Enter your email");
-      return;
-    }
+  const router = useRouter();
 
-    setLoading(true);
+  useEffect(() => {
+    if (timer <= 0) return;
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: "https://nasara1.vercel.app/reset-password"
-    });
+    const interval = setInterval(() => {
+      setTimer((t) => t - 1);
+    }, 1000);
 
-    setLoading(false);
+    return () => clearInterval(interval);
+  }, [timer]);
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
+  const sendCode = async () => {
+  if (!email) {
+    Alert.alert("Error", "Enter your email");
+    return;
+  }
 
-    Alert.alert("Success", "Check your email for reset link");
-  };
+  if (timer > 0) return;
+
+  setLoading(true);
+
+  const { error } =
+    await supabase.auth.resetPasswordForEmail(
+      email.trim().toLowerCase()
+    );
+
+  setLoading(false);
+
+  if (error) {
+    Alert.alert("Error", error.message);
+    return;
+  }
+
+  setTimer(60);
+
+  Alert.alert(
+    "Code sent",
+    "Check your email for reset code"
+  );
+
+  router.push({
+    pathname: "/reset-password",
+    params: { email },
+  });
+};
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Forgot Password</Text>
+    <View style={{ flex: 1, padding: 20, justifyContent: "center" }}>
+      <Text style={{ fontSize: 22, marginBottom: 15 }}>
+        Forgot Password
+      </Text>
 
       <TextInput
         placeholder="Enter your email"
         value={email}
         onChangeText={setEmail}
-        style={styles.input}
+        autoCapitalize="none"
+        style={{
+          borderWidth: 1,
+          marginBottom: 15,
+          padding: 12,
+          borderRadius: 6,
+        }}
       />
 
-      <TouchableOpacity style={styles.button} onPress={sendReset}>
-        <Text style={styles.buttonText}>
-          {loading ? "Sending..." : "Send Reset Link"}
+      <TouchableOpacity
+        onPress={sendCode}
+        disabled={loading || timer > 0}
+        style={{
+          backgroundColor: "#2563eb",
+          padding: 15,
+          borderRadius: 6,
+          opacity: loading || timer > 0 ? 0.6 : 1,
+        }}
+      >
+        <Text style={{ color: "#fff", textAlign: "center" }}>
+          {timer > 0 ? `Resend in ${timer}s` : "Send Code"}
         </Text>
       </TouchableOpacity>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20 },
-  title: { fontSize: 22, marginBottom: 20, textAlign: "center" },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 15,
-  },
-  button: {
-    backgroundColor: "#111827",
-    padding: 15,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  buttonText: { color: "white", fontWeight: "bold" },
-});

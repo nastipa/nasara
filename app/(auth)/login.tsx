@@ -139,30 +139,21 @@ const [showNewPassword, setShowNewPassword] = useState(false);
     router.push("/(auth)/signup");
   };
 /* ================= FORGOT PASSWORD ================= */
- const forgotPassword = async () => {
-    if (!email) {
-      Alert.alert("Enter your email");
-      return;
-    }
+ const sendOTP = async () => {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false, // important
+    },
+  });
 
-    setLoading(true);
-
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      email.trim().toLowerCase(),
-      {
-        redirectTo: "nasara://reset-password", // ✅ FIXED HERE
-      }
-    );
-
-    setLoading(false);
-
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
-
-    Alert.alert("Check your email 📩", "Reset link sent.");
-  };
+  if (error) {
+    Alert.alert("Error", error.message);
+  } else {
+    Alert.alert("OTP sent to your email");
+    router.push("/reset-password");
+  }
+};
   /* ================= UPDATE EMAIL/PASSWORD ================= */
   const handleUpdate = async () => {
     if (!mode || !newValue || !currentPassword) {

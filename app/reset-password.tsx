@@ -1,66 +1,136 @@
-import { useEffect, useState } from "react";
-import { Alert, Button, Text, TextInput, View } from "react-native";
+import { useLocalSearchParams } from "expo-router";
+import { useState } from "react";
+import {
+    Alert,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from "react-native";
 import { supabase } from "../lib/supabase";
 
 export default function ResetPassword() {
+  const { email } = useLocalSearchParams();
+
+  const [otp, setOtp] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // 🔥 handles session after clicking email link
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === "PASSWORD_RECOVERY") {
-          console.log("Recovery session ready");
-        }
-      }
-    );
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, []);
-
-  const updatePassword = async () => {
-    if (password !== confirm) {
-      Alert.alert("Error", "Passwords do not match");
+  const handleReset = async () => {
+    if (!otp || !password) {
+      Alert.alert(
+        "Error",
+        "Enter code and new password"
+      );
       return;
     }
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-    });
+    setLoading(true);
 
-    if (error) {
-      Alert.alert("Error", error.message);
-    } else {
-      Alert.alert("Success", "Password updated!");
+    // Verify recovery OTP
+    const { error: verifyError } =
+      await supabase.auth.verifyOtp({
+        email: email as string,
+        token: otp.trim(),
+        type: "recovery",
+      });
+
+    if (verifyError) {
+      setLoading(false);
+      Alert.alert(
+        "Error",
+        verifyError.message
+      );
+      return;
     }
+
+    // Update password
+    const { error: updateError } =
+      await supabase.auth.updateUser({
+        password,
+      });
+
+    setLoading(false);
+
+    if (updateError) {
+      Alert.alert(
+        "Error",
+        updateError.message
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Success",
+      "Password updated successfully"
+    );
   };
 
   return (
-    <View style={{ flex: 1, padding: 20, justifyContent: "center" }}>
-      <Text style={{ fontSize: 20, marginBottom: 10 }}>
+    <View
+      style={{
+        flex: 1,
+        padding: 20,
+        justifyContent: "center",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 22,
+          marginBottom: 20,
+        }}
+      >
         Reset Password
       </Text>
 
       <TextInput
-        placeholder="New Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
+        placeholder="Enter code"
+        value={otp}
+        onChangeText={setOtp}
+        keyboardType="number-pad"
+        style={{
+          borderWidth: 1,
+          marginBottom: 15,
+          padding: 12,
+          borderRadius: 8,
+        }}
       />
 
       <TextInput
-        placeholder="Confirm Password"
+        placeholder="New password"
         secureTextEntry
-        value={confirm}
-        onChangeText={setConfirm}
-        style={{ borderWidth: 1, marginBottom: 10, padding: 10 }}
+        value={password}
+        onChangeText={setPassword}
+        style={{
+          borderWidth: 1,
+          marginBottom: 20,
+          padding: 12,
+          borderRadius: 8,
+        }}
       />
 
-      <Button title="Update Password" onPress={updatePassword} />
+      <TouchableOpacity
+        onPress={handleReset}
+        disabled={loading}
+        style={{
+          backgroundColor: "#16a34a",
+          padding: 15,
+          borderRadius: 8,
+          opacity: loading ? 0.7 : 1,
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            textAlign: "center",
+            fontWeight: "bold",
+          }}
+        >
+          {loading
+            ? "Resetting..."
+            : "Reset Password"}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
