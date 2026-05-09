@@ -11,13 +11,23 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { blockUser, isBlocked, unblockUser } from "../../lib/blockUser";
+
+import {
+  blockUser,
+  isBlocked,
+  unblockUser,
+} from "../../lib/blockUser";
+
 import { supabase } from "../../lib/supabase";
 
 /* ================= CLOUDINARY ================= */
-async function uploadToCloudinary(file: any): Promise<string> {
+async function uploadToCloudinary(
+  file: any
+): Promise<string> {
   const CLOUD_NAME = "ajars";
+
   const PRESET = "ajars_avatars";
+
   const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
 
   const formData = new FormData();
@@ -25,187 +35,496 @@ async function uploadToCloudinary(file: any): Promise<string> {
   if (Platform.OS === "web") {
     formData.append("file", file);
   } else {
-    formData.append("file", {
-      uri: file,
-      type: "image/jpeg",
-      name: "avatar.jpg",
-    } as any);
+    formData.append(
+      "file",
+      {
+        uri: file,
+        type: "image/jpeg",
+        name: "avatar.jpg",
+      } as any
+    );
   }
 
-  formData.append("upload_preset", PRESET);
+  formData.append(
+    "upload_preset",
+    PRESET
+  );
 
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", url);
+  return new Promise(
+    (resolve, reject) => {
+      const xhr =
+        new XMLHttpRequest();
 
-    xhr.onload = () => {
-      try {
-        const data = JSON.parse(xhr.response);
-        if (!data.secure_url) reject(new Error("Upload failed"));
-        else resolve(data.secure_url + "?t=" + Date.now());
-      } catch {
-        reject(new Error("Upload failed"));
-      }
-    };
+      xhr.open("POST", url);
 
-    xhr.onerror = () => reject(new Error("Network error"));
-    xhr.send(formData);
-  });
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(
+            xhr.response
+          );
+
+          if (!data.secure_url) {
+            reject(
+              new Error(
+                "Upload failed"
+              )
+            );
+          } else {
+            resolve(
+              data.secure_url +
+                "?t=" +
+                Date.now()
+            );
+          }
+        } catch {
+          reject(
+            new Error(
+              "Upload failed"
+            )
+          );
+        }
+      };
+
+      xhr.onerror = () =>
+        reject(
+          new Error(
+            "Network error"
+          )
+        );
+
+      xhr.send(formData);
+    }
+  );
 }
 
 export default function ProfileScreen() {
   const router = useRouter();
 
-  const { id } = useLocalSearchParams<{ id?: string | string[] }>();
-  const profileId = Array.isArray(id) ? id[0] : id;
+  const {
+    id,
+  } = useLocalSearchParams<{
+    id?: string | string[];
+  }>();
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const profileId = Array.isArray(id)
+    ? id[0]
+    : id;
 
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [location, setLocation] = useState("");
-  const [avatar, setAvatar] = useState<string | null>(null);
+  const [
+    sessionId,
+    setSessionId,
+  ] = useState<string | null>(
+    null
+  );
 
-  const [isMe, setIsMe] = useState(false);
+  const [
+    fullName,
+    setFullName,
+  ] = useState("");
 
-  const [isFollowing, setIsFollowing] = useState(false);
-  const [blocked, setBlocked] = useState(false);
+  const [phone, setPhone] =
+    useState("");
 
-  /* ================= LOAD PROFILE ================= */
- useEffect(() => {
-  const load = async () => {
-    const { data } = await supabase.auth.getUser();
-    const myId = data.user?.id ?? null;
+  const [
+    location,
+    setLocation,
+  ] = useState("");
 
-    setSessionId(myId);
+  const [avatar, setAvatar] =
+    useState<string | null>(
+      null
+    );
 
-    // ✅ STRICT: ONLY fallback if no param
-    const targetId = profileId ?? myId;
+  const [
+    verified,
+    setVerified,
+  ] = useState(false);
 
+  const [
+    verificationStatus,
+    setVerificationStatus,
+  ] = useState("none");
+
+  const [isMe, setIsMe] =
+    useState(false);
+
+  const [
+    isFollowing,
+    setIsFollowing,
+  ] = useState(false);
+
+  const [blocked, setBlocked] =
+    useState(false);
+    /* ================= TRACK PROFILE VIEW ================= */
+async function trackProfileView(
+  viewerId: string | null,
+  targetId: string
+) {
+  try {
+    /* DON'T COUNT SELF VIEW */
     if (!targetId) return;
 
-    setIsMe(myId === targetId);
+    if (viewerId === targetId) return;
 
-    const { data: profile, error } = await (supabase as any)
-      .from("profiles")
-      .select("*")
-      .eq("id", targetId)
-      .maybeSingle();
-
-    if (error) {
-      console.log("Profile error:", error.message);
-      return;
-    }
-
-    if (profile) {
-      setFullName(profile.full_name || "");
-      setPhone(profile.phone || "");
-      setLocation(profile.location || "");
-      setAvatar(profile.avatar_url || null);
-    }
-
-    // FOLLOW CHECK
-    if (myId && targetId && myId !== targetId) {
-      const { data } = await supabase
-        .from("follows")
-        .select("*")
-        .eq("follower_id", myId)
-        .eq("following_id", targetId)
+    /* CHECK EXISTING */
+    const { data: existing } =
+      await (supabase as any)
+        .from("business_analytics")
+        .select("id, profile_views")
+        .eq("user_id", targetId)
         .maybeSingle();
 
-      setIsFollowing(!!data);
-      // 🔥 BLOCK CHECK
-if (myId && targetId && myId !== targetId) {
-  const result = await isBlocked(targetId);
-  setBlocked(result);
-}
+    /* CREATE */
+    if (!existing) {
+      await (supabase as any)
+        .from("business_analytics")
+        .insert({
+          user_id: targetId,
+          profile_views: 1,
+        });
+
+      return;
     }
-  };
 
-  load();
-}, [profileId]);
+    /* UPDATE */
+    await (supabase as any)
+      .from("business_analytics")
+      .update({
+        profile_views:
+          (existing.profile_views || 0) + 1,
+      })
+      .eq("user_id", targetId);
 
+  } catch (e) {
+    console.log(
+      "Track profile error:",
+      e
+    );
+  }
+}
+
+  /* ================= FOLLOW COUNTS ================= */
+  const [
+    followersCount,
+    setFollowersCount,
+  ] = useState(0);
+
+  const [
+    followingCount,
+    setFollowingCount,
+  ] = useState(0);
+
+  /* ================= LOAD PROFILE ================= */
+  useEffect(() => {
+    const load = async () => {
+      const { data } =
+        await supabase.auth.getUser();
+
+      const myId =
+        data.user?.id ?? null;
+
+      setSessionId(myId);
+      
+
+      const targetId =
+        profileId ?? myId;
+
+      if (!targetId) return;
+      if (targetId && myId !== targetId) {
+  trackProfileView(
+    myId,
+    targetId
+  );
+}
+
+      setIsMe(
+        myId === targetId
+      );
+
+      /* ================= PROFILE ================= */
+      const {
+        data: profile,
+        error,
+      } = await (supabase as any)
+        .from("profiles")
+        .select("*")
+        .eq("id", targetId)
+        .maybeSingle();
+
+      if (error) {
+        console.log(
+          "Profile error:",
+          error.message
+        );
+
+        return;
+      }
+
+      if (profile) {
+        setFullName(
+          profile.full_name || ""
+        );
+
+        setPhone(
+          profile.phone || ""
+        );
+
+        setLocation(
+          profile.location || ""
+        );
+
+        setAvatar(
+          profile.avatar_url ||
+            null
+        );
+
+        setVerified(
+          profile.verified ||
+            false
+        );
+
+        setVerificationStatus(
+          profile.verification_status ||
+            "none"
+        );
+      }
+
+      /* ================= FOLLOWERS ================= */
+      const {
+        count: followers,
+      } = await supabase
+        .from("follows")
+        .select("*", {
+          count: "exact",
+          head: true,
+        })
+        .eq(
+          "following_id",
+          targetId
+        );
+
+      setFollowersCount(
+        followers || 0
+      );
+
+      /* ================= FOLLOWING ================= */
+      const {
+        count: following,
+      } = await supabase
+        .from("follows")
+        .select("*", {
+          count: "exact",
+          head: true,
+        })
+        .eq(
+          "follower_id",
+          targetId
+        );
+
+      setFollowingCount(
+        following || 0
+      );
+
+      /* ================= FOLLOW CHECK ================= */
+      if (
+        myId &&
+        targetId &&
+        myId !== targetId
+      ) {
+        const { data } =
+          await supabase
+            .from("follows")
+            .select("*")
+            .eq(
+              "follower_id",
+              myId
+            )
+            .eq(
+              "following_id",
+              targetId
+            )
+            .maybeSingle();
+
+        setIsFollowing(!!data);
+
+        /* ================= BLOCK CHECK ================= */
+        const result =
+          await isBlocked(
+            targetId
+          );
+
+        setBlocked(result);
+      }
+    };
+
+    load();
+  }, [profileId]);
 
   /* ================= FOLLOW USER ================= */
-  const followUser = async () => {
-    if (!sessionId || !profileId) return;
+  const followUser =
+    async () => {
+      if (
+        !sessionId ||
+        !profileId
+      )
+        return;
 
-    const { error } = await (supabase as any).from("follows").insert({
-      follower_id: sessionId,
-      following_id: profileId,
-    });
+      const { error } =
+        await (supabase as any)
+          .from("follows")
+          .insert({
+            follower_id:
+              sessionId,
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
+            following_id:
+              profileId,
+          });
 
-    setIsFollowing(true);
-    Alert.alert("Followed");
-  };
+      if (error) {
+        Alert.alert(
+          "Error",
+          error.message
+        );
+
+        return;
+      }
+
+      setIsFollowing(true);
+
+      setFollowersCount(
+        (prev) => prev + 1
+      );
+
+      Alert.alert(
+        "Followed"
+      );
+    };
 
   /* ================= UNFOLLOW ================= */
-  const unfollowUser = async () => {
-    if (!sessionId || !profileId) return;
+  const unfollowUser =
+    async () => {
+      if (
+        !sessionId ||
+        !profileId
+      )
+        return;
 
-    const { error } = await supabase
-      .from("follows")
-      .delete()
-      .eq("follower_id", sessionId)
-      .eq("following_id", profileId);
+      const { error } =
+        await supabase
+          .from("follows")
+          .delete()
+          .eq(
+            "follower_id",
+            sessionId
+          )
+          .eq(
+            "following_id",
+            profileId
+          );
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
+      if (error) {
+        Alert.alert(
+          "Error",
+          error.message
+        );
 
-    setIsFollowing(false);
-  };
+        return;
+      }
+
+      setIsFollowing(false);
+
+      setFollowersCount(
+        (prev) =>
+          prev > 0
+            ? prev - 1
+            : 0
+      );
+    };
 
   /* ================= PICK IMAGE ================= */
-  const pickAvatar = async () => {
-    if (!isMe) return;
+  const pickAvatar =
+    async () => {
+      if (!isMe) return;
 
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.7,
-    });
+      const res =
+        await ImagePicker.launchImageLibraryAsync(
+          {
+            mediaTypes: [
+              "images",
+            ],
+            quality: 0.7,
+          }
+        );
 
-    if (!res.canceled) {
-      setAvatar(res.assets[0].uri);
-    }
-  };
+      if (!res.canceled) {
+        setAvatar(
+          res.assets[0].uri
+        );
+      }
+    };
 
   /* ================= SAVE ================= */
-  const saveProfile = async () => {
-    if (!sessionId || !isMe) return;
+  const saveProfile =
+    async () => {
+      if (
+        !sessionId ||
+        !isMe
+      )
+        return;
 
-    let avatar_url = avatar;
+      let avatar_url =
+        avatar;
 
-    if (avatar && (avatar.startsWith("file") || avatar.startsWith("blob"))) {
-      avatar_url = await uploadToCloudinary(avatar);
-    }
+      if (
+        avatar &&
+        (avatar.startsWith(
+          "file"
+        ) ||
+          avatar.startsWith(
+            "blob"
+          ))
+      ) {
+        avatar_url =
+          await uploadToCloudinary(
+            avatar
+          );
+      }
 
-    const { error } = await (supabase as any).from("profiles").upsert({
-      id: sessionId,
-      full_name: fullName,
-      phone,
-      location,
-      avatar_url,
-    });
+      const { error } =
+        await (supabase as any)
+          .from("profiles")
+          .upsert({
+            id: sessionId,
 
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
-    }
+            full_name:
+              fullName,
 
-    router.back();
-  };
+            phone,
+
+            location,
+
+            avatar_url,
+          });
+
+      if (error) {
+        Alert.alert(
+          "Error",
+          error.message
+        );
+
+        return;
+      }
+
+      router.back();
+    };
 
   /* ================= UI ================= */
   return (
     <View style={styles.container}>
-      <TouchableOpacity disabled={!isMe} onPress={pickAvatar}>
+      <TouchableOpacity
+        disabled={!isMe}
+        onPress={pickAvatar}
+      >
         <Image
           source={{
             uri:
@@ -214,36 +533,184 @@ if (myId && targetId && myId !== targetId) {
           }}
           style={styles.avatar}
         />
-        <Text style={styles.changeText}>
-          {isMe ? "Change Avatar" : "Profile"}
+
+        <Text
+          style={
+            styles.changeText
+          }
+        >
+          {isMe
+            ? "Change Avatar"
+            : "Profile"}
         </Text>
       </TouchableOpacity>
 
-      <TextInput value={fullName} editable={isMe} style={styles.input} />
-      <TextInput value={phone} editable={isMe} style={styles.input} />
-      <TextInput value={location} editable={isMe} style={styles.input} />
-
-      {/* ================= FOLLOW BUTTON ================= */}
-      {!isMe && sessionId && profileId && (
-        <TouchableOpacity
-          onPress={isFollowing ? unfollowUser : followUser}
+      {/* ================= FOLLOW STATS ================= */}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent:
+            "center",
+          marginBottom: 20,
+          gap: 30,
+        }}
+      >
+        <View
           style={{
-            backgroundColor: isFollowing ? "#ef4444" : "#2563eb",
-            padding: 12,
-            borderRadius: 8,
-            marginTop: 10,
+            alignItems:
+              "center",
           }}
         >
-          <Text style={{ color: "white", textAlign: "center" }}>
-            {isFollowing ? "Unfollow" : "Follow"}
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight:
+                "bold",
+            }}
+          >
+            {
+              followersCount
+            }
           </Text>
-        </TouchableOpacity>
-      )}
+
+          <Text
+            style={{
+              color: "gray",
+            }}
+          >
+            Followers
+          </Text>
+        </View>
+
+        <View
+          style={{
+            alignItems:
+              "center",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 20,
+              fontWeight:
+                "bold",
+            }}
+          >
+            {
+              followingCount
+            }
+          </Text>
+
+          <Text
+            style={{
+              color: "gray",
+            }}
+          >
+            Following
+          </Text>
+        </View>
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems:
+            "center",
+          marginBottom: 10,
+        }}
+      >
+        <View
+          style={{ flex: 1 }}
+        >
+          <TextInput
+            value={fullName}
+            editable={isMe}
+            style={
+              styles.input
+            }
+          />
+        </View>
+
+        {verified && (
+          <Text
+            style={{
+              marginLeft: 8,
+              color:
+                "#3b82f6",
+              fontSize: 20,
+              fontWeight:
+                "bold",
+            }}
+          >
+            ✓
+          </Text>
+        )}
+      </View>
+
+      <TextInput
+        value={phone}
+        editable={isMe}
+        style={styles.input}
+      />
+
+      <TextInput
+        value={location}
+        editable={isMe}
+        style={styles.input}
+      />
+
+      {/* ================= FOLLOW BUTTON ================= */}
+      {!isMe &&
+        sessionId &&
+        profileId && (
+          <TouchableOpacity
+            onPress={
+              isFollowing
+                ? unfollowUser
+                : followUser
+            }
+            style={{
+              backgroundColor:
+                isFollowing
+                  ? "#ef4444"
+                  : "#2563eb",
+
+              padding: 12,
+
+              borderRadius: 8,
+
+              marginTop: 10,
+            }}
+          >
+            <Text
+              style={{
+                color:
+                  "white",
+
+                textAlign:
+                  "center",
+              }}
+            >
+              {isFollowing
+                ? "Unfollow"
+                : "Follow"}
+            </Text>
+          </TouchableOpacity>
+        )}
 
       {/* ================= SAVE ================= */}
       {isMe && (
-        <TouchableOpacity onPress={saveProfile}>
-          <Text style={styles.saveBtn}>Save Profile</Text>
+        <TouchableOpacity
+          onPress={
+            saveProfile
+          }
+        >
+          <Text
+            style={
+              styles.saveBtn
+            }
+          >
+            Save Profile
+          </Text>
         </TouchableOpacity>
       )}
 
@@ -252,89 +719,189 @@ if (myId && targetId && myId !== targetId) {
         <TouchableOpacity
           onPress={() =>
             router.push({
-              pathname: "/report",
+              pathname:
+                "/report",
+
               params: {
-                reportedUserId: profileId,
+                reportedUserId:
+                  profileId,
+
                 type: "user",
               },
             })
           }
           style={{
             marginTop: 12,
-            backgroundColor: "#ef4444",
+
+            backgroundColor:
+              "#ef4444",
+
             padding: 10,
+
             borderRadius: 8,
           }}
         >
-          <Text style={{ color: "white", textAlign: "center" }}>
+          <Text
+            style={{
+              color:
+                "white",
+
+              textAlign:
+                "center",
+            }}
+          >
             🚨 Report User
           </Text>
         </TouchableOpacity>
       )}
+
       {/* ================= BLOCK USER ================= */}
-{!isMe && sessionId && profileId && (
-  <TouchableOpacity
-    onPress={() => {
-  if (!profileId) return;
+      {!isMe &&
+        sessionId &&
+        profileId && (
+          <TouchableOpacity
+            onPress={() => {
+              if (
+                !profileId
+              )
+                return;
 
-  Alert.alert(
-    blocked ? "Unblock User" : "Block User",
-    blocked
-      ? "Are you sure you want to unblock this user?"
-      : "Are you sure you want to block this user?",
-    [
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-      {
-        text: blocked ? "Unblock" : "Block",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            if (!blocked) {
-              const { error } = await blockUser(profileId);
+              Alert.alert(
+                blocked
+                  ? "Unblock User"
+                  : "Block User",
 
-              if (error) throw new Error(error);
+                blocked
+                  ? "Are you sure you want to unblock this user?"
+                  : "Are you sure you want to block this user?",
 
-              setBlocked(true);
-              Alert.alert("Success", "User blocked 🚫");
-            } else {
-              const { error } = await unblockUser(profileId);
+                [
+                  {
+                    text:
+                      "Cancel",
 
-              if (error) throw new Error(error);
+                    style:
+                      "cancel",
+                  },
 
-              setBlocked(false);
-              Alert.alert("Success", "User unblocked ✅");
-            }
-          } catch (err: any) {
-            console.log("Block error:", err);
-            Alert.alert("Error", err.message || "Something went wrong");
-          }
-        },
-      },
-    ]
-  );
-}}
-    style={{
-      marginTop: 10,
-      backgroundColor: blocked ? "#6b7280" : "#111827",
-      padding: 12,
-      borderRadius: 8,
-    }}
-  >
-    <Text style={{ color: "white", textAlign: "center" }}>
-      {blocked ? "Unblock User" : "🚫 Block User"}
-    </Text>
-  </TouchableOpacity>
-)}
+                  {
+                    text:
+                      blocked
+                        ? "Unblock"
+                        : "Block",
+
+                    style:
+                      "destructive",
+
+                    onPress:
+                      async () => {
+                        try {
+                          if (
+                            !blocked
+                          ) {
+                            const {
+                              error,
+                            } =
+                              await blockUser(
+                                profileId
+                              );
+
+                            if (
+                              error
+                            )
+                              throw new Error(
+                                error
+                              );
+
+                            setBlocked(
+                              true
+                            );
+
+                            Alert.alert(
+                              "Success",
+                              "User blocked 🚫"
+                            );
+                          } else {
+                            const {
+                              error,
+                            } =
+                              await unblockUser(
+                                profileId
+                              );
+
+                            if (
+                              error
+                            )
+                              throw new Error(
+                                error
+                              );
+
+                            setBlocked(
+                              false
+                            );
+
+                            Alert.alert(
+                              "Success",
+                              "User unblocked ✅"
+                            );
+                          }
+                        } catch (
+                          err: any
+                        ) {
+                          console.log(
+                            "Block error:",
+                            err
+                          );
+
+                          Alert.alert(
+                            "Error",
+                            err.message ||
+                              "Something went wrong"
+                          );
+                        }
+                      },
+                  },
+                ]
+              );
+            }}
+            style={{
+              marginTop: 10,
+
+              backgroundColor:
+                blocked
+                  ? "#6b7280"
+                  : "#111827",
+
+              padding: 12,
+
+              borderRadius: 8,
+            }}
+          >
+            <Text
+              style={{
+                color:
+                  "white",
+
+                textAlign:
+                  "center",
+              }}
+            >
+              {blocked
+                ? "Unblock User"
+                : "🚫 Block User"}
+            </Text>
+          </TouchableOpacity>
+        )}
     </View>
   );
 }
 
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  container: {
+    flex: 1,
+    padding: 20,
+  },
 
   avatar: {
     width: 120,
@@ -360,7 +927,8 @@ const styles = StyleSheet.create({
 
   saveBtn: {
     textAlign: "center",
-    backgroundColor: "#16a34a",
+    backgroundColor:
+      "#16a34a",
     color: "white",
     padding: 12,
     borderRadius: 8,

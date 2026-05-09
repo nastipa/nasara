@@ -27,11 +27,14 @@ export default function AdminDashboard() {
       <Tile label="Approve Promotion" route="/(admin)/promoted" />
       <Tile label="Approve Boost" route="/(admin)/boost" />
       <Tile label="Approve Battle" route="/(admin)/battle" />
+      
 
       <Text style={styles.section}>Users</Text>
       <Tile label="View Users" route="/(admin)/users" />
       <Tile label="Ban / Unban User" route="/(admin)/users" />
       <Tile label="Report" route="/(admin)/report" />
+      <Tile label="Verify Badges" route="/(admin)/verifications" />
+      
 
 
       <Text style={styles.section}>Marketplace</Text>

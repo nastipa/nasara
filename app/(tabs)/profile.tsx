@@ -9,6 +9,7 @@ import {
   Linking,
   Modal,
   Platform,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { registerForPushNotifications } from "../../lib/push";
 
 import { supabase } from "../../lib/supabase";
@@ -62,6 +64,11 @@ export default function ProfileScreen() {
   const [coins, setCoins] = useState(0);
   const [boostCredits, setBoostCredits] = useState(0);
   const [invitesCount, setInvitesCount] = useState(0);
+  const [verified, setVerified] = useState(false);
+  /* ===== FOLLOW SYSTEM ===== */
+const [followersCount, setFollowersCount] = useState(0);
+const [followingCount, setFollowingCount] = useState(0);
+const [isFollowing, setIsFollowing] = useState(false);
   
 
   /* ===== MOMO ===== */
@@ -72,7 +79,7 @@ export default function ProfileScreen() {
 
   /* ===== VERIFICATION STATUS ===== */
   const [verificationStatus, setVerificationStatus] = useState<
-    "none" | "pending" | "approved" | "rejected"
+    "none" | "pending" | "approved" | "rejected" | "expired"
   >("none");
 
   /* ===== WHATSAPP ===== */
@@ -109,6 +116,7 @@ const [earnings, setEarnings] = useState(0);
     loadLiveStream(profileId);
     loadStats(profileId);
     loadEarnings(profileId);
+    loadFollowStats(profileId);
 
   }
 
@@ -170,8 +178,34 @@ const [earnings, setEarnings] = useState(0);
   /* ✅ ADD THIS */
   setInviteCode(profile.invite_code || "");
 
-  setVerificationStatus(profile?.verification_status || "none");
+ /* ================= VERIFICATION ================= */
 
+let status = profile?.verification_status || "none";
+let isVerified = profile?.verified === true;
+
+// 🔥 STEP 4: AUTO EXPIRY (ADD THIS ONLY)
+if (profile?.verification_expires_at) {
+  const now = new Date();
+  const expiry = new Date(profile.verification_expires_at);
+
+  if (now > expiry) {
+    console.log("❌ Verification expired");
+
+    await (supabase as any)
+      .from("profiles")
+      .update({
+        verified: false,
+        verification_status: "expired",
+      })
+      .eq("id", profile.id);
+
+    status = "expired";
+    isVerified = false;
+  }
+}
+
+setVerificationStatus(status);
+setVerified(isVerified);
       /* PHONE VERIFICATION */
      /* VERIFICATION STATUS (FIXED) */
 setVerificationStatus(
@@ -199,11 +233,10 @@ if (error) {
   return;
 }
   if (data?.is_admin === true) {
-    setIsAdmin(true);
-    setVerificationStatus("approved");
-  } else {
-    setIsAdmin(false);
-  }
+  setIsAdmin(true);
+} else {
+  setIsAdmin(false);
+}
 };
   /* ================= LIVE SESSION ================= */
   const loadLiveSession = async (userId: string) => {
@@ -274,7 +307,61 @@ const loadEarnings = async (userId: string) => {
     setEarnings(total);
   }
 };
+/* ================= FOLLOW STATS ================= */
+const loadFollowStats = async (userId: string) => {
+  try {
+    /* FOLLOWERS */
+    const { count: followers } = await supabase
+      .from("follows")
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
+      .eq("following_id", userId);
 
+    /* FOLLOWING */
+    const { count: following } = await supabase
+      .from("follows")
+      .select("*", {
+        count: "exact",
+        head: true,
+      })
+      .eq("follower_id", userId);
+
+    setFollowersCount(followers || 0);
+    setFollowingCount(following || 0);
+
+    /* CHECK IF CURRENT USER FOLLOWS */
+    const currentUserId =
+      session?.user?.id;
+
+    if (
+      currentUserId &&
+      userId &&
+      currentUserId !== userId
+    ) {
+      const { data } = await supabase
+        .from("follows")
+        .select("id")
+        .eq(
+          "follower_id",
+          currentUserId
+        )
+        .eq(
+          "following_id",
+          userId
+        )
+        .maybeSingle();
+
+      setIsFollowing(!!data);
+    }
+  } catch (e) {
+    console.log(
+      "Follow stats error:",
+      e
+    );
+  }
+};
   /* ================= REFRESH ON FOCUS ================= */
  useFocusEffect(
   useCallback(() => {
@@ -289,29 +376,65 @@ const loadEarnings = async (userId: string) => {
       loadLiveStream(profileId);
       loadStats(profileId);
       loadEarnings(profileId);
+      loadFollowStats(profileId);
     }
 
   }, [session, user])
 );
  
-  /* ================= LOGOUT ================= */
-  const followUser = async () => {
+  /* ================= FOLLOW USER ================= */
+const followUser = async () => {
+  try {
+    const { data: sessionData } =
+      await supabase.auth.getSession();
 
-const { data:sessionData } = await supabase.auth.getSession();
+    const currentUser =
+      sessionData.session?.user;
 
-const currentUser = sessionData.session?.user;
+    if (!currentUser || !user)
+      return;
 
-if(!currentUser || !user) return;
+    /* UNFOLLOW */
+    if (isFollowing) {
+      await supabase
+        .from("follows")
+        .delete()
+        .eq(
+          "follower_id",
+          currentUser.id
+        )
+        .eq(
+          "following_id",
+          String(user)
+        );
 
-await (supabase as any)
-.from("follows")
-.insert({
-follower_id:currentUser.id,
-following_id:String(user)
-});
+      setIsFollowing(false);
+      setFollowersCount((p) =>
+        Math.max(0, p - 1)
+      );
 
-Alert.alert("Followed");
+      return;
+    }
 
+    /* FOLLOW */
+    await (supabase as any)
+      .from("follows")
+      .insert({
+        follower_id:
+          currentUser.id,
+        following_id:
+          String(user),
+      });
+
+    setIsFollowing(true);
+    setFollowersCount((p) => p + 1);
+
+  } catch (e) {
+    console.log(
+      "Follow error:",
+      e
+    );
+  }
 };
 /* ================= DELETE ACCOUNT ================= */
 const handleDeleteAccount = async () => {
@@ -427,8 +550,15 @@ const handleDeleteAccount = async () => {
 
   if (!session) return null;
 
-  return (
-    <View style={styles.container}>
+return (
+  <SafeAreaView style={{ flex: 1 }}>
+    <ScrollView
+      contentContainerStyle={{
+        padding: 20,
+        paddingBottom: 140,
+      }}
+      showsVerticalScrollIndicator={false}
+    >
       <TouchableOpacity onPress={() => router.push("/profile/edit")}>
         <Image
           source={{
@@ -441,8 +571,59 @@ const handleDeleteAccount = async () => {
         <Text style={styles.editText}>Edit Profile</Text>
       </TouchableOpacity>
 
-      <Text style={styles.title}>{fullName || "Profile"}</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center" }}>
+  <Text style={styles.title}>{fullName || "Profile"}</Text>
+
+  {verified && (
+    <Text style={{ marginLeft: 6, fontSize: 18 }}>
+      🔵
+    </Text>
+  )}
+</View>
       <Text style={styles.email}>{session.user.email}</Text>
+      {/* ===== FOLLOW STATS ===== */}
+<View
+  style={{
+    flexDirection: "row",
+    justifyContent: "center",
+    marginBottom: 15,
+    gap: 30,
+  }}
+>
+  <View
+    style={{
+      alignItems: "center",
+    }}
+  >
+    <Text
+      style={{
+        fontWeight: "bold",
+        fontSize: 18,
+      }}
+    >
+      {followersCount}
+    </Text>
+
+    <Text>Followers</Text>
+  </View>
+
+  <View
+    style={{
+      alignItems: "center",
+    }}
+  >
+    <Text
+      style={{
+        fontWeight: "bold",
+        fontSize: 18,
+      }}
+    >
+      {followingCount}
+    </Text>
+
+    <Text>Following</Text>
+  </View>
+</View>
       <View style={{ flexDirection: "row", justifyContent: "space-around", marginVertical: 15 }}>
   
   <View style={{ alignItems: "center" }}>
@@ -518,14 +699,39 @@ alignItems:"center"
 onPress={followUser}
 >
 
-<Text style={{color:"white",fontWeight:"bold"}}>
-Follow
+<Text
+  style={{
+    color: "white",
+    fontWeight: "bold",
+  }}
+>
+  {isFollowing
+    ? "Unfollow"
+    : "Follow"}
 </Text>
 
 </TouchableOpacity>
 
 )}
-
+<TouchableOpacity
+  onPress={() => router.push("/get-verified")}
+  style={{
+    backgroundColor: "#2563eb",
+    padding: 14,
+    borderRadius: 10,
+    marginTop: 20,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      textAlign: "center",
+      fontWeight: "600",
+    }}
+  >
+    Apply for Verification
+  </Text>
+</TouchableOpacity>
       {/* ===== VERIFICATION STATUS ===== */}
       <View style={styles.statusBox}>
         <Text style={{ fontWeight: "700" }}>Verification Status:</Text>
@@ -767,8 +973,9 @@ Follow
           </View>
         </View>
       </Modal>
-    </View>
-  );
+    </ScrollView>
+  </SafeAreaView>
+);
 }
 
 /* ===== STYLES ===== */

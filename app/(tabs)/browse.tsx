@@ -101,6 +101,9 @@ export default function BrowseScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [promos, setPromos] = useState<Promo[]>([]);
+  const [userVerifiedMap, setUserVerifiedMap] = useState<{
+  [key: string]: boolean;
+}>({});
 
   /* ================= CURSOR PAGINATION ================= */
   const lastCursor = useRef<string | null>(null);
@@ -495,7 +498,10 @@ loadBanners();
     created_at: i.created_at,
     type: "item",
   }));
-
+   // ✅ LOAD VERIFIED USERS
+setTimeout(() => {
+  loadVerifiedUsers(mapped);
+}, 200)
   if (mapped.length > 0) {
     lastCursor.current = mapped[mapped.length - 1].created_at || null;
   }
@@ -524,7 +530,33 @@ try {
 } catch {}
   setLoadingMore(false);
 };
+/* ================= VERIFIED USERS ================= */
+const loadVerifiedUsers = async (itemsList: Item[]) => {
+  const ids = [
+    ...new Set(
+      itemsList
+        .map((i) => i.user_id)
+        .filter(Boolean)
+    ),
+  ];
 
+  if (ids.length === 0) return;
+
+  const { data } = await (supabase as any)
+    .from("profiles")
+    .select("id, verified")
+    .in("id", ids);
+
+  if (data) {
+    const map: any = {};
+
+    data.forEach((u: any) => {
+      map[u.id] = u.verified === true;
+    });
+
+    setUserVerifiedMap(map);
+  }
+};
   /* ================= LOAD PROMOTED ================= */
   const loadPromoted =
     async () => {
@@ -1066,7 +1098,7 @@ style={{ backgroundColor: "#0f172a" }}
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/uKaUaFa5vjTU7qQrA7ELnU.apk"
+      "https://expo.dev/artifacts/eas/9L1VZPrE15EMKuzuERF3s7.apk"
     )
   }
   style={{
@@ -1223,9 +1255,27 @@ style={{ backgroundColor: "#0f172a" }}
           
           {/* DETAILS */}
           <View style={{ padding: 8 }}>
-            <Text numberOfLines={1} style={{ fontWeight: "700", color: "white" }}>
-              {item.title}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+  <Text
+    numberOfLines={1}
+    style={{ fontWeight: "700", color: "white", flex: 1 }}
+  >
+    {item.title}
+  </Text>
+
+  {userVerifiedMap[item.user_id || ""] && (
+    <Text
+      style={{
+        marginLeft: 6,
+        color: "#3b82f6",
+        fontSize: 12,
+        fontWeight: "bold",
+      }}
+    >
+       🔵
+    </Text>
+  )}
+</View>
 
             {item.price && (
               <Text style={{ fontWeight: "bold", color: "#22c55e" }}>GH₵ {item.price}</Text>

@@ -9,6 +9,7 @@ import {
     View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
+import { trackItemView } from "../../lib/analytics";
 
 export default function ItemPage() {
   const { id } = useLocalSearchParams();
@@ -39,6 +40,12 @@ export default function ItemPage() {
 
     loadItem();
   }, [id]);
+  
+  useEffect(() => {
+  if (item?.user_id) {
+    trackItemView(item.user_id);
+  }
+}, []);
 
   /* ================= LOADING ================= */
   if (loading) {

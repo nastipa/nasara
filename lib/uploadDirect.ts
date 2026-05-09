@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 
-const API = "https://nasara-upload-server.onrender.com/get-upload-url";
+const API =
+  "https://nasara-upload-server.onrender.com/get-upload-url";
 
 /* ================= RETRY ================= */
 const retry = async (fn: any, retries = 2) => {
@@ -15,11 +16,11 @@ const retry = async (fn: any, retries = 2) => {
 /* ================= UPLOAD ================= */
 export const uploadDirect = async (
   uri: string,
-  type: "image" | "video",
+  type: "image" | "verification" = "image",
   onProgress?: (p: number) => void
 ): Promise<string> => {
   return retry(async () => {
-    // 1️⃣ GET SIGNED URL
+    /* ================= 1️⃣ GET SIGNED URL ================= */
     const res = await fetch(API, {
       method: "POST",
       headers: {
@@ -28,22 +29,40 @@ export const uploadDirect = async (
       body: JSON.stringify({ type }),
     });
 
-    const { uploadUrl, fileUrl } = await res.json();
+    const text = await res.text();
 
-    if (!uploadUrl) throw new Error("No upload URL");
+    let data: any;
 
-    // 2️⃣ FIX URI
+    try {
+      data = JSON.parse(text);
+    } catch {
+      console.log("❌ SERVER RESPONSE:", text);
+      throw new Error(
+        "Upload server error (not JSON)"
+      );
+    }
+
+    const { uploadUrl, fileUrl } = data;
+
+    if (!uploadUrl || !fileUrl) {
+      console.log("❌ INVALID RESPONSE:", data);
+      throw new Error("Invalid upload URL");
+    }
+
+    /* ================= 2️⃣ FIX FILE URI ================= */
     let fileUri = uri;
 
     if (Platform.OS === "android") {
       if (!uri.startsWith("file://")) {
         fileUri = "file://" + uri;
       }
-    } else {
-      fileUri = uri.replace("file://", "");
     }
 
-    // 3️⃣ UPLOAD
+    /* ================= 3️⃣ CONVERT TO BLOB (🔥 KEY FIX) ================= */
+    const fileRes = await fetch(fileUri);
+    const blob = await fileRes.blob();
+
+    /* ================= 4️⃣ UPLOAD ================= */
     const xhr = new XMLHttpRequest();
 
     return new Promise<string>((resolve, reject) => {
@@ -51,31 +70,41 @@ export const uploadDirect = async (
 
       xhr.setRequestHeader(
         "Content-Type",
-        type === "video" ? "video/mp4" : "image/jpeg"
+        "application/octet-stream"
       );
 
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && onProgress) {
-          const percent = Math.round((event.loaded / event.total) * 100);
+          const percent = Math.round(
+            (event.loaded / event.total) * 100
+          );
           onProgress(percent);
         }
       };
 
       xhr.onload = () => {
-        if (xhr.status === 200) {
+        if (xhr.status === 200 || xhr.status === 201) {
           resolve(fileUrl);
         } else {
-          reject("Upload failed");
+          console.log("❌ UPLOAD STATUS:", xhr.status);
+          console.log(
+            "❌ UPLOAD RESPONSE:",
+            xhr.responseText
+          );
+          reject(
+            new Error(
+              `Upload failed (${xhr.status})`
+            )
+          );
         }
       };
 
-      xhr.onerror = () => reject("Network error");
+      xhr.onerror = () => {
+        console.log("❌ NETWORK ERROR");
+        reject(new Error("Network error"));
+      };
 
-      xhr.send({
-        uri: fileUri,
-        type: type === "video" ? "video/mp4" : "image/jpeg",
-        name: type === "video" ? "video.mp4" : "image.jpg",
-      } as any);
+      xhr.send(blob);
     });
   });
 };

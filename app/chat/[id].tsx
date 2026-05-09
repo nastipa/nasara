@@ -23,6 +23,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 
+import { trackChatClick } from "../../lib/analytics";
 import { supabase } from "../../lib/supabase";
 
 type Message = {
@@ -60,6 +61,9 @@ export default function ChatRoom() {
   const [editText, setEditText] = useState("");
   const [editId, setEditId] = useState<number | null>(null);
   const [receiverId, setReceiverId] = useState<string | null>(null);
+  const [receiverName, setReceiverName] = useState("");
+const [receiverVerified, setReceiverVerified] =
+  useState(false);
 
 const [replyTo, setReplyTo] = useState<Message | null>(null);
 
@@ -74,6 +78,9 @@ const [lastSeen, setLastSeen] = useState("");
   });
 
   const flatRef = useRef<FlatList<Message>>(null);
+  const [userVerifiedMap, setUserVerifiedMap] = useState<{
+  [key: string]: boolean;
+}>({});
 
   /* ================= UPLOAD SERVER ================= */
   const uploadToServer = async (uri: string, fileName?: string) => {
@@ -144,14 +151,68 @@ useEffect(() => {
         (x: any) => x.user_id !== userId
       );
 
-      if (other) {
-        setReceiverId(other.user_id);
-      }
+     if (other) {
+  setReceiverId(other.user_id);
+
+  const { data: profile } = await (supabase as any)
+    .from("profiles")
+    .select("full_name, verified")
+    .eq("id", other.user_id)
+    .single();
+
+  if (profile) {
+    setReceiverName(
+      profile.full_name || "User"
+    );
+
+    setReceiverVerified(
+      profile.verified || false
+    );
+  }
+}
     }
   };
 
   getReceiver();
 }, [roomId, userId]);
+
+/* ================= CHAT CLICK TRACKING ================= */
+useEffect(() => {
+  const run = async () => {
+    if (!userId || !roomId) return;
+
+    try {
+      await trackChatClick(userId);
+    } catch (e) {
+      console.log("trackChatClick error:", e);
+    }
+  };
+
+  run();
+}, [userId, roomId]);
+/* ================= LOAD VERIFIED USERS ================= */
+const loadVerifiedUsers = async () => {
+  if (!messages.length) return;
+
+  const uniqueIds = [
+    ...new Set(messages.map((m) => m.sender_id)),
+  ];
+
+  const { data } = await (supabase as any)
+    .from("profiles")
+    .select("id, verified")
+    .in("id", uniqueIds);
+
+  if (data) {
+    const map: any = {};
+
+    data.forEach((u: any) => {
+      map[u.id] = u.verified === true;
+    });
+
+    setUserVerifiedMap(map);
+  }
+};
   /* ================= FETCH ================= */
   const fetchMessages = async () => {
     if (!roomId || !userId) return;
@@ -164,7 +225,9 @@ useEffect(() => {
 
     if (data) {
       setMessages(data);
-    }
+    
+      
+  }
 
     await (supabase as any)
       .from("messages")
@@ -178,48 +241,56 @@ useEffect(() => {
   useEffect(() => {
     fetchMessages();
   }, [roomId, userId]);
-
+   
+// ✅ ADD THIS HERE
+useEffect(() => {
+  if (messages.length > 0) {
+    loadVerifiedUsers();
+  }
+}, [messages]);
   /* ================= REALTIME ================= */
   useEffect(() => {
-    if (!roomId) return;
+  if (!roomId) return;
 
-    const channel = (supabase as any)
-      .channel("chat_" + roomId)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: "room_id=eq." + roomId,
-        },
-        async (payload: any) => {
-          const msg = payload.new as Message;
+  const channel = (supabase as any)
+    .channel("chat_" + roomId)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+        filter: "room_id=eq." + roomId,
+      },
+      async (payload: any) => {
+        const msg = payload.new as Message;
 
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === msg.id)) {
-              return prev;
-            }
-            return [...prev, msg];
-          });
-
-          if (msg.sender_id !== userId && Platform.OS !== "web") {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: "New Message",
-                body: msg.text || "📩 Message",
-              },
-              trigger: null,
-            });
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) {
+            return prev;
           }
-        }
-      )
-      .subscribe();
+          return [...prev, msg];
+        });
 
-    return () => {
-      (supabase as any).removeChannel(channel);
-    };
-  }, [roomId, userId]);
+       ;
+
+        if (msg.sender_id !== userId && Platform.OS !== "web") {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "New Message",
+              body: msg.text || "📩 Message",
+            },
+            trigger: null,
+          });
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    (supabase as any).removeChannel(channel);
+  };
+}, [roomId, userId]);
 
   /* ================= AUTO SCROLL ================= */
   useEffect(() => {
@@ -663,15 +734,35 @@ return (
           </TouchableOpacity>
 
           <View style={{ marginLeft: 12 }}>
-            <Text
-              style={{
-                color: "white",
-                fontSize: 18,
-                fontWeight: "600",
-              }}
-            >
-              Chat
-            </Text>
+            <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+  }}
+>
+  <Text
+    style={{
+      color: "white",
+      fontSize: 18,
+      fontWeight: "600",
+    }}
+  >
+    {receiverName || "Chat"}
+  </Text>
+
+  {receiverVerified && (
+  <Text
+    style={{
+      marginLeft: 6,
+      color: "#3b82f6",
+      fontSize: 16,
+      fontWeight: "bold",
+    }}
+  >
+    ✔️
+  </Text>
+)}
+</View>
 
             <Text style={{ color: "#9ca3af", fontSize: 12 }}>
               {online
@@ -741,6 +832,19 @@ return (
                 }
                 onPress={() => setReplyTo(item)}
               >
+                {/* 🔵 VERIFIED BADGE (SENDER) */}
+{userVerifiedMap[item.sender_id] && (
+  <Text
+    style={{
+      fontSize: 10,
+      color: "#3b82f6",
+      marginBottom: 4,
+      fontWeight: "bold",
+    }}
+  >
+    ✔️ Verified
+  </Text>
+)}
                 <View
                   style={{
                     alignSelf: isMe
