@@ -3,7 +3,9 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -13,7 +15,98 @@ import {
   View,
 } from "react-native";
 
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import * as XLSX from "xlsx";
 import { supabase } from "../lib/supabase";
+/* ================= CANDIDATE IMAGE UPLOAD ================= */
+const uploadCandidateImage = async (
+  uri: string
+): Promise<string> => {
+
+  const formData = new FormData();
+
+  if (Platform.OS === "web") {
+
+    const response =
+      await fetch(uri);
+
+    const blob =
+      await response.blob();
+
+    formData.append(
+      "file",
+      blob,
+      "candidate.jpg"
+    );
+
+  } else {
+
+    let fileUri = uri;
+
+    if (
+      !uri.startsWith("file://")
+    ) {
+
+      fileUri =
+        "file://" + uri;
+    }
+
+    formData.append("file", {
+      uri: fileUri,
+      name: "candidate.jpg",
+      type: "image/jpeg",
+    } as any);
+  }
+
+  const xhr =
+    new XMLHttpRequest();
+
+  return new Promise(
+    (resolve, reject) => {
+
+      xhr.open(
+        "POST",
+        "https://nasara-upload-server.onrender.com/upload"
+      );
+
+      xhr.onload = () => {
+
+        try {
+
+          const data =
+            JSON.parse(
+              xhr.responseText
+            );
+
+          if (!data?.url) {
+
+            reject(
+              "Upload failed"
+            );
+
+            return;
+          }
+
+          resolve(data.url);
+
+        } catch {
+
+          reject(
+            "Invalid response"
+          );
+        }
+      };
+
+      xhr.onerror = () =>
+        reject(
+          "Network error"
+        );
+
+      xhr.send(formData);
+    }
+  );
+};
 
 export default function CreateBattle() {
   const router = useRouter();
@@ -21,6 +114,8 @@ export default function CreateBattle() {
   const [title, setTitle] = useState("");
   const [compare, setCompare] = useState("");
   const [category, setCategory] = useState("");
+ const [candidateImages, setCandidateImages] =
+  useState<Record<string, string>>({});
 
   /* ================= BATTLE TYPE ================= */
   const [battleType, setBattleType] =
@@ -214,7 +309,7 @@ const cleanedNumbers =
           (v) => v.length >= 8
         )
     : [];
-
+ 
     /* ================= CREATE BATTLE ================= */
     const { data, error } =
       await (supabase as any)
@@ -362,31 +457,60 @@ if (
     }
 
     /* ================= CANDIDATES ================= */
-    const payload = names.map(
-      (name) => ({
-        battle_id: data.id,
-        name,
-        votes: 0,
-      })
-    );
 
-    const {
-      error: candidateError,
-    } = await (supabase as any)
-      .from("candidates")
-      .insert(payload);
+const candidatePayload = [];
 
-    if (candidateError) {
-      Alert.alert(
-        "Candidate Error",
-        candidateError.message
+for (const name of names) {
+
+  let imageUrl = "";
+
+  // ✅ upload selected image
+ const localImage =
+  candidateImages[name];
+
+if (localImage) {
+
+    try {
+
+      imageUrl =
+        await uploadCandidateImage(
+  localImage
+);
+
+    } catch (e) {
+
+      console.log(
+        "Candidate image upload error:",
+        e
       );
-
-      setLoading(false);
-
-      return;
     }
+  }
 
+  candidatePayload.push({
+    battle_id: data.id,
+    name,
+    image_url: imageUrl,
+    votes: 0,
+  });
+}
+
+const {
+  error: candidateError,
+} = await (supabase as any)
+  .from("candidates")
+  .insert(candidatePayload);
+
+if (candidateError) {
+
+  Alert.alert(
+    "Candidate Error",
+    candidateError.message
+  );
+
+  setLoading(false);
+
+  return;
+}
     setPaymentInfo({
       amount,
       paymentCode,
@@ -426,7 +550,129 @@ if (
 
   setLoading(false);
 };
+/* ================= EXCEL PICKER ================= */
+async function pickExcelFile() {
 
+  try {
+
+    const result =
+      await DocumentPicker.getDocumentAsync({
+        type: "/",
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const file =
+      result.assets[0];
+
+    console.log("FILE:", file);
+
+    Alert.alert(
+      "Excel Selected",
+      file.name || "File loaded"
+    );
+
+    const response =
+      await fetch(file.uri);
+
+    const arrayBuffer =
+      await response.arrayBuffer();
+
+    const workbook =
+      XLSX.read(arrayBuffer, {
+        type: "array",
+      });
+
+    const firstSheet =
+      workbook.SheetNames[0];
+
+    const worksheet =
+      workbook.Sheets[firstSheet];
+
+    const jsonData =
+      XLSX.utils.sheet_to_json(
+        worksheet
+      );
+
+    console.log(
+      "EXCEL DATA:",
+      jsonData
+    );
+
+    /* ================= AUTO IMPORT PHONES ================= */
+
+    const phones =
+      jsonData
+        .map((row: any) => {
+
+          const values =
+            Object.values(row);
+
+          return values[0]
+            ?.toString()
+            ?.trim();
+
+        })
+        .filter(Boolean);
+
+    setAllowedVoters(
+      phones.join("\n")
+    );
+
+    Alert.alert(
+      "Excel Imported",
+      `${phones.length} phone numbers loaded`
+    );
+
+  } catch (err: any) {
+
+    console.log(err);
+
+    Alert.alert(
+      "Excel Error",
+      err?.message ||
+        "Could not read excel file"
+    );
+  }
+}
+/* ================= PICK CANDIDATE IMAGE ================= */
+
+async function pickCandidateImage(
+  candidateName: string
+) {
+
+  const perm =
+    await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+  if (!perm.granted) {
+
+    Alert.alert(
+      "Permission needed"
+    );
+
+    return;
+  }
+
+  const result =
+    await ImagePicker.launchImageLibraryAsync({
+      mediaTypes:
+        ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+  if (!result.canceled) {
+
+    setCandidateImages((prev) => ({
+      ...prev,
+      [candidateName]:
+        result.assets[0].uri,
+    }));
+  }
+}
   /* ================= UI ================= */
   return (
     <ScrollView
@@ -581,6 +827,25 @@ Any country format allowed.
                 },
               ]}
             />
+            <TouchableOpacity
+  onPress={pickExcelFile}
+  style={{
+    backgroundColor: "#16a34a",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      textAlign: "center",
+      fontWeight: "bold",
+    }}
+  >
+    Upload Excel File
+  </Text>
+</TouchableOpacity>
 
             <View
               style={{
@@ -700,7 +965,94 @@ Any country format allowed.
           style={styles.input}
           multiline
         />
+       <View style={{ marginTop: 15 }}>
 
+  <Text
+    style={{
+      fontWeight: "bold",
+      marginBottom: 10,
+    }}
+  >
+    Candidate Photos
+  </Text>
+
+  {compare
+    .split(/vs|VS|Vs|vS|,/)
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0)
+    .map((candidate) => (
+
+      <View
+        key={candidate}
+        style={{
+          marginBottom: 20,
+          padding: 12,
+          borderWidth: 1,
+          borderColor: "#ddd",
+          borderRadius: 10,
+        }}
+      >
+
+        <Text
+          style={{
+            fontWeight: "bold",
+            marginBottom: 10,
+          }}
+        >
+          {candidate}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() =>
+            pickCandidateImage(
+              candidate
+            )
+          }
+          style={{
+            backgroundColor:
+              "#2563eb",
+            padding: 10,
+            borderRadius: 8,
+          }}
+        >
+
+          <Text
+            style={{
+              color: "#fff",
+              textAlign: "center",
+            }}
+          >
+            Upload Photo
+          </Text>
+
+        </TouchableOpacity>
+
+        {candidateImages[
+          candidate
+        ] ? (
+
+          <Image
+            source={{
+              uri:
+                candidateImages[
+                  candidate
+                ],
+            }}
+            style={{
+              width: 90,
+              height: 90,
+              borderRadius: 45,
+              marginTop: 12,
+              alignSelf: "center",
+            }}
+          />
+
+        ) : null}
+
+      </View>
+    ))}
+
+</View>
         {/* ================= CATEGORY ================= */}
         <Text
           style={{
@@ -794,8 +1146,10 @@ Any country format allowed.
                 {type}
               </Text>
             </TouchableOpacity>
+            
           ))}
         </View>
+        
 
         {/* ================= PRICE ================= */}
         <View

@@ -14,6 +14,7 @@ import {
   View
 } from "react-native";
 
+import { Image } from "react-native";
 import { supabase } from "../lib/supabase";
 
 export default function BattleRoom() {
@@ -161,17 +162,35 @@ export default function BattleRoom() {
         .channel(`battle-room-${id}`)
 
         .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "candidates",
-            filter: `battle_id=eq.${id}`,
-          },
-          async () => {
-            await loadCandidates();
-          }
-        )
+  "postgres_changes",
+  {
+    event: "UPDATE",
+    schema: "public",
+    table: "candidates",
+    filter: `battle_id=eq.${id}`,
+  },
+  (payload: any) => {
+
+    const updated = payload.new;
+
+    setCandidates((prev) => {
+
+      const next = prev.map((c) =>
+        c.id === updated.id
+          ? updated
+          : c
+      );
+
+      next.sort(
+        (a, b) =>
+          (b.votes || 0) -
+          (a.votes || 0)
+      );
+
+      return [...next];
+    });
+  }
+)
 
         .subscribe();
 
@@ -182,19 +201,7 @@ export default function BattleRoom() {
 
   }, [id]);
 
-  /* ================= AUTO REFRESH ================= */
-
-  useEffect(() => {
-
-    const interval =
-      setInterval(() => {
-        loadCandidates();
-      }, 10000);
-
-    return () =>
-      clearInterval(interval);
-
-  }, [id]);
+  
 
   /* ================= TIMER ================= */
 
@@ -1237,7 +1244,7 @@ return;
 
             </TouchableOpacity>
           )}
-
+        
         </>
       )}
 
@@ -1275,7 +1282,22 @@ return;
                   : "#fff",
             }}
           >
+{item.image_url ? (
 
+  <Image
+    source={{
+      uri: item.image_url,
+    }}
+    style={{
+      width: 70,
+      height: 70,
+      borderRadius: 35,
+      alignSelf: "center",
+      marginBottom: 10,
+    }}
+  />
+
+) : null}
             <Text
               style={{
                 fontWeight: "bold",
