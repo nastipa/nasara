@@ -20,7 +20,7 @@ export default function Revenue() {
   async function loadRevenue() {
 
     const { data, error } = await supabase
-      .from("listings")
+      .from("items_live")
       .select("id, price, created_at");
 
     if (error) {

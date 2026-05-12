@@ -27,8 +27,16 @@ export default function AdminDashboard() {
       <Tile label="Approve Promotion" route="/(admin)/promoted" />
       <Tile label="Approve Boost" route="/(admin)/boost" />
       <Tile label="Approve Battle" route="/(admin)/battle" />
-      
-
+     
+     <Text style={styles.section}>Delivery</Text>
+      <Tile label="Delivery-Analytics" route="/(admin)/delivery-analytics" />
+      <Tile label="Delivery-Payments" route="/(admin)/delivery-payments" />
+      <Tile label=" Logistics" route="/(admin)/logistics" />
+      <Tile label=" Rider Earnings" route="/(admin)/rider-earnings" />
+      <Tile label=" Rider Applications" route="/(admin)/rider-applications" />
+      <Tile label=" Rider Withdrawals" route="/(admin)/rider-withdrawals" />
+      <Tile label=" Rider Request Withdrawals" route="/(admin)/withdrawals" />
+ 
       <Text style={styles.section}>Users</Text>
       <Tile label="View Users" route="/(admin)/users" />
       <Tile label="Ban / Unban User" route="/(admin)/users" />

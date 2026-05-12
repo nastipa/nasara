@@ -18,7 +18,9 @@ import {
   View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { registerForPushNotifications } from "../../lib/push";
+import {
+  registerForPushNotificationsAsync,
+} from "../../lib/sendPush";
 
 import { supabase } from "../../lib/supabase";
 
@@ -123,20 +125,27 @@ const [earnings, setEarnings] = useState(0);
 });
 
   }, []);
-  /* ================= PUSH NOTIFICATION  ================= */
-  useEffect(() => {
+  
+/* ================= PUSH NOTIFICATION ================= */
+useEffect(() => {
   const saveToken = async () => {
-    const token = await registerForPushNotifications();
+    const token =
+      await registerForPushNotificationsAsync();
+
     if (!token) return;
 
-    const { data } = await supabase.auth.getUser();
+    const { data } =
+      await supabase.auth.getUser();
+
     const user = data?.user;
 
     if (!user) return;
 
     await (supabase as any)
       .from("profiles")
-      .update({ push_token: token })
+      .update({
+        push_token: token,
+      })
       .eq("id", user.id);
   };
 

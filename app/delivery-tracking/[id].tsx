@@ -1,21 +1,28 @@
-import { useLocalSearchParams } from "expo-router";
-
 import { useEffect, useState } from "react";
 
 import {
-    ActivityIndicator,
-    Image,
-    ScrollView,
-    Text,
-    View,
+  ActivityIndicator,
+  Text,
+  View,
 } from "react-native";
 
+import {
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
 import { supabase } from "../../lib/supabase";
 
 export default function DeliveryTracking() {
+  const router =
+  useRouter();
 
   const { id } =
     useLocalSearchParams();
+
+  const deliveryId =
+    typeof id === "string"
+      ? id
+      : "";
 
   const [delivery, setDelivery] =
     useState<any>(null);
@@ -27,70 +34,72 @@ export default function DeliveryTracking() {
 
   async function loadDelivery() {
 
-    if (!id) return;
+    if (!deliveryId) return;
 
     try {
 
       const {
         data,
-        error,
       } =
         await (supabase as any)
           .from("deliveries")
           .select("*")
-          .eq("id", id)
+          .eq(
+            "id",
+            deliveryId
+          )
           .single();
 
-      if (error) {
+      if (data) {
 
-        console.log(error);
-
-        return;
+        setDelivery(data);
       }
-
-      setDelivery(data);
 
     } catch (err) {
 
       console.log(err);
-
-    } finally {
-
-      setLoading(false);
     }
+
+    setLoading(false);
   }
 
-  /* ================= INIT ================= */
+  /* ================= INITIAL ================= */
 
   useEffect(() => {
 
     loadDelivery();
 
-  }, [id]);
+  }, [deliveryId]);
 
   /* ================= REALTIME ================= */
 
   useEffect(() => {
 
-    if (!id) return;
+    if (!deliveryId) return;
 
     const channel =
       (supabase as any)
         .channel(
-          `delivery-${id}`
+          "delivery-track-" +
+            deliveryId
         )
 
         .on(
           "postgres_changes",
           {
-            event: "*",
+            event: "UPDATE",
             schema: "public",
-            table: "deliveries",
-            filter: `id=eq.${id}`,
-          },
-          () => {
+            table:
+              "deliveries",
 
-            loadDelivery();
+            filter:
+              `id=eq.${deliveryId}`,
+          },
+          (payload: any) => {
+
+            setDelivery(
+              payload.new
+            );
           }
         )
 
@@ -104,40 +113,168 @@ export default function DeliveryTracking() {
         );
     };
 
-  }, [id]);
+  }, [deliveryId]);
 
-  /* ================= STATUS COLOR ================= */
+  /* ================= STATUS UI ================= */
 
-  function getStatusColor(
-    status: string
-  ) {
+  function renderStatus() {
 
-    if (
-      status === "pending"
-    )
-      return "#f59e0b";
+    if (!delivery)
+      return null;
 
-    if (
-      status === "accepted"
-    )
-      return "#2563eb";
+    const status =
+      delivery.status;
 
-    if (
-      status === "picked_up"
-    )
-      return "#9333ea";
+    return (
 
-    if (
-      status === "in_transit"
-    )
-      return "#0f766e";
+      <View
+        style={{
+          marginTop: 20,
+        }}
+      >
 
-    if (
-      status === "delivered"
-    )
-      return "#16a34a";
+        {/* PENDING */}
 
-    return "#6b7280";
+        <View
+          style={{
+            marginBottom: 20,
+          }}
+        >
+
+          <Text
+            style={{
+              fontSize: 18,
+
+              color:
+                status ===
+                  "pending" ||
+                status ===
+                  "accepted" ||
+                status ===
+                  "picked_up" ||
+                status ===
+                  "in_transit" ||
+                status ===
+                  "delivered"
+                  ? "#16a34a"
+                  : "#999",
+            }}
+          >
+            ✅ Order Created
+          </Text>
+
+        </View>
+
+        {/* ACCEPTED */}
+
+        <View
+          style={{
+            marginBottom: 20,
+          }}
+        >
+
+          <Text
+            style={{
+              fontSize: 18,
+
+              color:
+                status ===
+                  "accepted" ||
+                status ===
+                  "picked_up" ||
+                status ===
+                  "in_transit" ||
+                status ===
+                  "delivered"
+                  ? "#16a34a"
+                  : "#999",
+            }}
+          >
+            🚚 Rider Accepted
+          </Text>
+
+        </View>
+
+        {/* PICKED UP */}
+
+        <View
+          style={{
+            marginBottom: 20,
+          }}
+        >
+
+          <Text
+            style={{
+              fontSize: 18,
+
+              color:
+                status ===
+                  "picked_up" ||
+                status ===
+                  "in_transit" ||
+                status ===
+                  "delivered"
+                  ? "#16a34a"
+                  : "#999",
+            }}
+          >
+            📦 Package Picked Up
+          </Text>
+
+        </View>
+
+        {/* TRANSIT */}
+
+        <View
+          style={{
+            marginBottom: 20,
+          }}
+        >
+
+          <Text
+            style={{
+              fontSize: 18,
+
+              color:
+                status ===
+                  "in_transit" ||
+                status ===
+                  "delivered"
+                  ? "#16a34a"
+                  : "#999",
+            }}
+          >
+            🛵 In Transit
+          </Text>
+
+        </View>
+
+        {/* DELIVERED */}
+
+        <View
+          style={{
+            marginBottom: 20,
+          }}
+        >
+
+          <Text
+            style={{
+              fontSize: 18,
+
+              color:
+                status ===
+                "delivered"
+                  ? "#16a34a"
+                  : "#999",
+            }}
+          >
+            🎉 Delivered
+          </Text>
+
+        </View>
+
+      </View>
+    );
   }
 
   /* ================= LOADING ================= */
@@ -154,304 +291,65 @@ export default function DeliveryTracking() {
     );
   }
 
-  if (!delivery) {
-
-    return (
-
-      <View
-        style={{
-          flex: 1,
-          justifyContent:
-            "center",
-          alignItems:
-            "center",
-        }}
-      >
-
-        <Text>
-          Delivery not found
-        </Text>
-
-      </View>
-    );
-  }
+  /* ================= UI ================= */
 
   return (
 
-    <ScrollView
-      contentContainerStyle={{
+    <View
+      style={{
+        flex: 1,
         padding: 20,
+        backgroundColor:
+          "#fff",
       }}
     >
 
       <Text
         style={{
-          fontSize: 24,
+          fontSize: 28,
           fontWeight: "bold",
-          marginBottom: 20,
         }}
       >
-        📦 Delivery Tracking
+        📍 Delivery Tracking
       </Text>
 
-      {/* ================= IMAGE ================= */}
-
-      {delivery.package_image ? (
-
-        <Image
-          source={{
-            uri:
-              delivery.package_image,
-          }}
-          style={{
-            width: "100%",
-            height: 250,
-            borderRadius: 14,
-            marginBottom: 20,
-          }}
-        />
-
-      ) : null}
-
-      {/* ================= ITEM ================= */}
-
-      <View
-        style={{
-          backgroundColor:
-            "#fff",
-          borderRadius: 14,
-          padding: 18,
-          borderWidth: 1,
-          borderColor: "#ddd",
-        }}
-      >
-
-        <Text
-          style={{
-            fontSize: 22,
-            fontWeight: "bold",
-          }}
-        >
-          {delivery.item_name}
-        </Text>
-
-        <Text
-          style={{
-            marginTop: 10,
-          }}
-        >
-          📍 Pickup:
-          {" "}
-          {
-            delivery.pickup_address
-          }
-        </Text>
-
-        <Text
-          style={{
-            marginTop: 8,
-          }}
-        >
-          🏁 Dropoff:
-          {" "}
-          {
-            delivery.dropoff_address
-          }
-        </Text>
-
-        <Text
-          style={{
-            marginTop: 8,
-          }}
-        >
-          📞 Receiver:
-          {" "}
-          {
-            delivery.receiver_phone
-          }
-        </Text>
-
-        <Text
-          style={{
-            marginTop: 8,
-          }}
-        >
-          💰 Amount:
-          {" "}
-          GH₵
-          {" "}
-          {Number(
-            delivery.amount || 0
-          ).toLocaleString()}
-        </Text>
-
-        {delivery.item_note ? (
-
-          <Text
-            style={{
-              marginTop: 8,
-            }}
-          >
-            📝 Note:
-            {" "}
-            {
-              delivery.item_note
-            }
-          </Text>
-
-        ) : null}
-
-      </View>
-
-      {/* ================= STATUS ================= */}
-
-      <View
+      <Text
         style={{
           marginTop: 20,
-          backgroundColor:
-            getStatusColor(
-              delivery.status
-            ),
-          padding: 15,
-          borderRadius: 14,
+          fontSize: 17,
         }}
       >
+        📦
+        {" "}
+        {delivery?.item_name}
+      </Text>
 
-        <Text
-          style={{
-            color: "#fff",
-            fontWeight: "bold",
-            fontSize: 18,
-            textAlign: "center",
-          }}
-        >
-          STATUS:
-          {" "}
-          {
-            delivery.status
-          }
-        </Text>
-
-      </View>
-
-      {/* ================= OTP ================= */}
-
-      <View
+      <Text
         style={{
-          marginTop: 20,
-          backgroundColor:
-            "#eff6ff",
-          borderWidth: 1,
-          borderColor: "#2563eb",
-          padding: 18,
-          borderRadius: 14,
+          marginTop: 10,
         }}
       >
+        Pickup:
+        {" "}
+        {
+          delivery?.pickup_address
+        }
+      </Text>
 
-        <Text
-          style={{
-            fontWeight: "bold",
-            fontSize: 18,
-            color: "#1d4ed8",
-          }}
-        >
-          🔐 Delivery OTP
-        </Text>
-
-        <Text
-          style={{
-            marginTop: 10,
-            fontSize: 30,
-            fontWeight: "bold",
-            textAlign: "center",
-            letterSpacing: 8,
-            color: "#1e40af",
-          }}
-        >
-          {
-            delivery.otp_code
-          }
-        </Text>
-
-        <Text
-          style={{
-            marginTop: 10,
-            textAlign: "center",
-            color: "#1e3a8a",
-          }}
-        >
-          Give this OTP to the rider
-          only after receiving
-          your package.
-        </Text>
-
-      </View>
-
-      {/* ================= TIMELINE ================= */}
-
-      <View
+      <Text
         style={{
-          marginTop: 25,
+          marginTop: 6,
         }}
       >
+        Dropoff:
+        {" "}
+        {
+          delivery?.dropoff_address
+        }
+      </Text>
 
-        <Text
-          style={{
-            fontSize: 20,
-            fontWeight: "bold",
-            marginBottom: 15,
-          }}
-        >
-          🚚 Delivery Progress
-        </Text>
+      {renderStatus()}
 
-        <View
-          style={{
-            gap: 15,
-          }}
-        >
-
-          <Text>
-            {delivery.status ===
-            "pending"
-              ? "🟡 Waiting for rider"
-              : "✅ Rider accepted"}
-          </Text>
-
-          <Text>
-            {[
-              "picked_up",
-              "in_transit",
-              "delivered",
-            ].includes(
-              delivery.status
-            )
-              ? "✅ Package picked up"
-              : "⏳ Awaiting pickup"}
-          </Text>
-
-          <Text>
-            {[
-              "in_transit",
-              "delivered",
-            ].includes(
-              delivery.status
-            )
-              ? "✅ Package in transit"
-              : "⏳ Waiting transit"}
-          </Text>
-
-          <Text>
-            {delivery.status ===
-            "delivered"
-              ? "✅ Delivered successfully"
-              : "⏳ Not delivered yet"}
-          </Text>
-
-        </View>
-
-      </View>
-
-    </ScrollView>
+    </View>
   );
 }

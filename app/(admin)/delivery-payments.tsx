@@ -12,12 +12,9 @@ import {
   View,
 } from "react-native";
 
-import * as Location from "expo-location";
-import { useRouter } from "expo-router";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../lib/supabase";
 
 export default function RiderDashboard() {
-const router = useRouter();
   const [deliveries, setDeliveries] =
     useState<any[]>([]);
 
@@ -38,15 +35,11 @@ const router = useRouter();
 
   const [deliveryOtp, setDeliveryOtp] =
     useState("");
-    const [isOnline, setIsOnline] =
-  useState(false);
 
   /* ================= LOAD ================= */
 
   async function loadDeliveries() {
-
     try {
-
       const {
         data,
         error,
@@ -55,7 +48,7 @@ const router = useRouter();
           .from("deliveries")
           .select("*")
           .in("status", [
-            "pending",
+            "pending_rider",
             "accepted",
             "picked_up",
             "in_transit",
@@ -68,73 +61,28 @@ const router = useRouter();
           );
 
       if (error) {
-
         console.log(error);
-
         return;
       }
 
       setDeliveries(data || []);
-
     } catch (err) {
-
       console.log(err);
     }
 
     setLoading(false);
-
     setRefreshing(false);
   }
 
   /* ================= INITIAL ================= */
 
   useEffect(() => {
-
     loadDeliveries();
-
   }, []);
-/* ================= LOAD RIDER STATUS ================= */
 
-useEffect(() => {
-
-  const loadRider = async () => {
-
-    const {
-      data: authData,
-    } =
-      await supabase.auth.getUser();
-
-    const user =
-      authData?.user;
-
-    if (!user) return;
-
-    const {
-      data,
-    } =
-      await (supabase as any)
-        .from("riders")
-        .select("is_online")
-        .eq(
-          "user_id",
-          user.id
-        )
-        .single();
-
-    if (data) {
-      setIsOnline(
-        data.is_online || false
-      );
-    }
-  };
-
-  loadRider();
-
-}, []);
   /* ================= REALTIME ================= */
 
   useEffect(() => {
-
     const channel =
       (supabase as any)
         .channel(
@@ -149,7 +97,6 @@ useEffect(() => {
             table: "deliveries",
           },
           () => {
-
             loadDeliveries();
           }
         )
@@ -157,44 +104,22 @@ useEffect(() => {
         .subscribe();
 
     return () => {
-
       (supabase as any)
         .removeChannel(
           channel
         );
     };
-
   }, []);
-
-  useEffect(() => {
-
-  updateLiveLocation();
-
-  const interval =
-    setInterval(() => {
-
-      updateLiveLocation();
-
-    }, 10000);
-
-  return () =>
-    clearInterval(
-      interval
-    );
-
-}, []);
 
   /* ================= ACCEPT ================= */
 
   async function acceptDelivery(
     deliveryId: string
   ) {
-
     if (processingId)
       return;
 
     try {
-
       setProcessingId(
         deliveryId
       );
@@ -208,7 +133,6 @@ useEffect(() => {
         authData?.user;
 
       if (!user) {
-
         Alert.alert(
           "Login Required"
         );
@@ -217,8 +141,6 @@ useEffect(() => {
 
         return;
       }
-
-       
 
       /* ================= ONLINE CHECK ================= */
 
@@ -237,7 +159,6 @@ useEffect(() => {
       if (
         !riderData?.is_online
       ) {
-
         Alert.alert(
           "Offline",
           "Go online first"
@@ -254,7 +175,6 @@ useEffect(() => {
         await (supabase as any)
           .from("deliveries")
           .update({
-
             rider_id:
               user.id,
 
@@ -273,7 +193,7 @@ useEffect(() => {
           )
           .eq(
             "status",
-            "pending"
+            "pending_rider"
           )
           .is(
             "rider_id",
@@ -281,7 +201,6 @@ useEffect(() => {
           );
 
       if (error) {
-
         Alert.alert(
           "Accept Error",
           error.message
@@ -298,9 +217,7 @@ useEffect(() => {
       );
 
       loadDeliveries();
-
     } catch (err: any) {
-
       console.log(err);
 
       Alert.alert(
@@ -317,18 +234,15 @@ useEffect(() => {
   async function cancelDelivery(
     deliveryId: string
   ) {
-
     try {
-
       const {
         error,
       } =
         await (supabase as any)
           .from("deliveries")
           .update({
-
             status:
-              "pending",
+              "pending_rider",
 
             rider_id:
               null,
@@ -345,7 +259,6 @@ useEffect(() => {
           );
 
       if (error) {
-
         Alert.alert(
           "Cancel Error",
           error.message
@@ -360,9 +273,7 @@ useEffect(() => {
       );
 
       loadDeliveries();
-
     } catch (err: any) {
-
       console.log(err);
     }
   }
@@ -373,15 +284,12 @@ useEffect(() => {
     deliveryId: string,
     status: string
   ) {
-
     try {
-
       setProcessingId(
         deliveryId
       );
 
       const updateData: any = {
-
         status,
       };
 
@@ -389,7 +297,6 @@ useEffect(() => {
         status ===
         "picked_up"
       ) {
-
         updateData.picked_up_at =
           new Date().toISOString();
       }
@@ -398,7 +305,6 @@ useEffect(() => {
         status ===
         "in_transit"
       ) {
-
         updateData.in_transit_at =
           new Date().toISOString();
       }
@@ -417,7 +323,6 @@ useEffect(() => {
           );
 
       if (error) {
-
         Alert.alert(
           "Status Error",
           error.message
@@ -429,251 +334,114 @@ useEffect(() => {
       }
 
       loadDeliveries();
-
     } catch (err: any) {
-
       console.log(err);
     }
 
     setProcessingId("");
   }
-  
 
-/* ================= OTP VERIFY ================= */
+  /* ================= OTP VERIFY ================= */
 
-async function verifyDeliveryOtp() {
+  async function verifyDeliveryOtp() {
+    if (!selectedDelivery)
+      return;
 
-  if (!selectedDelivery)
-    return;
-
-  if (
-    deliveryOtp !==
-    selectedDelivery.otp_code
-  ) {
-
-    Alert.alert(
-      "Invalid OTP",
-      "Receiver OTP is incorrect"
-    );
-
-    return;
-  }
-
-  try {
-
-    setProcessingId(
-      selectedDelivery.id
-    );
-
-    /* ================= CALCULATE ================= */
-
-    const riderEarning =
-      Number(
-        selectedDelivery.amount || 0
-      ) * 0.8;
-
-    const platformFee =
-      Number(
-        selectedDelivery.amount || 0
-      ) * 0.2;
-
-    /* ================= COMPLETE DELIVERY ================= */
-
-    const {
-      error: deliveryError,
-    } =
-      await (supabase as any)
-        .from("deliveries")
-        .update({
-
-          status:
-            "delivered",
-
-          delivered_at:
-            new Date().toISOString(),
-
-          rider_earning:
-            riderEarning,
-
-          platform_fee:
-            platformFee,
-        })
-        .eq(
-          "id",
-          selectedDelivery.id
-        );
-
-    if (deliveryError) {
-
+    if (
+      deliveryOtp !==
+      selectedDelivery.otp_code
+    ) {
       Alert.alert(
-        "Delivery Error",
-        deliveryError.message
+        "Invalid OTP",
+        "Receiver OTP is incorrect"
       );
 
       return;
     }
 
-    /* ================= CHECK EXISTING EARNING ================= */
+    try {
+      setProcessingId(
+        selectedDelivery.id
+      );
 
-    const {
-      data: existingEarning,
-    } =
-      await (supabase as any)
-        .from("rider_earnings")
-        .select("id")
-        .eq(
-          "delivery_id",
-          selectedDelivery.id
-        )
-        .maybeSingle();
+      const riderEarning =
+        Number(
+          selectedDelivery.amount || 0
+        ) * 0.8;
 
-    /* ================= SAVE EARNING ================= */
-
-    if (!existingEarning) {
+      const platformFee =
+        Number(
+          selectedDelivery.amount || 0
+        ) * 0.2;
 
       const {
-        error: earningError,
+        error,
       } =
         await (supabase as any)
-          .from("rider_earnings")
-          .insert({
+          .from("deliveries")
+          .update({
+            status:
+              "delivered",
 
-            rider_id:
-              selectedDelivery.rider_id,
+            delivered_at:
+              new Date().toISOString(),
 
-            delivery_id:
-              selectedDelivery.id,
-
-            amount:
+            rider_earning:
               riderEarning,
 
-            status:
-              "pending",
-          });
+            platform_fee:
+              platformFee,
+          })
+          .eq(
+            "id",
+            selectedDelivery.id
+          );
 
-      if (earningError) {
-
-        console.log(
-          earningError
-        );
-
+      if (error) {
         Alert.alert(
-          "Earning Error",
-          earningError.message
+          "Delivery Error",
+          error.message
         );
 
         return;
       }
-    }
-
-    /* ================= LOAD RIDER ================= */
-
-    const {
-      data: riderData,
-      error: riderError,
-    } =
-      await (supabase as any)
-        .from("riders")
-        .select(
-          "total_deliveries,total_earnings"
-        )
-        .eq(
-          "user_id",
-          selectedDelivery.rider_id
-        )
-        .single();
-
-    if (riderError) {
-
-      console.log(
-        riderError
-      );
 
       Alert.alert(
-        "Rider Error",
-        riderError.message
+        "Success",
+        "Package delivered successfully"
       );
 
-      return;
-    }
-
-    /* ================= UPDATE WALLET ================= */
-
-    const {
-      error: walletError,
-    } =
-      await (supabase as any)
-        .from("riders")
-        .update({
-
-          total_deliveries:
-            Number(
-              riderData?.total_deliveries || 0
-            ) + 1,
-
-          total_earnings:
-            Number(
-              riderData?.total_earnings || 0
-            ) + riderEarning,
-        })
-        .eq(
-          "user_id",
-          selectedDelivery.rider_id
-        );
-
-    if (walletError) {
-
-      console.log(
-        walletError
+      setOtpModalVisible(
+        false
       );
+
+      setSelectedDelivery(
+        null
+      );
+
+      setDeliveryOtp("");
+
+      loadDeliveries();
+    } catch (err: any) {
+      console.log(err);
 
       Alert.alert(
-        "Wallet Error",
-        walletError.message
+        "Error",
+        err?.message
       );
-
-      return;
     }
 
-    /* ================= SUCCESS ================= */
-
-    Alert.alert(
-      "Success",
-      `Delivery completed.\n\nRider earned GH₵${riderEarning.toFixed(2)}`
-    );
-
-    setOtpModalVisible(
-      false
-    );
-
-    setSelectedDelivery(
-      null
-    );
-
-    setDeliveryOtp("");
-
-    loadDeliveries();
-
-  } catch (err: any) {
-
-    console.log(err);
-
-    Alert.alert(
-      "Error",
-      err?.message
-    );
+    setProcessingId("");
   }
 
-  setProcessingId("");
-}
   /* ================= STATUS COLOR ================= */
 
   function getStatusColor(
     status: string
   ) {
-
     if (
-      status === "pending"
+      status ===
+      "pending_rider"
     )
       return "#f59e0b";
 
@@ -699,66 +467,10 @@ async function verifyDeliveryOtp() {
 
     return "#6b7280";
   }
-  /* ================= LIVE LOCATION ================= */
-  async function updateLiveLocation() {
-
-  try {
-
-    const {
-      data: authData,
-    } =
-      await supabase.auth.getUser();
-
-    const user =
-      authData?.user;
-
-    if (!user)
-      return;
-
-    const {
-      status,
-    } =
-      await Location.requestForegroundPermissionsAsync();
-
-    if (
-      status !== "granted"
-    ) {
-      return;
-    }
-
-    const location =
-      await Location.getCurrentPositionAsync({
-        accuracy:
-          Location.Accuracy.High,
-      });
-
-    await (supabase as any)
-      .from("riders")
-      .upsert({
-
-        user_id:
-          user.id,
-
-        latitude:
-          location.coords.latitude,
-
-        longitude:
-          location.coords.longitude,
-
-        last_location_update:
-          new Date().toISOString(),
-      });
-
-  } catch (err) {
-
-    console.log(err);
-  }
-}
 
   /* ================= LOADING ================= */
 
   if (loading) {
-
     return (
       <ActivityIndicator
         style={{
@@ -768,55 +480,16 @@ async function verifyDeliveryOtp() {
       />
     );
   }
-/* ================= TOGGLE ONLINE ================= */
-      async function toggleOnline() {
 
-  try {
-
-    const {
-      data: authData,
-    } =
-      await supabase.auth.getUser();
-
-    const user =
-      authData?.user;
-
-    if (!user) return;
-
-    const newStatus =
-      !isOnline;
-
-    await (supabase as any)
-      .from("riders")
-      .upsert({
-
-        user_id:
-          user.id,
-
-        is_online:
-          newStatus,
-      });
-
-    setIsOnline(
-      newStatus
-    );
-
-  } catch (err) {
-
-    console.log(err);
-  }
-}
   /* ================= UI ================= */
 
   return (
-
     <View
       style={{
         flex: 1,
         padding: 15,
       }}
     >
-
       <Text
         style={{
           fontSize: 24,
@@ -826,62 +499,6 @@ async function verifyDeliveryOtp() {
       >
         🚚 Rider Dashboard
       </Text>
-      <TouchableOpacity
-  onPress={toggleOnline}
-  style={{
-    backgroundColor:
-      isOnline
-        ? "#16a34a"
-        : "#dc2626",
-
-    padding: 14,
-
-    borderRadius: 12,
-
-    marginBottom: 20,
-  }}
->
-  <Text
-    style={{
-      color: "#fff",
-      textAlign: "center",
-      fontWeight: "bold",
-      fontSize: 16,
-    }}
-  >
-    {isOnline
-      ? "🟢 ONLINE"
-      : "🔴 OFFLINE"}
-  </Text>
-</TouchableOpacity>
-<TouchableOpacity
-  onPress={() =>
-    router.push(
-      "/rider-wallet"
-    )
-  }
-  style={{
-    backgroundColor:
-      "#2563eb",
-
-    padding: 14,
-
-    borderRadius: 12,
-
-    marginBottom: 15,
-  }}
->
-  <Text
-    style={{
-      color: "#fff",
-      textAlign: "center",
-      fontWeight: "bold",
-      fontSize: 16,
-    }}
-  >
-    💰 Open Wallet
-  </Text>
-</TouchableOpacity>
 
       <FlatList
         data={deliveries}
@@ -892,7 +509,6 @@ async function verifyDeliveryOtp() {
               refreshing
             }
             onRefresh={() => {
-
               setRefreshing(
                 true
               );
@@ -904,7 +520,6 @@ async function verifyDeliveryOtp() {
         renderItem={({
           item,
         }) => (
-
           <View
             style={{
               borderWidth: 1,
@@ -917,7 +532,6 @@ async function verifyDeliveryOtp() {
                 "#fff",
             }}
           >
-
             <Text
               style={{
                 fontWeight:
@@ -971,10 +585,11 @@ async function verifyDeliveryOtp() {
                   "bold",
               }}
             >
-              💰 Rider Earns: GH₵{" "}
-{(
-  Number(item.amount || 0) * 0.8
-).toLocaleString()}
+              💰 GH₵
+              {" "}
+              {Number(
+                item.amount || 0
+              ).toLocaleString()}
             </Text>
 
             <View
@@ -991,7 +606,6 @@ async function verifyDeliveryOtp() {
                 borderRadius: 20,
               }}
             >
-
               <Text
                 style={{
                   color: "#fff",
@@ -1001,14 +615,12 @@ async function verifyDeliveryOtp() {
               >
                 {item.status}
               </Text>
-
             </View>
 
             {/* ================= ACCEPT ================= */}
 
             {item.status ===
-              "pending" && (
-
+              "pending_rider" && (
               <TouchableOpacity
                 disabled={
                   processingId ===
@@ -1027,7 +639,6 @@ async function verifyDeliveryOtp() {
                   marginTop: 15,
                 }}
               >
-
                 <Text
                   style={{
                     color: "#fff",
@@ -1042,7 +653,6 @@ async function verifyDeliveryOtp() {
                     ? "Processing..."
                     : "Accept Delivery"}
                 </Text>
-
               </TouchableOpacity>
             )}
 
@@ -1050,7 +660,6 @@ async function verifyDeliveryOtp() {
 
             {item.status ===
               "accepted" && (
-
               <>
                 <TouchableOpacity
                   onPress={() =>
@@ -1067,7 +676,6 @@ async function verifyDeliveryOtp() {
                     marginTop: 15,
                   }}
                 >
-
                   <Text
                     style={{
                       color: "#fff",
@@ -1079,7 +687,6 @@ async function verifyDeliveryOtp() {
                   >
                     Mark Picked Up
                   </Text>
-
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1096,7 +703,6 @@ async function verifyDeliveryOtp() {
                     marginTop: 10,
                   }}
                 >
-
                   <Text
                     style={{
                       color: "#fff",
@@ -1108,7 +714,6 @@ async function verifyDeliveryOtp() {
                   >
                     Cancel Delivery
                   </Text>
-
                 </TouchableOpacity>
               </>
             )}
@@ -1117,7 +722,6 @@ async function verifyDeliveryOtp() {
 
             {item.status ===
               "picked_up" && (
-
               <TouchableOpacity
                 onPress={() =>
                   updateStatus(
@@ -1133,7 +737,6 @@ async function verifyDeliveryOtp() {
                   marginTop: 15,
                 }}
               >
-
                 <Text
                   style={{
                     color: "#fff",
@@ -1145,7 +748,6 @@ async function verifyDeliveryOtp() {
                 >
                   Start Transit
                 </Text>
-
               </TouchableOpacity>
             )}
 
@@ -1153,10 +755,8 @@ async function verifyDeliveryOtp() {
 
             {item.status ===
               "in_transit" && (
-
               <TouchableOpacity
                 onPress={() => {
-
                   setSelectedDelivery(
                     item
                   );
@@ -1173,7 +773,6 @@ async function verifyDeliveryOtp() {
                   marginTop: 15,
                 }}
               >
-
                 <Text
                   style={{
                     color: "#fff",
@@ -1185,10 +784,8 @@ async function verifyDeliveryOtp() {
                 >
                   Complete Delivery
                 </Text>
-
               </TouchableOpacity>
             )}
-
           </View>
         )}
       />
@@ -1200,7 +797,6 @@ async function verifyDeliveryOtp() {
         transparent
         animationType="fade"
       >
-
         <View
           style={{
             flex: 1,
@@ -1211,7 +807,6 @@ async function verifyDeliveryOtp() {
             padding: 20,
           }}
         >
-
           <View
             style={{
               backgroundColor:
@@ -1220,7 +815,6 @@ async function verifyDeliveryOtp() {
               padding: 20,
             }}
           >
-
             <Text
               style={{
                 fontSize: 22,
@@ -1258,7 +852,6 @@ async function verifyDeliveryOtp() {
                 marginTop: 20,
               }}
             >
-
               <Text
                 style={{
                   color: "#fff",
@@ -1270,12 +863,10 @@ async function verifyDeliveryOtp() {
               >
                 Verify OTP
               </Text>
-
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => {
-
                 setOtpModalVisible(
                   false
                 );
@@ -1286,7 +877,6 @@ async function verifyDeliveryOtp() {
                 marginTop: 15,
               }}
             >
-
               <Text
                 style={{
                   textAlign:
@@ -1298,15 +888,10 @@ async function verifyDeliveryOtp() {
               >
                 Cancel
               </Text>
-
             </TouchableOpacity>
-
           </View>
-
         </View>
-
       </Modal>
-
     </View>
   );
 }

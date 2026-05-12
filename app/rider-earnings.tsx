@@ -1,22 +1,17 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   RefreshControl,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 
-import { useRouter } from "expo-router";
-
 import { supabase } from "../lib/supabase";
 
-export default function MyDeliveries() {
-
-  const router = useRouter();
+export default function RiderEarnings() {
 
   const [deliveries, setDeliveries] =
     useState<any[]>([]);
@@ -29,7 +24,7 @@ export default function MyDeliveries() {
 
   /* ================= LOAD ================= */
 
-  async function loadDeliveries() {
+  async function loadEarnings() {
 
     try {
 
@@ -56,8 +51,12 @@ export default function MyDeliveries() {
           .from("deliveries")
           .select("*")
           .eq(
-            "sender_id",
+            "rider_id",
             user.id
+          )
+          .eq(
+            "status",
+            "delivered"
           )
           .order(
             "created_at",
@@ -87,7 +86,7 @@ export default function MyDeliveries() {
 
   useEffect(() => {
 
-    loadDeliveries();
+    loadEarnings();
 
   }, []);
 
@@ -98,7 +97,7 @@ export default function MyDeliveries() {
     const channel =
       (supabase as any)
         .channel(
-          "my-deliveries"
+          "rider-earnings"
         )
 
         .on(
@@ -110,7 +109,7 @@ export default function MyDeliveries() {
           },
           () => {
 
-            loadDeliveries();
+            loadEarnings();
           }
         )
 
@@ -126,50 +125,40 @@ export default function MyDeliveries() {
 
   }, []);
 
-  /* ================= COLOR ================= */
+  /* ================= TOTAL ================= */
 
-  function getStatusColor(
-    status: string
-  ) {
+  const totalEarnings =
+  useMemo(() => {
 
-    if (
-      status === "pending"
-    )
-      return "#f59e0b";
+    return deliveries
+      .filter(
+        (d) =>
+          d.status ===
+          "delivered"
+      )
+      .reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          Number(
+            item.rider_earning || 0
+          ),
+        0
+      );
 
-    if (
-      status === "accepted"
-    )
-      return "#2563eb";
-
-    if (
-      status === "picked_up"
-    )
-      return "#9333ea";
-
-    if (
-      status === "in_transit"
-    )
-      return "#0f766e";
-
-    if (
-      status === "delivered"
-    )
-      return "#16a34a";
-
-    return "#6b7280";
-  }
-
+  }, [deliveries]);
   /* ================= LOADING ================= */
 
   if (loading) {
 
     return (
       <ActivityIndicator
+        size="large"
         style={{
           flex: 1,
         }}
-        size="large"
       />
     );
   }
@@ -187,13 +176,53 @@ export default function MyDeliveries() {
 
       <Text
         style={{
-          fontSize: 24,
+          fontSize: 26,
           fontWeight: "bold",
           marginBottom: 20,
         }}
       >
-        📦 My Deliveries
+        💰 Rider Earnings
       </Text>
+
+      {/* ================= TOTAL ================= */}
+
+      <View
+        style={{
+          backgroundColor:
+            "#111827",
+          borderRadius: 18,
+          padding: 22,
+          marginBottom: 20,
+        }}
+      >
+
+        <Text
+          style={{
+            color: "#fff",
+            fontSize: 16,
+          }}
+        >
+          Total Earnings
+        </Text>
+
+        <Text
+          style={{
+            color: "#fff",
+            fontSize: 38,
+            fontWeight: "bold",
+            marginTop: 10,
+          }}
+        >
+          GH₵
+          {" "}
+          {Number(
+            totalEarnings
+          ).toLocaleString()}
+        </Text>
+
+      </View>
+
+      {/* ================= DELIVERIES ================= */}
 
       <FlatList
         data={deliveries}
@@ -209,65 +238,26 @@ export default function MyDeliveries() {
                 true
               );
 
-              loadDeliveries();
+              loadEarnings();
             }}
           />
-        }
-        ListEmptyComponent={
-
-          <Text
-            style={{
-              textAlign:
-                "center",
-              marginTop: 50,
-              color: "#777",
-            }}
-          >
-            No deliveries yet
-          </Text>
         }
         renderItem={({
           item,
         }) => (
 
-          <TouchableOpacity
-            onPress={() =>
-              router.push({
-                pathname:
-                  "/delivery-detail",
-                params: {
-                  id: item.id,
-                },
-              })
-            }
+          <View
             style={{
               backgroundColor:
                 "#fff",
-              borderRadius: 14,
               borderWidth: 1,
               borderColor:
                 "#ddd",
+              borderRadius: 14,
               padding: 15,
-              marginBottom: 15,
+              marginBottom: 12,
             }}
           >
-
-            {item.package_image ? (
-
-              <Image
-                source={{
-                  uri:
-                    item.package_image,
-                }}
-                style={{
-                  width: "100%",
-                  height: 180,
-                  borderRadius: 12,
-                  marginBottom: 12,
-                }}
-              />
-
-            ) : null}
 
             <Text
               style={{
@@ -281,7 +271,7 @@ export default function MyDeliveries() {
 
             <Text
               style={{
-                marginTop: 8,
+                marginTop: 6,
               }}
             >
               📍 {
@@ -291,7 +281,7 @@ export default function MyDeliveries() {
 
             <Text
               style={{
-                marginTop: 5,
+                marginTop: 4,
               }}
             >
               🏁 {
@@ -301,46 +291,20 @@ export default function MyDeliveries() {
 
             <Text
               style={{
-                marginTop: 5,
+                marginTop: 10,
                 fontWeight:
                   "bold",
+                color: "#16a34a",
+                fontSize: 18,
               }}
             >
-              💰 GH₵
-              {" "}
-              {Number(
-                item.amount || 0
-              ).toLocaleString()}
+             💰 GH₵{" "}
+{Number(
+  item.rider_earning || 0
+).toLocaleString()}
             </Text>
 
-            <View
-              style={{
-                marginTop: 12,
-                alignSelf:
-                  "flex-start",
-                backgroundColor:
-                  getStatusColor(
-                    item.status
-                  ),
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 20,
-              }}
-            >
-
-              <Text
-                style={{
-                  color: "#fff",
-                  fontWeight:
-                    "bold",
-                }}
-              >
-                {item.status}
-              </Text>
-
-            </View>
-
-          </TouchableOpacity>
+          </View>
         )}
       />
 

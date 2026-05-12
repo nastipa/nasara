@@ -249,48 +249,133 @@ useEffect(() => {
   }
 }, [messages]);
   /* ================= REALTIME ================= */
-  useEffect(() => {
+useEffect(() => {
   if (!roomId) return;
 
   const channel = (supabase as any)
-    .channel("chat_" + roomId)
+    .channel(`chat_${roomId}`)
+
     .on(
       "postgres_changes",
       {
         event: "INSERT",
         schema: "public",
         table: "messages",
-        filter: "room_id=eq." + roomId,
+        filter: `room_id=eq.${roomId}`,
       },
+
       async (payload: any) => {
-        const msg = payload.new as Message;
+        try {
+          const msg =
+            payload.new as Message;
 
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) {
-            return prev;
-          }
-          return [...prev, msg];
-        });
+          /* ================= ADD MESSAGE ================= */
+          setMessages((prev) => {
+            const exists =
+              prev.some(
+                (m) =>
+                  m.id === msg.id
+              );
 
-       ;
+            if (exists) {
+              return prev;
+            }
 
-        if (msg.sender_id !== userId && Platform.OS !== "web") {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: "New Message",
-              body: msg.text || "📩 Message",
-            },
-            trigger: null,
+            return [
+              ...prev,
+              msg,
+            ];
           });
+
+          /* ================= SAVE NOTIFICATION ================= */
+          if (
+            msg.sender_id !==
+              userId &&
+            receiverId
+          ) {
+            await (
+              supabase as any
+            )
+              .from(
+                "notifications"
+              )
+              .insert({
+                user_id:
+                  receiverId,
+
+                sender_id:
+                  msg.sender_id,
+
+                type: "chat",
+
+                title:
+                  receiverName ||
+                  "New Message",
+
+                body:
+                  msg.text ||
+                  (msg.image_url
+                    ? "📷 Image"
+                    : msg.file_url
+                    ? "📎 File"
+                    : "📩 Message"),
+
+                ref_id:
+                  roomId,
+
+                read: false,
+
+                message:
+                  msg.text ||
+                  "New message received",
+              });
+          }
+
+          /* ================= LOCAL PUSH ================= */
+          if (
+            msg.sender_id !==
+              userId &&
+            Platform.OS !==
+              "web"
+          ) {
+            await Notifications.scheduleNotificationAsync(
+              {
+                content: {
+                  title:
+                    receiverName ||
+                    "New Message",
+
+                  body:
+                    msg.text ||
+                    "📩 Message",
+                },
+
+                trigger: null,
+              }
+            );
+          }
+        } catch (err) {
+          console.log(
+            "Realtime error:",
+            err
+          );
         }
       }
     )
+
     .subscribe();
 
   return () => {
-    (supabase as any).removeChannel(channel);
+    (
+      supabase as any
+    ).removeChannel(channel);
   };
-}, [roomId, userId]);
+}, [
+  roomId,
+  userId,
+  receiverId,
+  receiverName,
+]);
 
   /* ================= AUTO SCROLL ================= */
   useEffect(() => {

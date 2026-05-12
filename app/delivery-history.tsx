@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   RefreshControl,
   Text,
   TouchableOpacity,
@@ -14,7 +13,7 @@ import { useRouter } from "expo-router";
 
 import { supabase } from "../lib/supabase";
 
-export default function MyDeliveries() {
+export default function DeliveryHistory() {
 
   const router = useRouter();
 
@@ -56,9 +55,9 @@ export default function MyDeliveries() {
           .from("deliveries")
           .select("*")
           .eq(
-            "sender_id",
-            user.id
-          )
+  "customer_id",
+  user.id
+)
           .order(
             "created_at",
             {
@@ -98,7 +97,7 @@ export default function MyDeliveries() {
     const channel =
       (supabase as any)
         .channel(
-          "my-deliveries"
+          "customer-delivery-history"
         )
 
         .on(
@@ -119,14 +118,12 @@ export default function MyDeliveries() {
     return () => {
 
       (supabase as any)
-        .removeChannel(
-          channel
-        );
+        .removeChannel(channel);
     };
 
   }, []);
 
-  /* ================= COLOR ================= */
+  /* ================= STATUS COLOR ================= */
 
   function getStatusColor(
     status: string
@@ -138,9 +135,14 @@ export default function MyDeliveries() {
       return "#f59e0b";
 
     if (
-      status === "accepted"
+      status === "pending_rider"
     )
       return "#2563eb";
+
+    if (
+      status === "accepted"
+    )
+      return "#0f766e";
 
     if (
       status === "picked_up"
@@ -150,12 +152,17 @@ export default function MyDeliveries() {
     if (
       status === "in_transit"
     )
-      return "#0f766e";
+      return "#0891b2";
 
     if (
       status === "delivered"
     )
       return "#16a34a";
+
+    if (
+      status === "cancelled"
+    )
+      return "#dc2626";
 
     return "#6b7280";
   }
@@ -187,7 +194,7 @@ export default function MyDeliveries() {
 
       <Text
         style={{
-          fontSize: 24,
+          fontSize: 26,
           fontWeight: "bold",
           marginBottom: 20,
         }}
@@ -215,16 +222,23 @@ export default function MyDeliveries() {
         }
         ListEmptyComponent={
 
-          <Text
+          <View
             style={{
-              textAlign:
-                "center",
-              marginTop: 50,
-              color: "#777",
+              marginTop: 80,
+              alignItems: "center",
             }}
           >
-            No deliveries yet
-          </Text>
+
+            <Text
+              style={{
+                fontSize: 18,
+                color: "#666",
+              }}
+            >
+              No deliveries yet
+            </Text>
+
+          </View>
         }
         renderItem={({
           item,
@@ -232,48 +246,25 @@ export default function MyDeliveries() {
 
           <TouchableOpacity
             onPress={() =>
-              router.push({
-                pathname:
-                  "/delivery-detail",
-                params: {
-                  id: item.id,
-                },
-              })
+              router.push(
+                `/delivery-detail?id=${item.id}`
+              )
             }
             style={{
               backgroundColor:
                 "#fff",
               borderRadius: 14,
-              borderWidth: 1,
-              borderColor:
-                "#ddd",
-              padding: 15,
+              padding: 16,
               marginBottom: 15,
+              borderWidth: 1,
+              borderColor: "#ddd",
             }}
           >
 
-            {item.package_image ? (
-
-              <Image
-                source={{
-                  uri:
-                    item.package_image,
-                }}
-                style={{
-                  width: "100%",
-                  height: 180,
-                  borderRadius: 12,
-                  marginBottom: 12,
-                }}
-              />
-
-            ) : null}
-
             <Text
               style={{
-                fontWeight:
-                  "bold",
-                fontSize: 17,
+                fontSize: 18,
+                fontWeight: "bold",
               }}
             >
               📦 {item.item_name}
@@ -284,9 +275,9 @@ export default function MyDeliveries() {
                 marginTop: 8,
               }}
             >
-              📍 {
-                item.pickup_address
-              }
+              📍 Pickup:
+              {" "}
+              {item.pickup_address}
             </Text>
 
             <Text
@@ -294,16 +285,15 @@ export default function MyDeliveries() {
                 marginTop: 5,
               }}
             >
-              🏁 {
-                item.dropoff_address
-              }
+              🏁 Dropoff:
+              {" "}
+              {item.dropoff_address}
             </Text>
 
             <Text
               style={{
-                marginTop: 5,
-                fontWeight:
-                  "bold",
+                marginTop: 8,
+                fontWeight: "bold",
               }}
             >
               💰 GH₵
@@ -322,7 +312,7 @@ export default function MyDeliveries() {
                   getStatusColor(
                     item.status
                   ),
-                paddingHorizontal: 12,
+                paddingHorizontal: 14,
                 paddingVertical: 6,
                 borderRadius: 20,
               }}
@@ -331,8 +321,7 @@ export default function MyDeliveries() {
               <Text
                 style={{
                   color: "#fff",
-                  fontWeight:
-                    "bold",
+                  fontWeight: "bold",
                 }}
               >
                 {item.status}

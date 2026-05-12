@@ -1,17 +1,20 @@
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
+
 import {
-    ActivityIndicator,
-    RefreshControl,
-    ScrollView,
-    Text,
-    View,
+  ActivityIndicator,
+  Image,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
+import { useRouter } from "expo-router";
 import { supabase } from "../lib/supabase";
 
-export default function DeliveryDetail() {
-
+export default function DeliveryDetails() {
+const router = useRouter();
   const { id } =
     useLocalSearchParams();
 
@@ -20,9 +23,8 @@ export default function DeliveryDetail() {
 
   const [loading, setLoading] =
     useState(true);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
+    const [rider, setRider] =
+  useState<any>(null);
 
   /* ================= LOAD ================= */
 
@@ -30,40 +32,51 @@ export default function DeliveryDetail() {
 
     if (!id) return;
 
-    try {
+    const {
+      data,
+      error,
+    } =
+      await (supabase as any)
+        .from("deliveries")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-      const {
-        data,
-        error,
-      } =
-        await (supabase as any)
-          .from("deliveries")
-          .select("*")
-          .eq("id", id)
-          .single();
-
-      if (error) {
-
-        console.log(error);
-
-        return;
-      }
+    if (!error) {
 
       setDelivery(data);
-
-    } catch (err) {
-
-      console.log(err);
     }
+    if (data?.rider_id) {
+
+  const {
+    data: riderData,
+  } =
+    await (supabase as any)
+      .from("riders")
+      .select("*")
+      .eq(
+        "user_id",
+        data.rider_id
+      )
+      .single();
+
+  if (riderData) {
+
+    setRider(
+      riderData
+    );
+  }
+}
 
     setLoading(false);
-    setRefreshing(false);
   }
 
   /* ================= INITIAL ================= */
 
   useEffect(() => {
+
     loadDelivery();
+
   }, [id]);
 
   /* ================= REALTIME ================= */
@@ -87,6 +100,7 @@ export default function DeliveryDetail() {
             filter: `id=eq.${id}`,
           },
           () => {
+
             loadDelivery();
           }
         )
@@ -94,46 +108,54 @@ export default function DeliveryDetail() {
         .subscribe();
 
     return () => {
+
       (supabase as any)
-        .removeChannel(channel);
+        .removeChannel(
+          channel
+        );
     };
 
   }, [id]);
 
   /* ================= STATUS STEP ================= */
 
-  function getStep(status: string) {
+  function getStep() {
 
-    if (status === "pending")
+    if (
+      delivery?.status ===
+      "pending"
+    )
       return 1;
 
-    if (status === "accepted")
+    if (
+      delivery?.status ===
+      "accepted"
+    )
       return 2;
 
-    if (status === "picked_up")
+    if (
+      delivery?.status ===
+      "picked_up"
+    )
       return 3;
 
-    if (status === "in_transit")
+    if (
+      delivery?.status ===
+      "in_transit"
+    )
       return 4;
 
-    if (status === "delivered")
+    if (
+      delivery?.status ===
+      "delivered"
+    )
       return 5;
 
     return 1;
   }
 
   const currentStep =
-    getStep(
-      delivery?.status || ""
-    );
-
-  const steps = [
-    "Pending",
-    "Accepted",
-    "Picked Up",
-    "In Transit",
-    "Delivered",
-  ];
+    getStep();
 
   /* ================= LOADING ================= */
 
@@ -154,17 +176,6 @@ export default function DeliveryDetail() {
   return (
 
     <ScrollView
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-
-            setRefreshing(true);
-
-            loadDelivery();
-          }}
-        />
-      }
       contentContainerStyle={{
         padding: 20,
       }}
@@ -180,10 +191,27 @@ export default function DeliveryDetail() {
         📦 Delivery Tracking
       </Text>
 
+      {delivery?.package_image ? (
+
+        <Image
+          source={{
+            uri:
+              delivery.package_image,
+          }}
+          style={{
+            width: "100%",
+            height: 220,
+            borderRadius: 15,
+            marginBottom: 20,
+          }}
+        />
+
+      ) : null}
+
       <View
         style={{
           backgroundColor: "#fff",
-          padding: 18,
+          padding: 15,
           borderRadius: 12,
           borderWidth: 1,
           borderColor: "#ddd",
@@ -192,11 +220,11 @@ export default function DeliveryDetail() {
 
         <Text
           style={{
-            fontSize: 18,
             fontWeight: "bold",
+            fontSize: 18,
           }}
         >
-          {delivery?.item_name}
+          📦 {delivery?.item_name}
         </Text>
 
         <Text
@@ -206,32 +234,38 @@ export default function DeliveryDetail() {
         >
           📍 Pickup:
           {" "}
-          {delivery?.pickup_address}
+          {
+            delivery?.pickup_address
+          }
         </Text>
 
         <Text
           style={{
-            marginTop: 8,
+            marginTop: 5,
           }}
         >
           🏁 Dropoff:
           {" "}
-          {delivery?.dropoff_address}
+          {
+            delivery?.dropoff_address
+          }
         </Text>
 
         <Text
           style={{
-            marginTop: 8,
+            marginTop: 5,
           }}
         >
           📞 Receiver:
           {" "}
-          {delivery?.receiver_phone}
+          {
+            delivery?.receiver_phone
+          }
         </Text>
 
         <Text
           style={{
-            marginTop: 8,
+            marginTop: 5,
             fontWeight: "bold",
           }}
         >
@@ -252,41 +286,72 @@ export default function DeliveryDetail() {
         }}
       >
 
-        {steps.map(
-          (
-            step,
-            index
-          ) => {
+        {[
+          "Order Created",
+          "Rider Accepted",
+          "Package Picked Up",
+          "In Transit",
+          "Delivered",
+        ].map((step, index) => {
 
-            const active =
-              index + 1 <=
-              currentStep;
+          const active =
+            currentStep >=
+            index + 1;
 
-            return (
+          return (
+
+            <View
+              key={step}
+              style={{
+                flexDirection:
+                  "row",
+                marginBottom: 25,
+              }}
+            >
 
               <View
-                key={step}
                 style={{
-                  flexDirection:
-                    "row",
+                  width: 22,
                   alignItems:
                     "center",
-                  marginBottom: 20,
                 }}
               >
 
                 <View
                   style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 12,
+                    width: 18,
+                    height: 18,
+                    borderRadius: 9,
                     backgroundColor:
                       active
                         ? "#16a34a"
                         : "#d1d5db",
-                    marginRight: 15,
                   }}
                 />
+
+                {index !== 4 && (
+
+                  <View
+                    style={{
+                      width: 3,
+                      height: 50,
+                      backgroundColor:
+                        active
+                          ? "#16a34a"
+                          : "#d1d5db",
+                    }}
+                  />
+
+                )}
+
+              </View>
+
+              <View
+                style={{
+                  marginLeft: 15,
+                  marginTop: -2,
+                }}
+              >
 
                 <Text
                   style={{
@@ -299,20 +364,99 @@ export default function DeliveryDetail() {
                       active
                         ? "#111"
                         : "#777",
-
-                    fontSize: 16,
                   }}
                 >
                   {step}
                 </Text>
 
               </View>
-            );
-          }
-        )}
+
+            </View>
+          );
+        })}
 
       </View>
+{rider && (
 
+  <View
+    style={{
+      marginTop: 25,
+      backgroundColor:
+        "#fff",
+      padding: 18,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#ddd",
+    }}
+  >
+
+    <Text
+      style={{
+        fontWeight: "bold",
+        fontSize: 18,
+      }}
+    >
+      🚴 Rider Live Location
+    </Text>
+
+    <Text
+      style={{
+        marginTop: 10,
+      }}
+    >
+      Latitude:
+      {" "}
+      {rider.latitude}
+    </Text>
+
+    <Text
+      style={{
+        marginTop: 5,
+      }}
+    >
+      Longitude:
+      {" "}
+      {rider.longitude}
+    </Text>
+
+    <Text
+      style={{
+        marginTop: 10,
+        color: "#16a34a",
+        fontWeight: "bold",
+      }}
+    >
+      Rider is moving live
+    </Text>
+
+  </View>
+)}
+<TouchableOpacity
+  onPress={() =>
+    router.push(
+      `/delivery-map?id=${delivery.id}`
+    )
+  }
+  style={{
+    backgroundColor:
+      "#2563eb",
+    padding: 14,
+    borderRadius: 10,
+    marginTop: 20,
+  }}
+>
+
+  <Text
+    style={{
+      color: "#fff",
+      textAlign: "center",
+      fontWeight: "bold",
+    }}
+  >
+    🗺️ Open Live Map
+  </Text>
+
+</TouchableOpacity>
       {/* ================= OTP ================= */}
 
       {delivery?.status ===
@@ -320,35 +464,29 @@ export default function DeliveryDetail() {
 
         <View
           style={{
-            marginTop: 25,
             backgroundColor:
-              "#eff6ff",
+              "#fef3c7",
             padding: 18,
             borderRadius: 12,
-            borderWidth: 1,
-            borderColor: "#2563eb",
+            marginTop: 10,
           }}
         >
 
           <Text
             style={{
               fontWeight: "bold",
-              fontSize: 18,
-              textAlign: "center",
-              color: "#1d4ed8",
+              fontSize: 16,
             }}
           >
-            Delivery OTP
+            🔐 Delivery OTP
           </Text>
 
           <Text
             style={{
-              textAlign: "center",
-              fontSize: 32,
-              fontWeight: "bold",
               marginTop: 10,
+              fontSize: 30,
+              fontWeight: "bold",
               letterSpacing: 5,
-              color: "#2563eb",
             }}
           >
             {delivery?.otp_code}
@@ -356,13 +494,38 @@ export default function DeliveryDetail() {
 
           <Text
             style={{
-              textAlign: "center",
               marginTop: 10,
               color: "#555",
             }}
           >
-            Give this OTP to rider
-            after delivery.
+            Give this OTP to the rider
+            after receiving package.
+          </Text>
+
+        </View>
+      )}
+
+      {delivery?.status ===
+        "delivered" && (
+
+        <View
+          style={{
+            backgroundColor:
+              "#dcfce7",
+            padding: 18,
+            borderRadius: 12,
+            marginTop: 20,
+          }}
+        >
+
+          <Text
+            style={{
+              fontWeight: "bold",
+              fontSize: 18,
+              color: "#166534",
+            }}
+          >
+            ✅ Delivery Completed
           </Text>
 
         </View>

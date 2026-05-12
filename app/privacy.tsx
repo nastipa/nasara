@@ -75,7 +75,7 @@ export default function Privacy() {
       <View style={styles.section}>
         <Text style={styles.heading}>9. Contact</Text>
         <Text style={styles.text}>
-          Email: dinnanitipa@gmail.com
+          Email: ajars0702@gmail.com
         </Text>
       </View>
 

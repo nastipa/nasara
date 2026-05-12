@@ -2,13 +2,13 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
@@ -218,66 +218,74 @@ export default function CreateDelivery() {
         }
       }
 
-      /* ================= INSERT ================= */
+     /* ================= FIND ONLINE RIDER ================= */
 
-      const {
-        error,
-      } =
-        await (supabase as any)
-          .from("deliveries")
-          .insert({
+let assignedRiderId = null;
 
-            sender_id:
-              user.id,
+const {
+  data: onlineRiders,
+} =
+  await (supabase as any)
+    .from("riders")
+    .select("*")
+    .eq(
+      "is_online",
+      true
+    );
 
-            pickup_address:
-              pickupAddress,
+if (
+  onlineRiders &&
+  onlineRiders.length > 0
+) {
 
-            dropoff_address:
-              dropoffAddress,
+  assignedRiderId =
+    onlineRiders[0].user_id;
+}
 
-            receiver_phone:
-              receiverPhone,
+/* ================= CREATE DELIVERY ================= */
 
-            item_name:
-              itemName,
+const {
+  error,
+} =
+  await (supabase as any)
+    .from("deliveries")
+    .insert({
 
-            item_note:
-              itemNote,
+      sender_id:
+        user.id,
 
-            amount:
-              Number(amount),
+      rider_id:
+        assignedRiderId,
 
-            otp_code:
-              otp,
+      pickup_address:
+        pickupAddress,
 
-            package_image:
-              uploadedImage,
+      dropoff_address:
+        dropoffAddress,
 
-            payment_status:
-              "pending",
+      receiver_phone:
+        receiverPhone,
 
-            status:
-              "pending",
-          });
+      item_name:
+        itemName,
 
-      if (error) {
+      item_note:
+        itemNote,
 
-        Alert.alert(
-          "Error",
-          error.message
-        );
+      amount:
+        Number(amount),
 
-        setLoading(false);
+      otp_code:
+        otp,
 
-        return;
-      }
+      payment_status:
+        "pending",
 
-      Alert.alert(
-        "Delivery Created",
-        `Receiver OTP: ${otp}`
-      );
-
+      status:
+        assignedRiderId
+          ? "accepted"
+          : "pending",
+    });
       /* ================= RESET ================= */
 
       setPickupAddress("");
