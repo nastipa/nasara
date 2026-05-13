@@ -226,122 +226,127 @@ export default function MyDeliveries() {
             No deliveries yet
           </Text>
         }
-        renderItem={({
-          item,
-        }) => (
+        renderItem={({ item }) => (
+  <TouchableOpacity
+    onPress={() =>
+      router.push({
+        pathname: "/delivery-detail",
+        params: { id: item.id },
+      })
+    }
+    style={{
+      backgroundColor: "#fff",
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: "#ddd",
+      padding: 15,
+      marginBottom: 15,
+    }}
+  >
+    {item.package_image ? (
+      <Image
+        source={{ uri: item.package_image }}
+        style={{
+          width: "100%",
+          height: 180,
+          borderRadius: 12,
+          marginBottom: 12,
+        }}
+      />
+    ) : null}
 
-          <TouchableOpacity
-            onPress={() =>
-              router.push({
-                pathname:
-                  "/delivery-detail",
-                params: {
-                  id: item.id,
-                },
-              })
-            }
-            style={{
-              backgroundColor:
-                "#fff",
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor:
-                "#ddd",
-              padding: 15,
-              marginBottom: 15,
-            }}
-          >
+    <Text
+      style={{
+        fontWeight: "bold",
+        fontSize: 17,
+      }}
+    >
+      📦 {item.item_name}
+    </Text>
 
-            {item.package_image ? (
+    <Text style={{ marginTop: 8 }}>
+      📍 {item.pickup_address}
+    </Text>
 
-              <Image
-                source={{
-                  uri:
-                    item.package_image,
-                }}
-                style={{
-                  width: "100%",
-                  height: 180,
-                  borderRadius: 12,
-                  marginBottom: 12,
-                }}
-              />
+    <Text style={{ marginTop: 5 }}>
+      🏁 {item.dropoff_address}
+    </Text>
 
-            ) : null}
+    <Text
+      style={{
+        marginTop: 5,
+        fontWeight: "bold",
+      }}
+    >
+      💰 GH₵ {Number(item.amount || 0).toLocaleString()}
+    </Text>
 
-            <Text
-              style={{
-                fontWeight:
-                  "bold",
-                fontSize: 17,
-              }}
-            >
-              📦 {item.item_name}
-            </Text>
+    {item.status === "pending_pricing" && (
+      <View
+        style={{
+          marginTop: 12,
+          backgroundColor: "#fef3c7",
+          padding: 12,
+          borderRadius: 10,
+        }}
+      >
+        <Text>
+          Waiting for admin to set price
+        </Text>
+      </View>
+    )}
 
-            <Text
-              style={{
-                marginTop: 8,
-              }}
-            >
-              📍 {
-                item.pickup_address
-              }
-            </Text>
+    {item.status === "awaiting_payment" && (
+      <View
+        style={{
+          marginTop: 12,
+          backgroundColor: "#eff6ff",
+          padding: 12,
+          borderRadius: 10,
+        }}
+      >
+        <Text
+          style={{
+            fontWeight: "bold",
+            fontSize: 16,
+          }}
+        >
+          Delivery fee:
+          {" "}
+          GH₵ {item.amount}
+        </Text>
 
-            <Text
-              style={{
-                marginTop: 5,
-              }}
-            >
-              🏁 {
-                item.dropoff_address
-              }
-            </Text>
+        <Text style={{ marginTop: 8 }}>
+          Pay to Nasara
+        </Text>
 
-            <Text
-              style={{
-                marginTop: 5,
-                fontWeight:
-                  "bold",
-              }}
-            >
-              💰 GH₵
-              {" "}
-              {Number(
-                item.amount || 0
-              ).toLocaleString()}
-            </Text>
+        <Text>
+          MTN MoMo: 0539703374
+        </Text>
+      </View>
+    )}
 
-            <View
-              style={{
-                marginTop: 12,
-                alignSelf:
-                  "flex-start",
-                backgroundColor:
-                  getStatusColor(
-                    item.status
-                  ),
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 20,
-              }}
-            >
-
-              <Text
-                style={{
-                  color: "#fff",
-                  fontWeight:
-                    "bold",
-                }}
-              >
-                {item.status}
-              </Text>
-
-            </View>
-
-          </TouchableOpacity>
-        )}
+    <View
+      style={{
+        marginTop: 12,
+        alignSelf: "flex-start",
+        backgroundColor: getStatusColor(item.status),
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+      }}
+    >
+      <Text
+        style={{
+          color: "#fff",
+          fontWeight: "bold",
+        }}
+      >
+        {item.status}
+      </Text>
+    </View>
+  </TouchableOpacity>
+)}
       />
 
     </View>

@@ -1,5 +1,5 @@
+import { useRouter } from "expo-router";
 import { useState } from "react";
-
 import {
   Alert,
   Platform,
@@ -8,13 +8,9 @@ import {
   TextInput,
   TouchableOpacity,
 } from "react-native";
-
-import { useRouter } from "expo-router";
-
 import { supabase } from "../lib/supabase";
 
 export default function RequestDelivery() {
-
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
@@ -23,186 +19,91 @@ export default function RequestDelivery() {
   const [pickupAddress, setPickupAddress] = useState("");
   const [dropoffAddress, setDropoffAddress] = useState("");
   const [receiverPhone, setReceiverPhone] = useState("");
-  const [amount, setAmount] = useState("");
-
-  /* ================= CREATE DELIVERY ================= */
 
   async function createDelivery() {
-
     if (
       !itemName ||
       !pickupAddress ||
       !dropoffAddress ||
-      !receiverPhone ||
-      !amount
+      !receiverPhone
     ) {
-
       Alert.alert(
         "Missing Fields",
         "Please complete all fields"
       );
-
       return;
     }
 
     try {
-
       setLoading(true);
 
-      const {
-        data: authData,
-      } =
+      const { data: authData } =
         await supabase.auth.getUser();
 
-      const user =
-        authData?.user;
+      const user = authData?.user;
 
       if (!user) {
-
-        Alert.alert(
-          "Login Required"
-        );
-
+        Alert.alert("Login Required");
         setLoading(false);
-
         return;
       }
-
-      /* ================= OTP ================= */
 
       const otp =
         Math.floor(
           1000 + Math.random() * 9000
         ).toString();
 
-      /* ================= INSERT DELIVERY ================= */
-
-      const {
-        error,
-      } =
+      const { error } =
         await (supabase as any)
           .from("deliveries")
           .insert({
-
-            customer_id:
-              user.id,
-
-            item_name:
-              itemName,
-
-            pickup_address:
-              pickupAddress,
-
-            dropoff_address:
-              dropoffAddress,
-
-            receiver_phone:
-              receiverPhone,
-
-            amount:
-              Number(amount),
-
-            otp_code:
-              otp,
-
-            payment_status:
-              "pending",
-
-            status:
-              "awaiting_payment",
+            sender_id: user.id,
+            item_name: itemName,
+            pickup_address: pickupAddress,
+            dropoff_address: dropoffAddress,
+            receiver_phone: receiverPhone,
+            otp_code: otp,
+            payment_status: "pending",
+            status: "pending_pricing",
           });
 
       if (error) {
-
         Alert.alert(
           "Delivery Error",
           error.message
         );
-
         setLoading(false);
-
         return;
       }
 
-      /* ================= WEB POPUP ================= */
+      const msg =
+        "Delivery request submitted.\n\n" +
+        "Admin will review and set price.\n\n" +
+        "Receiver OTP: " +
+        otp +
+        "\n\nSave this OTP.";
 
       if (Platform.OS === "web") {
-
-        window.alert(
-
-          "DELIVERY CREATED SUCCESSFULLY\n\n" +
-
-          "Receiver OTP: " +
-          otp +
-
-          "\n\nSave this OTP. Rider will request it before delivery completion.\n\n" +
-
-          "PAYMENT REQUIRED\n\n" +
-
-          "Nasara\n" +
-          "MTN MOMO\n" +
-          "0539703374\n\n" +
-
-          "After payment admin will verify your delivery."
-
-        );
-
+        window.alert(msg);
       } else {
-
-        /* ================= MOBILE POPUP ================= */
-
-        Alert.alert(
-
-          "Delivery Created",
-
-          "Receiver OTP: " +
-          otp +
-
-          "\n\nSave this OTP. Rider will request it before delivery completion.\n\n" +
-
-          "Send payment to:\n\n" +
-
-          "Nasara\n" +
-          "MTN MOMO\n" +
-          "0539703374\n\n" +
-
-          "After payment admin will verify your delivery.",
-
-          [
-            {
-              text: "OK",
-            },
-          ]
-        );
+        Alert.alert("Submitted", msg);
       }
-
-      /* ================= RESET ================= */
 
       setItemName("");
       setPickupAddress("");
       setDropoffAddress("");
       setReceiverPhone("");
-      setAmount("");
 
       router.back();
-
     } catch (err: any) {
-
       console.log(err);
-
-      Alert.alert(
-        "Error",
-        err?.message
-      );
+      Alert.alert("Error", err?.message);
     }
 
     setLoading(false);
   }
 
-  /* ================= UI ================= */
-
   return (
-
     <ScrollView
       style={{
         flex: 1,
@@ -212,7 +113,6 @@ export default function RequestDelivery() {
         padding: 20,
       }}
     >
-
       <Text
         style={{
           fontSize: 30,
@@ -223,14 +123,7 @@ export default function RequestDelivery() {
         🚚 Request Delivery
       </Text>
 
-      {/* ITEM */}
-
-      <Text
-        style={{
-          marginBottom: 6,
-          fontWeight: "600",
-        }}
-      >
+      <Text style={{ marginBottom: 6, fontWeight: "600" }}>
         Item Name
       </Text>
 
@@ -247,14 +140,7 @@ export default function RequestDelivery() {
         }}
       />
 
-      {/* PICKUP */}
-
-      <Text
-        style={{
-          marginBottom: 6,
-          fontWeight: "600",
-        }}
-      >
+      <Text style={{ marginBottom: 6, fontWeight: "600" }}>
         Pickup Address
       </Text>
 
@@ -268,19 +154,12 @@ export default function RequestDelivery() {
           borderColor: "#ddd",
           borderRadius: 12,
           padding: 15,
-          marginBottom: 18,
           minHeight: 90,
+          marginBottom: 18,
         }}
       />
 
-      {/* DROPOFF */}
-
-      <Text
-        style={{
-          marginBottom: 6,
-          fontWeight: "600",
-        }}
-      >
+      <Text style={{ marginBottom: 6, fontWeight: "600" }}>
         Dropoff Address
       </Text>
 
@@ -294,19 +173,12 @@ export default function RequestDelivery() {
           borderColor: "#ddd",
           borderRadius: 12,
           padding: 15,
-          marginBottom: 18,
           minHeight: 90,
+          marginBottom: 18,
         }}
       />
 
-      {/* PHONE */}
-
-      <Text
-        style={{
-          marginBottom: 6,
-          fontWeight: "600",
-        }}
-      >
+      <Text style={{ marginBottom: 6, fontWeight: "600" }}>
         Receiver Phone
       </Text>
 
@@ -320,36 +192,9 @@ export default function RequestDelivery() {
           borderColor: "#ddd",
           borderRadius: 12,
           padding: 15,
-          marginBottom: 18,
-        }}
-      />
-
-      {/* AMOUNT */}
-
-      <Text
-        style={{
-          marginBottom: 6,
-          fontWeight: "600",
-        }}
-      >
-        Offer Amount (GH₵)
-      </Text>
-
-      <TextInput
-        value={amount}
-        onChangeText={setAmount}
-        keyboardType="numeric"
-        placeholder="Amount rider will earn from"
-        style={{
-          borderWidth: 1,
-          borderColor: "#ddd",
-          borderRadius: 12,
-          padding: 15,
           marginBottom: 30,
         }}
       />
-
-      {/* BUTTON */}
 
       <TouchableOpacity
         disabled={loading}
@@ -360,7 +205,6 @@ export default function RequestDelivery() {
           borderRadius: 14,
         }}
       >
-
         <Text
           style={{
             color: "#fff",
@@ -370,12 +214,10 @@ export default function RequestDelivery() {
           }}
         >
           {loading
-            ? "Creating..."
-            : "Create Delivery"}
+            ? "Submitting..."
+            : "Request Delivery"}
         </Text>
-
       </TouchableOpacity>
-
     </ScrollView>
   );
 }

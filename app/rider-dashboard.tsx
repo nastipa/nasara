@@ -221,96 +221,115 @@ useEffect(() => {
        
 
       /* ================= ONLINE CHECK ================= */
+const {
+  data: riderData,
+  error: riderError,
+} =
+  await (supabase as any)
+    .from("riders")
+    .select("*")
+    .eq(
+      "user_id",
+      user.id
+    )
+    .maybeSingle();
 
-      const {
-        data: riderData,
-      } =
-        await (supabase as any)
-          .from("riders")
-          .select("is_online")
-          .eq(
-            "user_id",
-            user.id
-          )
-          .single();
+if (
+  riderError ||
+  !riderData
+) {
 
-      if (
-        !riderData?.is_online
-      ) {
+  Alert.alert(
+    "Rider Error",
+    "Rider profile not found"
+  );
 
-        Alert.alert(
-          "Offline",
-          "Go online first"
-        );
+  setProcessingId("");
 
-        setProcessingId("");
+  return;
+}
 
-        return;
-      }
+/* ================= ONLINE CHECK ================= */
 
-      const {
-        error,
-      } =
-        await (supabase as any)
-          .from("deliveries")
-          .update({
+if (
+  riderData.is_online !== true
+) {
 
-            rider_id:
-              user.id,
+  Alert.alert(
+    "Offline",
+    "Go online first"
+  );
 
-            status:
-              "accepted",
+  setProcessingId("");
 
-            accepted_at:
-              new Date().toISOString(),
+  return;
+}
 
-            auto_assigned:
-              true,
-          })
-          .eq(
-            "id",
-            deliveryId
-          )
-          .eq(
-            "status",
-            "pending"
-          )
-          .is(
-            "rider_id",
-            null
-          );
+/* ================= ACCEPT DELIVERY ================= */
 
-      if (error) {
+const {
+  error,
+} =
+  await (supabase as any)
+    .from("deliveries")
+    .update({
 
-        Alert.alert(
-          "Accept Error",
-          error.message
-        );
+      rider_id:
+        user.id,
 
-        setProcessingId("");
+      status:
+        "accepted",
 
-        return;
-      }
+      accepted_at:
+        new Date().toISOString(),
 
-      Alert.alert(
-        "Accepted",
-        "Delivery accepted successfully"
-      );
+      auto_assigned:
+        true,
+    })
+    .eq(
+      "id",
+      deliveryId
+    )
+    .eq(
+      "status",
+      "pending"
+    )
+    .is(
+      "rider_id",
+      null
+    );
 
-      loadDeliveries();
+if (error) {
 
-    } catch (err: any) {
+  Alert.alert(
+    "Accept Error",
+    error.message
+  );
 
-      console.log(err);
+  setProcessingId("");
 
-      Alert.alert(
-        "Error",
-        err?.message
-      );
-    }
+  return;
+}
 
-    setProcessingId("");
-  }
+Alert.alert(
+  "Accepted",
+  "Delivery accepted successfully"
+);
+
+loadDeliveries();
+
+} catch (err: any) {
+
+  console.log(err);
+
+  Alert.alert(
+    "Error",
+    err?.message
+  );
+}
+
+setProcessingId("");
+}
 
   /* ================= CANCEL DELIVERY ================= */
 
@@ -769,7 +788,8 @@ async function verifyDeliveryOtp() {
     );
   }
 /* ================= TOGGLE ONLINE ================= */
-      async function toggleOnline() {
+
+async function toggleOnline() {
 
   try {
 
@@ -786,19 +806,44 @@ async function verifyDeliveryOtp() {
     const newStatus =
       !isOnline;
 
-    await (supabase as any)
-      .from("riders")
-      .upsert({
+    /* ================= UPDATE EXISTING RIDER ================= */
 
-        user_id:
-          user.id,
+    const {
+      error,
+    } =
+      await (supabase as any)
+        .from("riders")
+        .update({
 
-        is_online:
-          newStatus,
-      });
+          is_online:
+            newStatus,
+        })
+        .eq(
+          "user_id",
+          user.id
+        );
+
+    if (error) {
+
+      console.log(error);
+
+      Alert.alert(
+        "Status Error",
+        error.message
+      );
+
+      return;
+    }
 
     setIsOnline(
       newStatus
+    );
+
+    Alert.alert(
+      "Success",
+      newStatus
+        ? "You are now online"
+        : "You are now offline"
     );
 
   } catch (err) {

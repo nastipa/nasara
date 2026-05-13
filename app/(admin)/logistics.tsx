@@ -6,8 +6,9 @@ import {
   FlatList,
   RefreshControl,
   Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -25,7 +26,8 @@ export default function LogisticsAdmin() {
 
   const [processingId, setProcessingId] =
     useState("");
-
+const [priceInputs, setPriceInputs] =
+  useState<Record<string, string>>({});
   /* ================= LOAD ================= */
 
   async function loadDeliveries() {
@@ -106,6 +108,73 @@ export default function LogisticsAdmin() {
 
   }, []);
 
+/* ================= SET PRICE ================= */
+
+async function setPrice(
+  deliveryId: string
+) {
+  const price =
+    priceInputs[deliveryId];
+
+  if (!price) {
+    Alert.alert(
+      "Enter price"
+    );
+    return;
+  }
+
+  try {
+    setProcessingId(
+      deliveryId
+    );
+
+    const { error } =
+      await (supabase as any)
+        .from("deliveries")
+        .update({
+          amount:
+            Number(price),
+          status:
+            "awaiting_payment",
+        })
+        .eq(
+          "id",
+          deliveryId);
+
+    if (error) {
+      Alert.alert(
+        "Error",
+        error.message
+      );
+      setProcessingId("");
+      return;
+    }
+
+    setPriceInputs(
+      (prev) => ({
+        ...prev,
+        [deliveryId]:
+          "",
+      })
+    );
+
+    await loadDeliveries();
+
+    Alert.alert(
+      "Success",
+      "Price added"
+    );
+
+  } catch (err: any) {
+
+    Alert.alert(
+      "Error",
+      err?.message
+    );
+  }
+
+  setProcessingId("");
+}
   /* ================= VERIFY PAYMENT ================= */
 
  async function verifyPayment(
@@ -158,10 +227,74 @@ export default function LogisticsAdmin() {
       );
 
       setProcessingId("");
+      
 
       return;
     }
+async function setPrice(
+  deliveryId: string
+) {
+  const price =
+    priceInputs[deliveryId];
 
+  if (!price) {
+    Alert.alert(
+      "Enter price"
+    );
+    return;
+  }
+
+  try {
+    setProcessingId(
+      deliveryId
+    );
+
+    const { error } =
+      await (supabase as any)
+        .from("deliveries")
+        .update({
+          amount:
+            Number(price),
+          status:
+            "awaiting_payment",
+        })
+        .eq(
+          "id",
+          deliveryId
+        );
+
+    if (error) {
+      Alert.alert(
+        "Error",
+        error.message
+      );
+      setProcessingId("");
+      return;
+    }
+
+    setPriceInputs(
+      (prev) => ({
+        ...prev,
+        [deliveryId]:
+          "",
+      })
+    );
+
+    await loadDeliveries();
+
+    Alert.alert(
+      "Success",
+      "Price added"
+    );
+  } catch (err: any) {
+    Alert.alert(
+      "Error",
+      err?.message
+    );
+  }
+
+  setProcessingId("");
+}
     /* ================= FORCE REFRESH ================= */
 
     await loadDeliveries();
@@ -520,7 +653,73 @@ export default function LogisticsAdmin() {
               </Text>
 
             </View>
+            {item.status ===
+  "pending_pricing" && (
+  <View
+    style={{
+      marginTop: 15,
+    }}
+  >
+    <TextInput
+      value={
+        priceInputs[
+          item.id
+        ] || ""
+      }
+      onChangeText={(
+        text
+      ) =>
+        setPriceInputs(
+          (prev) => ({
+            ...prev,
+            [item.id]:
+              text,
+          })
+        )
+      }
+      keyboardType="numeric"
+      placeholder="Enter delivery price"
+      style={{
+        borderWidth: 1,
+        borderColor:
+          "#ddd",
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 10,
+      }}
+    />
 
+    <TouchableOpacity
+      disabled={
+        processingId ===
+        item.id
+      }
+      onPress={() =>
+        setPrice(
+          item.id
+        )
+      }
+      style={{
+        backgroundColor:
+          "#2563eb",
+        padding: 14,
+        borderRadius: 10,
+      }}
+    >
+      <Text
+        style={{
+          color: "#fff",
+          textAlign:
+            "center",
+          fontWeight:
+            "bold",
+        }}
+      >
+        Set Price
+      </Text>
+    </TouchableOpacity>
+  </View>
+)}
             {/* ================= VERIFY PAYMENT ================= */}
 
             {item.status ===
