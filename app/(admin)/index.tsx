@@ -42,6 +42,8 @@ export default function AdminDashboard() {
       <Tile label="Ban / Unban User" route="/(admin)/users" />
       <Tile label="Report" route="/(admin)/report" />
       <Tile label="Verify Badges" route="/(admin)/verifications" />
+      <Tile label="Match Mentor" route="/(admin)/mentor-matches" />
+      <Tile label="Approve Mentor" route="/(admin)/approve-mentors" />
       
 
 

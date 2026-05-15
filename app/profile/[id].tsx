@@ -19,7 +19,6 @@ import {
 } from "../../lib/blockUser";
 
 import { supabase } from "../../lib/supabase";
-
 /* ================= CLOUDINARY ================= */
 async function uploadToCloudinary(
   file: any
@@ -107,9 +106,8 @@ export default function ProfileScreen() {
   }>();
 
   const profileId = Array.isArray(id)
-    ? id[0]
-    : id;
-
+  ? id[0]
+  : id;
   const [
     sessionId,
     setSessionId,
@@ -162,8 +160,12 @@ async function trackProfileView(
 ) {
   try {
     /* DON'T COUNT SELF VIEW */
-    if (!targetId) return;
-
+    const profileId =
+  typeof id === "string"
+    ? id
+    : Array.isArray(id)
+    ? id[0]
+    : null;
     if (viewerId === targetId) return;
 
     /* CHECK EXISTING */
@@ -228,6 +230,8 @@ async function trackProfileView(
 
       const targetId =
         profileId ?? myId;
+      const openProfileId =
+  profileId || myId;
 
       if (!targetId) return;
       if (targetId && myId !== targetId) {
@@ -545,71 +549,77 @@ async function trackProfileView(
         </Text>
       </TouchableOpacity>
 
-      {/* ================= FOLLOW STATS ================= */}
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent:
-            "center",
-          marginBottom: 20,
-          gap: 30,
-        }}
-      >
-        <View
-          style={{
-            alignItems:
-              "center",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 20,
-              fontWeight:
-                "bold",
-            }}
-          >
-            {
-              followersCount
-            }
-          </Text>
+     {/* ================= FOLLOW STATS ================= */}
+<View
+  style={{
+    flexDirection: "row",
+    justifyContent: "center",
+    marginBottom: 20,
+    gap: 30,
+  }}
+>
+  {/* FOLLOWERS */}
+  <TouchableOpacity
+    onPress={() => {
+      if (profileId) {
+        router.push(
+          `/followers?id=${profileId}`
+        );
+      }
+    }}
+    style={{
+      alignItems: "center",
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 20,
+        fontWeight: "bold",
+      }}
+    >
+      {followersCount}
+    </Text>
 
-          <Text
-            style={{
-              color: "gray",
-            }}
-          >
-            Followers
-          </Text>
-        </View>
+    <Text
+      style={{
+        color: "gray",
+      }}
+    >
+      Followers
+    </Text>
+  </TouchableOpacity>
 
-        <View
-          style={{
-            alignItems:
-              "center",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 20,
-              fontWeight:
-                "bold",
-            }}
-          >
-            {
-              followingCount
-            }
-          </Text>
+  {/* FOLLOWING */}
+  <TouchableOpacity
+    onPress={() => {
+      if (profileId) {
+        router.push(
+          `/following?id=${profileId}`
+        );
+      }
+    }}
+    style={{
+      alignItems: "center",
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 20,
+        fontWeight: "bold",
+      }}
+    >
+      {followingCount}
+    </Text>
 
-          <Text
-            style={{
-              color: "gray",
-            }}
-          >
-            Following
-          </Text>
-        </View>
-      </View>
-
+    <Text
+      style={{
+        color: "gray",
+      }}
+    >
+      Following
+    </Text>
+  </TouchableOpacity>
+</View>
       <View
         style={{
           flexDirection: "row",
@@ -933,5 +943,6 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
     marginTop: 10,
-  },
+  
+},
 });

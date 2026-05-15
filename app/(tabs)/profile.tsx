@@ -71,7 +71,11 @@ export default function ProfileScreen() {
 const [followersCount, setFollowersCount] = useState(0);
 const [followingCount, setFollowingCount] = useState(0);
 const [isFollowing, setIsFollowing] = useState(false);
-  
+  const [mentorBadge, setMentorBadge] =
+  useState(false);
+
+const [menteeBadge, setMenteeBadge] =
+  useState(false);
 
   /* ===== MOMO ===== */
   const [momoName, setMomoName] = useState("");
@@ -215,6 +219,13 @@ if (profile?.verification_expires_at) {
 
 setVerificationStatus(status);
 setVerified(isVerified);
+setMentorBadge(
+  profile.mentor_badge || false
+);
+
+setMenteeBadge(
+  profile.mentee_badge || false
+);
       /* PHONE VERIFICATION */
      /* VERIFICATION STATUS (FIXED) */
 setVerificationStatus(
@@ -590,7 +601,24 @@ return (
   )}
 </View>
       <Text style={styles.email}>{session.user.email}</Text>
-      {/* ===== FOLLOW STATS ===== */}
+      {/* ===== MENTOR BADGE ===== */}
+{mentorBadge && (
+  <View style={styles.badge}>
+    <Text style={styles.badgeText}>
+      Mentor
+    </Text>
+  </View>
+)}
+
+{/* ===== MENTEE BADGE ===== */}
+{menteeBadge && (
+  <View style={styles.badge2}>
+    <Text style={styles.badgeText}>
+      Mentee
+    </Text>
+  </View>
+)}
+     {/* ===== FOLLOW STATS ===== */}
 <View
   style={{
     flexDirection: "row",
@@ -599,7 +627,17 @@ return (
     gap: 30,
   }}
 >
-  <View
+  {/* FOLLOWERS */}
+  <TouchableOpacity
+    onPress={() =>
+      router.push(
+        `/followers?id=${
+          user
+            ? String(user)
+            : session.user.id
+        }`
+      )
+    }
     style={{
       alignItems: "center",
     }}
@@ -614,9 +652,19 @@ return (
     </Text>
 
     <Text>Followers</Text>
-  </View>
+  </TouchableOpacity>
 
-  <View
+  {/* FOLLOWING */}
+  <TouchableOpacity
+    onPress={() =>
+      router.push(
+        `/following?id=${
+          user
+            ? String(user)
+            : session.user.id
+        }`
+      )
+    }
     style={{
       alignItems: "center",
     }}
@@ -631,7 +679,7 @@ return (
     </Text>
 
     <Text>Following</Text>
-  </View>
+  </TouchableOpacity>
 </View>
       <View style={{ flexDirection: "row", justifyContent: "space-around", marginVertical: 15 }}>
   
@@ -880,7 +928,31 @@ onPress={followUser}
             router.push("/auctions"); // app/auction/index
           }}
         />
-        
+       
+ 
+ 
+  <ActionTile
+    label="My Mentors"
+    bg="#2563eb"
+    onPress={() => {
+      setShowActionsModal(false);
+
+      router.push("/mentor/my-mentor");
+    }}
+  />
+
+  <ActionTile
+    label="My Mentees"
+    bg="#16a34a"
+    onPress={() => {
+      setShowActionsModal(false);
+
+      router.push(
+        "/mentor/my-mentees"
+      );
+    }}
+  />
+
  
       </View>
 
@@ -1095,6 +1167,40 @@ deleteText: {
   color: "white",
   fontWeight: "bold",
 },
+badge: {
+  backgroundColor: "#2563eb",
 
+  paddingHorizontal: 10,
+
+  paddingVertical: 5,
+
+  borderRadius: 20,
+
+  alignSelf: "center",
+
+  marginBottom: 8,
+},
+
+badge2: {
+  backgroundColor: "#16a34a",
+
+  paddingHorizontal: 10,
+
+  paddingVertical: 5,
+
+  borderRadius: 20,
+
+  alignSelf: "center",
+
+  marginBottom: 8,
+},
+
+badgeText: {
+  color: "#fff",
+
+  fontWeight: "bold",
+
+  fontSize: 12,
+},
   
 });

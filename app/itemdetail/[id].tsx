@@ -337,18 +337,6 @@ export default function ItemDetail() {
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={startChat}
-                style={{
-                  backgroundColor: "#2563eb",
-                  padding: 12,
-                  borderRadius: 6,
-                }}
-              >
-                <Text style={{ color: "white", textAlign: "center" }}>
-                  Chat Seller
-                </Text>
-              </TouchableOpacity>
 
               {item.is_negotiable && (
                 <TouchableOpacity

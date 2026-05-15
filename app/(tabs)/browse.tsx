@@ -1094,11 +1094,13 @@ style={{ backgroundColor: "#0f172a" }}
       ⚙️ Settings
     </Text>
   </TouchableOpacity>
+  
 </View>
+
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/ihJRgzy97QG8FXXuv1VqBu.apk"
+      "https://expo.dev/artifacts/eas/fhbmdTHJ3sVDpUoTyDTV6N.apk"
     )
   }
   style={{
@@ -1109,6 +1111,7 @@ style={{ backgroundColor: "#0f172a" }}
     marginBottom: 10,
   }}
 >
+  
   <Text style={{ color: "white", fontWeight: "bold" }}>
     📱 Download Android App
   </Text>
@@ -1298,22 +1301,73 @@ style={{ backgroundColor: "#0f172a" }}
     🔗 Share
   </Text>
 </TouchableOpacity>
-            {/* WHATSAPP BUTTON */}
-{item.type === "item" && item.seller_phone && (
+            {/* CHAT BUTTON */}
+{item.type === "item" && item.user_id && (
   <TouchableOpacity
-    onPress={() =>
-      Linking.openURL(`https://wa.me/${item.seller_phone}`)
-    }
+    onPress={async () => {
+      const { data } = await supabase.auth.getUser();
+
+      const buyerId = data.user?.id;
+
+      if (!buyerId) {
+        router.push("/(auth)/login");
+        return;
+      }
+
+      if (buyerId === item.user_id) {
+        Alert.alert("This is your own item");
+        return;
+      }
+
+      try {
+        const { data: existing } = await (supabase as any)
+          .from("chat_rooms")
+          .select("*")
+          .eq("item_id", item.id)
+          .eq("buyer_id", buyerId)
+          .eq("seller_id", item.user_id)
+          .maybeSingle();
+
+        let roomId = existing?.id;
+
+        if (!roomId) {
+          const { data: newRoom, error } = await (supabase as any)
+            .from("chat_rooms")
+            .insert({
+              item_id: item.id,
+              buyer_id: buyerId,
+              seller_id: item.user_id,
+            })
+            .select()
+            .single();
+
+          if (error) {
+            Alert.alert("Chat failed", error.message);
+            return;
+          }
+
+          roomId = newRoom.id;
+        }
+
+        router.push({
+          pathname: "/chat/[id]",
+          params: { id: roomId },
+        });
+
+      } catch (err: any) {
+        Alert.alert("Error", "Could not open chat");
+      }
+    }}
     style={{
       marginTop: 6,
-      backgroundColor: "#25D366",
+      backgroundColor: "#2563eb",
       paddingVertical: 6,
       borderRadius: 6,
       alignItems: "center",
     }}
   >
     <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>
-      💬 WhatsApp Seller
+      💬 Chat Seller
     </Text>
   </TouchableOpacity>
 )}

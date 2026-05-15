@@ -1,11 +1,11 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { getOrCreateRoom } from "../lib/chat";
 import { supabase } from "../lib/supabase";

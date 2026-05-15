@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -48,6 +49,12 @@ export default function SettingsScreen() {
   const logoutUser = async () => {
     try {
       await supabase.auth.signOut();
+
+      if (Platform.OS === "web") {
+        window.location.href = "/browse";
+        return;
+      }
+
       router.replace("/browse");
     } catch (error: any) {
       Alert.alert(
@@ -58,67 +65,90 @@ export default function SettingsScreen() {
   };
 
   /* ================= DELETE ACCOUNT ================= */
-  const handleDelete = async () => {
+  const confirmDelete = () => {
+    // WEB FIX
+    if (Platform.OS === "web") {
+      const ok = window.confirm(
+        "Are you sure you want to delete your account? This action is permanent."
+      );
+
+      if (ok) {
+        deleteAccount();
+      }
+
+      return;
+    }
+
     Alert.alert(
       "Delete Account",
-      "This action is permanent. Are you sure?",
+      "Are you sure you want to delete your account?",
       [
         {
           text: "Cancel",
           style: "cancel",
         },
-
         {
-          text: "Yes, Delete",
+          text: "Yes",
           style: "destructive",
-
-          onPress: async () => {
-            try {
-              setDeleting(true);
-
-              const { error } =
-                await supabase.rpc(
-                  "delete_my_account"
-                );
-
-              if (error) {
-                console.log(error);
-
-                Alert.alert(
-                  "Delete Error",
-                  error.message
-                );
-
-                setDeleting(false);
-                return;
-              }
-
-              await supabase.auth.signOut();
-
-              Alert.alert(
-                "Deleted",
-                "Account removed successfully"
-              );
-
-              router.replace(
-                "/browse"
-              );
-
-            } catch (e: any) {
-              console.log(e);
-
-              Alert.alert(
-                "Error",
-                e.message ||
-                  "Failed to delete account"
-              );
-            }
-
-            setDeleting(false);
-          },
+          onPress: deleteAccount,
         },
       ]
     );
+  };
+
+  const deleteAccount = async () => {
+    try {
+      setDeleting(true);
+
+      const { error } =
+        await supabase.rpc(
+          "delete_my_account"
+        );
+
+      if (error) {
+        console.log(error);
+
+        Alert.alert(
+          "Delete Error",
+          error.message
+        );
+
+        setDeleting(false);
+        return;
+      }
+
+      await supabase.auth.signOut();
+
+      // WEB FIX
+      if (Platform.OS === "web") {
+        alert(
+          "Account deleted successfully"
+        );
+
+        window.location.href =
+          "/browse";
+
+        return;
+      }
+
+      Alert.alert(
+        "Deleted",
+        "Account removed successfully"
+      );
+
+      router.replace("/browse");
+
+    } catch (e: any) {
+      console.log(e);
+
+      Alert.alert(
+        "Error",
+        e.message ||
+          "Failed to delete account"
+      );
+    }
+
+    setDeleting(false);
   };
 
   return (
@@ -157,7 +187,7 @@ export default function SettingsScreen() {
           {/* DELETE ACCOUNT */}
           <TouchableOpacity
             style={styles.deleteBtn}
-            onPress={handleDelete}
+            onPress={confirmDelete}
             disabled={deleting}
           >
             {deleting ? (

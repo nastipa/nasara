@@ -353,6 +353,12 @@ export default function Sell() {
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/go-live")}>
             <Text style={styles.quickText}>🔴 Go Normal Live</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/mentor/apply")}>
+            <Text style={styles.quickText}>  🎓 Become a Mentor</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/mentor/request")}>
+            <Text style={styles.quickText}>  🎓 Find a Mentor</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
