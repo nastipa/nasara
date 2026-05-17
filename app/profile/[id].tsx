@@ -444,7 +444,65 @@ async function trackProfileView(
             : 0
       );
     };
+const openExistingChat = async () => {
+  if (!profileId) return;
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const myId = user.id;
+
+  try {
+    // 1. Get ALL rooms where I participate
+    const { data: myRooms } = await (supabase as any)
+      .from("chat_participants")
+      .select("room_id")
+      .eq("user_id", myId);
+
+    const myRoomIds = (myRooms || []).map((r: any) => r.room_id);
+
+    if (myRoomIds.length > 0) {
+      // 2. Find shared room with other user
+      const { data: shared } = await (supabase as any)
+        .from("chat_participants")
+        .select("room_id")
+        .eq("user_id", profileId)
+        .in("room_id", myRoomIds);
+
+      if (shared?.length) {
+        router.push(`/chat/${shared[0].room_id}`);
+        return;
+      }
+    }
+
+    // 3. ONLY create if absolutely no shared room exists
+    const { data: room, error } = await (supabase as any)
+      .from("chat_rooms")
+      .insert({
+        buyer_id: myId,
+        seller_id: profileId,
+        item_id: null,
+      })
+      .select("id")
+      .single();
+
+    if (error || !room) {
+      console.log("create error:", error);
+      return;
+    }
+
+    await (supabase as any)
+      .from("chat_participants")
+      .insert([
+        { room_id: room.id, user_id: myId },
+        { room_id: room.id, user_id: profileId },
+      ]);
+
+    router.push(`/chat/${room.id}`);
+  } catch (e) {
+    console.log("chat open error:", e);
+  }
+};
   /* ================= PICK IMAGE ================= */
   const pickAvatar =
     async () => {
@@ -656,11 +714,16 @@ async function trackProfileView(
         )}
       </View>
 
-      <TextInput
-        value={phone}
-        editable={isMe}
-        style={styles.input}
-      />
+      {isMe ? (
+  <TextInput
+    value={phone}
+    onChangeText={setPhone}
+    editable={true}
+    placeholder="Phone Number"
+    keyboardType="phone-pad"
+    style={styles.input}
+  />
+) : null}
 
       <TextInput
         value={location}
@@ -706,7 +769,9 @@ async function trackProfileView(
             </Text>
           </TouchableOpacity>
         )}
-
+       <TouchableOpacity onPress={openExistingChat}>
+  <Text>Message</Text>
+</TouchableOpacity>
       {/* ================= SAVE ================= */}
       {isMe && (
         <TouchableOpacity

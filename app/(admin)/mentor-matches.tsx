@@ -10,9 +10,13 @@ import {
   View,
 } from "react-native";
 
+import { useRouter } from "expo-router";
+
 import { supabase } from "../../lib/supabase";
 
 export default function MentorMatchesScreen() {
+  const router = useRouter();
+
   const [loading, setLoading] =
     useState(true);
 
@@ -26,11 +30,9 @@ export default function MentorMatchesScreen() {
     fetchData();
   }, []);
 
-  /*
-   =========================
-   LOAD DATA
-   =========================
-  */
+  /* =========================
+     LOAD DATA
+  ========================= */
 
   const fetchData =
     async () => {
@@ -38,7 +40,9 @@ export default function MentorMatchesScreen() {
         setLoading(true);
 
         /*
+         =========================
          LOAD APPROVED MENTORS
+         =========================
         */
 
         const {
@@ -47,30 +51,38 @@ export default function MentorMatchesScreen() {
         } = await (supabase as any)
           .from("mentors")
           .select("*")
-          .eq("approved", true);
+          .eq("approved", true)
+          .order("created_at", {
+            ascending: false,
+          });
 
         if (mentorError) {
           console.log(
+            "mentorError:",
             mentorError
           );
         }
 
         /*
+         =========================
          LOAD PENDING REQUESTS
+         =========================
         */
 
         const {
           data: requestData,
           error: requestError,
         } = await (supabase as any)
-          .from(
-            "mentor_requests"
-          )
+          .from("mentor_requests")
           .select("*")
-          .eq("status", "pending");
+          .eq("status", "pending")
+          .order("created_at", {
+            ascending: false,
+          });
 
         if (requestError) {
           console.log(
+            "requestError:",
             requestError
           );
         }
@@ -90,11 +102,9 @@ export default function MentorMatchesScreen() {
       setLoading(false);
     };
 
-  /*
-   =========================
-   MATCH MENTOR
-   =========================
-  */
+  /* =========================
+     MATCH MENTOR
+  ========================= */
 
   const matchMentor =
     async (
@@ -104,74 +114,44 @@ export default function MentorMatchesScreen() {
       try {
 
         /*
- =========================
- CREATE / FIND CHAT ROOM
- =========================
-*/
+         =========================
+         CHECK EXISTING MATCH
+         =========================
+        */
 
-let roomId = null;
+        const {
+          data: existingMatch,
+        } = await (supabase as any)
+          .from("mentor_matches")
+          .select("id")
+          .eq(
+            "mentor_id",
+            mentor.user_id
+          )
+          .eq(
+            "mentee_id",
+            request.user_id
+          )
+          .maybeSingle();
 
-/* CHECK EXISTING ROOM */
+        if (existingMatch) {
+          Alert.alert(
+            "Already Matched",
+            "This mentor and mentee are already matched."
+          );
 
-const {
-  data: existingRoom,
-} = await (supabase as any)
-  .from("chat_rooms")
-  .select("id")
-  .or(
-    `and(buyer_id.eq.${mentor.user_id},seller_id.eq.${request.user_id}),and(buyer_id.eq.${request.user_id},seller_id.eq.${mentor.user_id})
-  `)
-  .maybeSingle();
+          return;
+        }
 
-if (existingRoom) {
-  roomId =
-    existingRoom.id;
-}
-
-/* CREATE ROOM IF NONE EXISTS */
-
-if (!roomId) {
-  const {
-    data: newRoom,
-    error: roomError,
-  } = await (supabase as any)
-    .from("chat_rooms")
-    .insert({
-      buyer_id:
-        mentor.user_id,
-
-      seller_id:
-        request.user_id,
-
-      item_id: null,
-    })
-    .select("id")
-    .single();
-
-  if (roomError) {
-    console.log(
-      "roomError:",
-      roomError
-    );
-
-    Alert.alert(
-      "Error",
-      roomError.message
-    );
-
-    return;
-  }
-
-  roomId =
-    newRoom.id;
-}
         /*
          =========================
          CREATE MATCH
          =========================
         */
 
-        const { error } =
+        const {
+          error: matchError,
+        } =
           await (supabase as any)
             .from(
               "mentor_matches"
@@ -192,23 +172,23 @@ if (!roomId) {
               field:
                 request.field,
 
-              mentor_whatsapp:
-                mentor.whatsapp ||
-                mentor.whatsapp_number ||
-                "",
+              mentor_phone:
+                mentor.phone || "",
 
-              mentee_whatsapp:
-                request.whatsapp ||
-                "",
+              mentor_email:
+                mentor.email || "",
 
-              room_id:
-                roomId,
+              mentee_phone:
+                request.phone || "",
+
+              mentee_email:
+                request.email || "",
             });
 
-        if (error) {
+        if (matchError) {
           Alert.alert(
             "Error",
-            error.message
+            matchError.message
           );
 
           return;
@@ -220,33 +200,18 @@ if (!roomId) {
          =========================
         */
 
-        const {
-          error:
-            requestUpdateError,
-        } =
-          await (supabase as any)
-            .from(
-              "mentor_requests"
-            )
-            .update({
-              status:
-                "matched",
-            })
-            .eq(
-              "id",
-              request.id
-            );
-
-        if (
-          requestUpdateError
-        ) {
-          Alert.alert(
-            "Error",
-            requestUpdateError.message
+        await (supabase as any)
+          .from(
+            "mentor_requests"
+          )
+          .update({
+            status:
+              "matched",
+          })
+          .eq(
+            "id",
+            request.id
           );
-
-          return;
-        }
 
         /*
          =========================
@@ -256,7 +221,7 @@ if (!roomId) {
 
         await (supabase as any)
           .from("follows")
-          .insert([
+          .upsert([
             {
               follower_id:
                 mentor.user_id,
@@ -276,7 +241,7 @@ if (!roomId) {
 
         /*
          =========================
-         BADGES
+         ADD BADGES
          =========================
         */
 
@@ -320,8 +285,8 @@ if (!roomId) {
               title:
                 "New Mentee Assigned",
 
-              body: `${request.full_name} has been assigned to you.,
-          `},
+              body: `${request.full_name} has been matched with you on Nasara.,
+            `},
 
             {
               user_id:
@@ -330,108 +295,9 @@ if (!roomId) {
               title:
                 "Mentor Match Found",
 
-              body: `You were matched with ${mentor.full_name}.,
+              body: `You have been matched with ${mentor.full_name} on Nasara.,
             `},
           ]);
-
-        /*
-         =========================
-         SYSTEM MESSAGES
-         =========================
-        */
-
-        const mentorMessage =
-          `🎉 You have been matched with a mentee.
-
-Mentee:
-${request.full_name}
-
-Field Needed:
-${request.field}
-
-Goals:
-${request.goals || "Not provided"}
-
-WhatsApp:
-${request.whatsapp || "Not provided"}
-
-Email:
-${request.email || "Not provided"}
-
-Please reach out respectfully.
-
-— Nasara Team`;
-
-        const menteeMessage =
-          `🎉 You have been matched with a mentor.
-
-Mentor:
-${mentor.full_name}
-
-Field:
-${mentor.field}
-
-WhatsApp:
-${mentor.whatsapp || "Not provided"}
-
-Email:
-${mentor.email || "Not provided"}
-
-Please reach out respectfully and begin your mentorship journey.
-
-— Nasara Team`;
-
-        if (roomId) {
-          await (supabase as any)
-            .from("messages")
-            .insert([
-              {
-                room_id:
-                  roomId,
-
-                sender_id:
-                  mentor.user_id,
-
-                text:
-                  mentorMessage,
-
-                topic:
-                  "system",
-
-                extension:
-                  "text",
-
-                inserted_at:
-                  new Date().toISOString(),
-
-                updated_at:
-                  new Date().toISOString(),
-              },
-
-              {
-                room_id:
-                  roomId,
-
-                sender_id:
-                  request.user_id,
-
-                text:
-                  menteeMessage,
-
-                topic:
-                  "system",
-
-                extension:
-                  "text",
-
-                inserted_at:
-                  new Date().toISOString(),
-
-                updated_at:
-                  new Date().toISOString(),
-              },
-            ]);
-        }
 
         /*
          =========================
@@ -449,8 +315,8 @@ Please reach out respectfully and begin your mentorship journey.
 
         Alert.alert(
           "Success",
-          `${mentor.full_name} matched with ${request.full_name}
-        `);
+          `${mentor.full_name} matched with ${request.full_name}`
+        );
 
       } catch (e: any) {
         console.log(e);
@@ -462,11 +328,9 @@ Please reach out respectfully and begin your mentorship journey.
       }
     };
 
-  /*
-   =========================
-   RENDER REQUEST
-   =========================
-  */
+  /* =========================
+     RENDER REQUEST
+  ========================= */
 
   const renderRequest = ({
     item,
@@ -481,6 +345,24 @@ Please reach out respectfully and begin your mentorship journey.
           Needs: {item.field}
         </Text>
 
+        {!!item.occupation && (
+          <Text style={styles.info}>
+            Occupation: {item.occupation}
+          </Text>
+        )}
+
+        {!!item.phone && (
+          <Text style={styles.info}>
+            Phone: {item.phone}
+          </Text>
+        )}
+
+        {!!item.email && (
+          <Text style={styles.info}>
+            Email: {item.email}
+          </Text>
+        )}
+
         {!!item.goals && (
           <Text style={styles.goals}>
             {item.goals}
@@ -494,8 +376,7 @@ Please reach out respectfully and begin your mentorship journey.
         {mentors.length ===
         0 ? (
           <Text>
-            No approved mentors
-            yet
+            No approved mentors yet
           </Text>
         ) : (
           mentors.map(
@@ -535,11 +416,9 @@ Please reach out respectfully and begin your mentorship journey.
     );
   };
 
-  /*
-   =========================
-   LOADING
-   =========================
-  */
+  /* =========================
+     LOADING
+  ========================= */
 
   if (loading) {
     return (
@@ -555,11 +434,9 @@ Please reach out respectfully and begin your mentorship journey.
     );
   }
 
-  /*
-   =========================
-   UI
-   =========================
-  */
+  /* =========================
+     UI
+  ========================= */
 
   return (
     <View style={styles.container}>
@@ -589,8 +466,7 @@ Please reach out respectfully and begin your mentorship journey.
               marginTop: 40,
             }}
           >
-            No pending mentee
-            requests
+            No pending mentee requests
           </Text>
         }
       />
@@ -656,6 +532,12 @@ const styles =
 
       fontWeight:
         "600",
+    },
+
+    info: {
+      marginTop: 6,
+
+      color: "#444",
     },
 
     goals: {

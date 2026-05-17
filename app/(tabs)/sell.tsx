@@ -129,13 +129,13 @@ export default function Sell() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [location, setLocation] = useState("");
-  const [phone, setPhone] = useState("");
+
 
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
 
   const [category, setCategory] = useState("");
-  const [imageUri, setImageUri] = useState<string | null>(null);
+ const [imageUris, setImageUris] = useState<string[]>([]);
   const [videoUri, setVideoUri] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
@@ -170,33 +170,50 @@ export default function Sell() {
 
   /* ================= PICK ================= */
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.6,
+  const res =
+    await ImagePicker.launchImageLibraryAsync({
+      mediaTypes:
+        ImagePicker.MediaTypeOptions.Images,
+
+      allowsMultipleSelection: true,
+
+      quality: 0.7,
     });
 
-    if (!res.canceled) {
-      setImageUri(res.assets[0].uri);
-      setVideoUri(null);
-    }
-  };
+  if (!res.canceled) {
+    const newUris =
+      res.assets.map(
+        (a) => a.uri
+      );
 
-  const pickVideo = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+    setImageUris((prev) => [
+      ...prev,
+      ...newUris,
+    ]);
+
+    setVideoUri(null);
+  }
+};
+const pickVideo = async () => {
+  const res =
+    await ImagePicker.launchImageLibraryAsync({
+      mediaTypes:
+        ImagePicker.MediaTypeOptions.Videos,
     });
 
-    if (!res.canceled) {
-      setVideoUri(res.assets[0].uri);
-      setImageUri(null);
-    }
-  };
+  if (!res.canceled) {
+    setVideoUri(
+      res.assets[0].uri
+    );
 
+    setImageUris([]);
+  }
+};
   /* ================= POST ================= */
   const postItem = async () => {
     if (loading) return;
 
-    if (!title || !phone || !category) {
+    if (  !category) {
       Alert.alert("Fill required fields");
       return;
     }
@@ -215,30 +232,53 @@ export default function Sell() {
     }
 
     try {
-      let imageUrl = null;
-      let videoUrl = null;
+     let imageUrls: string[] = [];
+     
 
       /* ===== PARALLEL UPLOAD ===== */
-      const [img, vid] = await Promise.all([
-        imageUri
-          ? (async () => {
-              const compressed = await ImageManipulator.manipulateAsync(
-                imageUri,
-                [{ resize: { width: 800 } }],
-                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-              );
-              return await uploadFile(compressed.uri, "image", setProgress);
-            })()
-          : null,
+     let uploadedImages: string[] =
+  [];
 
-        videoUri
-          ? uploadFile(videoUri, "video", setProgress)
-          : null,
-      ]);
+for (const uri of imageUris) {
+  const compressed =
+    await ImageManipulator.manipulateAsync(
+      uri,
+      [
+        {
+          resize: {
+            width: 1200,
+          },
+        },
+      ],
+      {
+        compress: 0.7,
+        format:
+          ImageManipulator.SaveFormat.JPEG,
+      }
+    );
 
-      imageUrl = img;
-      videoUrl = vid;
+  const uploaded =
+    await uploadFile(
+      compressed.uri,
+      "image",
+      setProgress
+    );
 
+  uploadedImages.push(
+    uploaded
+  );
+}
+
+let videoUrl = null;
+
+if (videoUri) {
+  videoUrl =
+    await uploadFile(
+      videoUri,
+      "video",
+      setProgress
+    );
+}
       const { data: newItem, error } = await (supabase as any)
         .from("items_live")
         .insert({
@@ -248,8 +288,12 @@ export default function Sell() {
           location,
           latitude,
           longitude,
-          seller_phone: phone,
-          image_url: imageUrl,
+          
+         image_url:
+  uploadedImages[0] || null,
+
+image_urls:
+  uploadedImages,
           video_url: videoUrl,
           user_id: user.id,
           is_negotiable: isNegotiable,
@@ -377,8 +421,7 @@ export default function Sell() {
       <Text style={styles.label}>Location</Text>
       <TextInput style={styles.input} value={location} onChangeText={setLocation} />
 
-      <Text style={styles.label}>Phone *</Text>
-      <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+      
 
       {/* CATEGORY */}
       <Text style={styles.label}>Category</Text>
@@ -412,7 +455,32 @@ export default function Sell() {
         <Text>Select Image</Text>
       </TouchableOpacity>
 
-      {imageUri && <Image source={{ uri: imageUri }} style={styles.image} />}
+      <View
+  style={{
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 10,
+  }}
+>
+  {imageUris.length > 0 && (
+  <ScrollView horizontal>
+    {imageUris.map(
+      (uri, index) => (
+        <Image
+          key={index}
+          source={{ uri }}
+          style={{
+            width: 140,
+            height: 140,
+            marginRight: 10,
+            borderRadius: 10,
+          }}
+        />
+      )
+    )}
+  </ScrollView>
+)}
+</View>
 
       <TouchableOpacity style={styles.imageBtn} onPress={pickVideo}>
         <Text>Select Video</Text>

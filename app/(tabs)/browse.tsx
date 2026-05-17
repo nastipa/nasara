@@ -42,6 +42,7 @@ type Item = {
   title?: string;
   price?: number;
   image_url?: string | null;
+  image_urls?: string[];
   video_url?: string | null;
   location?: string | null;
   category?: string | null;
@@ -50,6 +51,7 @@ type Item = {
   user_id?: string;
   created_at?: string;
   url?: string | null;
+  original_id?: string;
   type?: "item" | "ad" | "banner" | "promoted" | "boosted";
 };
 type Promo = {
@@ -220,48 +222,99 @@ export default function BrowseScreen() {
   };
 
   /* ================= ADMIN DELETE ================= */
-  const deleteItem = async (id: string) => {
-    Alert.alert(
-      "Delete Item?",
-      "Are you sure?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel"
-        },
-        {
-          text: "Yes Delete",
-          style: "destructive",
-          onPress: async () => {
-            setItems((prev) =>
-              prev.filter((x) => x.id !== id)
+  const deleteItem = async (item: any) => {
+  Alert.alert(
+    "Delete",
+    "Remove one image or whole post?",
+    [
+      { text: "Cancel", style: "cancel" },
+
+      {
+        text: "Delete Image",
+        onPress: async () => {
+          try {
+            const postId = item.original_id || item.id;
+
+            const { data: post, error: fetchErr } = await (supabase as any)
+              .from("items_live")
+              .select("id,image_urls,image_url")
+              .eq("id", postId)
+              .single();
+
+            if (fetchErr || !post) {
+              Alert.alert("Post not found");
+              return;
+            }
+
+            const images = Array.isArray(post.image_urls)
+              ? [...post.image_urls]
+              : post.image_url
+              ? [post.image_url]
+              : [];
+
+            // remove by exact match first, fallback by index/url ending
+            let updated = images.filter(
+              (img: string) => img !== item.image_url
             );
+
+            if (updated.length === images.length && item.image_url) {
+              updated = images.filter(
+                (img: string) =>
+                  !img.includes(item.image_url.split("/").pop() || "")
+              );
+            }
+
+            if (updated.length === 0) {
+              const { error } = await supabase
+                .from("items_live")
+                .delete()
+                .eq("id", postId);
+
+              if (error) throw error;
+            } else {
+              const { error } = await (supabase as any)
+                .from("items_live")
+                .update({
+                  image_urls: updated,
+                  image_url: updated[0],
+                })
+                .eq("id", postId);
+
+              if (error) throw error;
+            }
+
+            await refreshAll();
+          } catch (e: any) {
+            console.log("delete image error", e);
+            Alert.alert("Delete failed", e.message || "Try again");
+          }
+        },
+      },
+
+      {
+        text: "Delete Post",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const postId = item.original_id || item.id;
 
             const { error } = await supabase
               .from("items_live")
               .delete()
-              .eq("id", id);
+              .eq("id", postId);
 
-            if (error) {
-              Alert.alert(
-                "Delete Failed",
-                error.message
-              );
-              refreshAll();
-              return;
-            }
+            if (error) throw error;
 
-            Alert.alert(
-              "Deleted ✅",
-              "Item removed successfully!"
-            );
-
-            refreshAll();
-          },
+            await refreshAll();
+          } catch (e: any) {
+            console.log("delete post error", e);
+            Alert.alert("Delete failed", e.message || "Try again");
+          }
         },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
 
   /* ================= ADMIN DELETE SPECIAL ITEMS (FIXED) ================= */
   const deleteSpecialItem = async (
@@ -449,6 +502,7 @@ loadBanners();
       title,
       price,
       image_url,
+       image_urls,
       video_url,
       location,
       category,
@@ -484,20 +538,83 @@ loadBanners();
     return;
   }
 
-  const mapped: Item[] = data.map((i: any) => ({
-    id: String(i.id),
-    title: i.title,
-    price: i.price,
-    image_url: i.image_url,
-    video_url: i.video_url,
-    location: i.location,
-    category: i.category,
-    negotiable: Boolean(i.is_negotiable),
-    seller_phone: i.seller_phone,
-    user_id: i.user_id,
-    created_at: i.created_at,
-    type: "item",
-  }));
+  const mapped: Item[] = data.flatMap(
+  (i: any) => {
+    const images =
+      i.image_urls &&
+      i.image_urls.length > 0
+        ? i.image_urls
+        : i.image_url
+        ? [i.image_url]
+        : [];
+
+    /* VIDEO POST */
+    if (i.video_url) {
+      return [
+        {
+          id: String(i.id),
+          title: i.title,
+          price: i.price,
+          image_url: null,
+          video_url: i.video_url,
+          location: i.location,
+          category: i.category,
+          negotiable: Boolean(
+            i.is_negotiable
+          ),
+          seller_phone:
+            i.seller_phone,
+          user_id: i.user_id,
+          created_at:
+            i.created_at,
+          type: "item",
+        },
+      ];
+    }
+
+    /* MULTIPLE IMAGES */
+    return images.map(
+      (
+        img: string,
+        index: number
+      ) => ({
+        id:
+          String(i.id) +
+          "-" +
+          index,
+
+        original_id:
+          i.id,
+
+        title: i.title,
+
+        price: i.price,
+
+        image_url: img,
+
+        video_url: null,
+
+        location: i.location,
+
+        category: i.category,
+
+        negotiable: Boolean(
+          i.is_negotiable
+        ),
+
+        seller_phone:
+          i.seller_phone,
+
+        user_id: i.user_id,
+
+        created_at:
+          i.created_at,
+
+        type: "item",
+      })
+    );
+  }
+);
    // ✅ LOAD VERIFIED USERS
 setTimeout(() => {
   loadVerifiedUsers(mapped);
@@ -779,6 +896,7 @@ const loadVerifiedUsers = async (itemsList: Item[]) => {
         video_url: ad.video_url,
         url: ad.link || ad.url,
         expires_at: ad.expires_at,
+        created_at: ad.created_at,
         type: "ad" as const,
       }));
 
@@ -831,6 +949,7 @@ const loadVerifiedUsers = async (itemsList: Item[]) => {
         video_url: b.video_url,
         url: b.url,
         expires_at: b.expires_at,
+        created_at: b.created_at,
         type: "banner" as const,
       }));
 
@@ -931,9 +1050,9 @@ useEffect(() => {
     ]);
 
   /* ================= FINAL FEED ================= */
-  const combined: Item[] =
-    selectedCategory ===
-    "All"
+ const combined: Item[] = useMemo(() => {
+  const all =
+    selectedCategory === "All"
       ? [
           ...promoted,
           ...boosted,
@@ -947,37 +1066,46 @@ useEffect(() => {
           ...cleanItems,
         ];
 
-  const loadMore = () => {
-    if (
-      !hasMore ||
-      loadingMore
-    )
-      return;
+  return all.sort((a, b) => {
+    const aTime = new Date(
+      a.created_at || ""
+    ).getTime();
 
-    loadItems(false);
-  };
+    const bTime = new Date(
+      b.created_at || ""
+    ).getTime();
 
-  const handlePress = (
-    item: Item
-  ) => {
-    if (
-      item.type === "ad" ||
-      item.type === "banner"
-    ) {
-      if (item.url) {
-        Linking.openURL(
-          item.url
-        );
-      }
-      return;
+    return bTime - aTime;
+  });
+}, [
+  promoted,
+  boosted,
+  ads,
+  banners,
+  cleanItems,
+  selectedCategory,
+]);
+const loadMore = () => {
+  if (!hasMore || loadingMore) return;
+  loadItems(false);
+};
+
+const handlePress = (item: Item) => {
+  if (
+    item.type === "ad" ||
+    item.type === "banner"
+  ) {
+    if (item.url) {
+      Linking.openURL(item.url);
     }
+    return;
+  }
 
-    router.push(
-      "/itemdetail/" +
-        item.id
-    );
-  };
-
+  router.push(
+    "/itemdetail/" +
+      (item.original_id || item.id)
+  );
+};
   
   /* ================= UI ================= */
   return (
@@ -1096,11 +1224,33 @@ style={{ backgroundColor: "#0f172a" }}
   </TouchableOpacity>
   
 </View>
+<TouchableOpacity
+  onPress={() =>
+    router.push("/discover")
+  }
+  style={{
+    backgroundColor: "#2563eb",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 16,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontWeight: "bold",
+      textAlign: "center",
+      fontSize: 16,
+    }}
+  >
+    Discover Users
+  </Text>
+</TouchableOpacity>
 
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/fhbmdTHJ3sVDpUoTyDTV6N.apk"
+      "https://expo.dev/artifacts/eas/heHyVi9fzx9tEsEK4TsNwL.apk"
     )
   }
   style={{
@@ -1207,22 +1357,44 @@ style={{ backgroundColor: "#0f172a" }}
   borderColor: "rgba(255,255,255,0.08)",
 }}
         >
-        {/* MEDIA */}
+    {/* MEDIA */}
 {item?.video_url ? (
   <SafeVideo url={item.video_url} />
+) : item?.image_urls?.length > 0 ? (
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+  >
+    {item.image_urls.map(
+      (
+        img: string,
+        index: number
+      ) => (
+        <Image
+          key={index}
+          source={{ uri: img }}
+          style={{
+            width: cardWidth,
+            height: cardWidth,
+            marginRight: 4,
+            borderRadius: 10,
+          }}
+          contentFit="cover"
+        />
+      )
+    )}
+  </ScrollView>
 ) : item?.image_url ? (
   <Image
     source={{ uri: item.image_url }}
     style={styles.squareImage}
+    contentFit="cover"
   />
 ) : (
   <View style={styles.noMedia}>
     <ActivityIndicator size="small" />
-    <Text style={{ color: "#9ca3af", marginTop: 6 }}>
-      Uploading...
-    </Text>
   </View>
-)}   
+)}
           {/* BADGES */}
           {item.type === "ad" && <Badge label="📢 AD" />}
           {item.type === "banner" && <Badge label="🎯 BANNER" />}
@@ -1235,13 +1407,15 @@ style={{ backgroundColor: "#0f172a" }}
           )}
 
           {/* ADMIN DELETE */}
-          {isAdmin && (
+{isAdmin && (
   <TouchableOpacity
-    onPress={() =>
-      item.type === "item"
-        ? deleteItem(item.id)
-        : deleteSpecialItem(item)
-    }
+    onPress={() => {
+      if (item.type === "item") {
+        deleteItem(item);   // ✅ full object
+      } else {
+        deleteSpecialItem(item);
+      }
+    }}
     style={{
       position: "absolute",
       top: 8,
@@ -1250,9 +1424,17 @@ style={{ backgroundColor: "#0f172a" }}
       paddingHorizontal: 8,
       paddingVertical: 4,
       borderRadius: 8,
+      zIndex: 999,
     }}
   >
-    <Text style={{ color: "white", fontWeight: "bold" }}>🗑</Text>
+    <Text
+      style={{
+        color: "white",
+        fontWeight: "bold",
+      }}
+    >
+      🗑️
+    </Text>
   </TouchableOpacity>
 )}
           
@@ -1334,7 +1516,9 @@ style={{ backgroundColor: "#0f172a" }}
           const { data: newRoom, error } = await (supabase as any)
             .from("chat_rooms")
             .insert({
-              item_id: item.id,
+             item_id:
+  item.original_id ||
+  item.id,
               buyer_id: buyerId,
               seller_id: item.user_id,
             })
@@ -1359,12 +1543,12 @@ style={{ backgroundColor: "#0f172a" }}
       }
     }}
     style={{
-      marginTop: 6,
-      backgroundColor: "#2563eb",
-      paddingVertical: 6,
-      borderRadius: 6,
-      alignItems: "center",
-    }}
+    backgroundColor: "#16a34a",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    marginBottom: 10,
+  }}
   >
     <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>
       💬 Chat Seller

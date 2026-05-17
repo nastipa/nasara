@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+
 import {
   ActivityIndicator,
   FlatList,
@@ -10,6 +11,7 @@ import {
 } from "react-native";
 
 import { useRouter } from "expo-router";
+
 import { supabase } from "../../lib/supabase";
 
 export default function MyMenteesScreen() {
@@ -40,13 +42,22 @@ export default function MyMenteesScreen() {
           return;
         }
 
+        /*
+         =========================
+         GET MATCHES
+         =========================
+        */
+
         const {
           data,
           error,
         } = await supabase
           .from("mentor_matches")
           .select("*")
-          .eq("mentor_id", user.id)
+          .eq(
+            "mentor_id",
+            user.id
+          )
           .order(
             "created_at",
             {
@@ -55,11 +66,78 @@ export default function MyMenteesScreen() {
           );
 
         if (error) {
-          console.log(error);
+          console.log(
+            "fetch error:",
+            error
+          );
+
+          setLoading(false);
           return;
         }
 
-        setMatches(data || []);
+        /*
+         =========================
+         LOAD MENTEE PROFILE INFO
+         =========================
+        */
+
+        const formatted =
+          await Promise.all(
+            (data || []).map(
+              async (
+                item: any
+              ) => {
+                const {
+                  data:
+                    profile,
+                } =
+                  await (supabase as any)
+                    .from(
+                      "profiles"
+                    )
+                    .select(
+                      `
+                      full_name,
+                      phone,
+                      email,
+                      profession,
+                      occupation
+                    `
+                    )
+                    .eq(
+                      "id",
+                      item.mentee_id
+                    )
+                    .maybeSingle();
+
+                return {
+                  ...item,
+
+                  mentee_name:
+                    profile?.full_name ||
+                    item.mentee_name ||
+                    "Unknown",
+
+                  phone:
+                    profile?.phone ||
+                    "",
+
+                  email:
+                    profile?.email ||
+                    "",
+
+                  profession:
+                    profile?.profession ||
+                    profile?.occupation ||
+                    "",
+                };
+              }
+            )
+          );
+
+        setMatches(
+          formatted
+        );
 
       } catch (e) {
         console.log(e);
@@ -68,48 +146,22 @@ export default function MyMenteesScreen() {
       setLoading(false);
     };
 
-  const openWhatsapp = (
-    phone: string
+  const openEmail = (
+    email: string
   ) => {
-    if (!phone) return;
-
-    const clean =
-      phone.replace(/\D/g, "");
+    if (!email) return;
 
     Linking.openURL(
-      `https://wa.me/${clean}`
+      `mailto:${email}`
     );
   };
 
-  /*
-   =========================
-   OPEN SHARED CHAT ROOM
-   =========================
-  */
-
-  const openChat = async (
-    roomId: string
-  ) => {
-    try {
-      if (!roomId) {
-        console.log(
-          "No room_id found"
-        );
-
-        return;
-      }
-
+  const goToDiscover =
+    () => {
       router.push(
-        `/chat/${roomId}`
+        "/discover"
       );
-
-    } catch (e) {
-      console.log(
-        "openChat error:",
-        e
-      );
-    }
-  };
+    };
 
   const renderItem = ({
     item,
@@ -117,23 +169,75 @@ export default function MyMenteesScreen() {
     return (
       <View style={styles.card}>
         <Text style={styles.name}>
-          👤 {item.mentee_name}
+          👤{" "}
+          {item.mentee_name}
         </Text>
 
         <Text style={styles.field}>
-          📚 Field:
-          {" "}
-          {item.field}
+          📚 Field:{" "}
+          {item.field ||
+            "Not provided"}
         </Text>
 
-        {!!item.mentee_whatsapp && (
+        <Text style={styles.info}>
+          💼 Profession:{" "}
+          {item.profession ||
+            "Not provided"}
+        </Text>
+
+        <Text style={styles.info}>
+          📞 Phone:{" "}
+          {item.phone ||
+            "Not provided"}
+        </Text>
+
+        <Text style={styles.info}>
+          📧 Email:{" "}
+          {item.email ||
+            "Not provided"}
+        </Text>
+
+        <View
+          style={
+            styles.messageBox
+          }
+        >
+          <Text
+            style={
+              styles.messageText
+            }
+          >
+            💬 You can connect
+            and chat on Nasara
+            using Discover Users.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={
+            styles.discoverBtn
+          }
+          onPress={
+            goToDiscover
+          }
+        >
+          <Text
+            style={
+              styles.btnText
+            }
+          >
+            Discover Users
+          </Text>
+        </TouchableOpacity>
+
+        {item.email ? (
           <TouchableOpacity
             style={
-              styles.whatsappBtn
+              styles.emailBtn
             }
             onPress={() =>
-              openWhatsapp(
-                item.mentee_whatsapp
+              openEmail(
+                item.email
               )
             }
           >
@@ -142,26 +246,10 @@ export default function MyMenteesScreen() {
                 styles.btnText
               }
             >
-              💬 Chat on WhatsApp
+              Send Email
             </Text>
           </TouchableOpacity>
-          
-        )}
-
-        <TouchableOpacity
-          style={styles.chatBtn}
-          onPress={() =>
-            openChat(
-              item.room_id
-            )
-          }
-        >
-          <Text
-            style={styles.btnText}
-          >
-            📩 Chat on Nasara
-          </Text>
-        </TouchableOpacity>
+        ) : null}
       </View>
     );
   };
@@ -188,13 +276,22 @@ export default function MyMenteesScreen() {
 
       <FlatList
         data={matches}
-        keyExtractor={(item) =>
-          item.id.toString()
+        keyExtractor={(
+          item,
+          index
+        ) =>
+          item.id
+            ? item.id.toString()
+            : index.toString()
         }
-        renderItem={renderItem}
+        renderItem={
+          renderItem
+        }
         ListEmptyComponent={
           <Text
-            style={styles.empty}
+            style={
+              styles.empty
+            }
           >
             No mentees yet
           </Text>
@@ -212,7 +309,8 @@ const styles =
       justifyContent:
         "center",
 
-      alignItems: "center",
+      alignItems:
+        "center",
     },
 
     container: {
@@ -227,13 +325,15 @@ const styles =
     title: {
       fontSize: 26,
 
-      fontWeight: "bold",
+      fontWeight:
+        "bold",
 
       marginBottom: 20,
     },
 
     empty: {
-      textAlign: "center",
+      textAlign:
+        "center",
 
       marginTop: 40,
 
@@ -243,30 +343,67 @@ const styles =
     card: {
       borderWidth: 1,
 
-      borderColor: "#e5e7eb",
+      borderColor:
+        "#e5e7eb",
 
       borderRadius: 12,
 
       padding: 15,
 
       marginBottom: 15,
+
+      backgroundColor:
+        "#fff",
     },
 
     name: {
       fontSize: 18,
 
-      fontWeight: "bold",
+      fontWeight:
+        "bold",
+
+      marginBottom: 8,
     },
 
     field: {
-      marginTop: 5,
-
       color: "#2563eb",
 
-      fontWeight: "600",
+      fontWeight:
+        "600",
+
+      marginBottom: 6,
     },
 
-    whatsappBtn: {
+    info: {
+      fontSize: 15,
+
+      marginBottom: 6,
+
+      color: "#374151",
+    },
+
+    messageBox: {
+      backgroundColor:
+        "#eff6ff",
+
+      padding: 12,
+
+      borderRadius: 10,
+
+      marginTop: 12,
+
+      marginBottom: 10,
+    },
+
+    messageText: {
+      color: "#1d4ed8",
+
+      fontSize: 14,
+
+      lineHeight: 20,
+    },
+
+    discoverBtn: {
       backgroundColor:
         "#16a34a",
 
@@ -274,12 +411,13 @@ const styles =
 
       borderRadius: 10,
 
-      marginTop: 15,
+      marginTop: 10,
 
-      alignItems: "center",
+      alignItems:
+        "center",
     },
 
-    chatBtn: {
+    emailBtn: {
       backgroundColor:
         "#2563eb",
 
@@ -289,12 +427,14 @@ const styles =
 
       marginTop: 10,
 
-      alignItems: "center",
+      alignItems:
+        "center",
     },
 
     btnText: {
       color: "#fff",
 
-      fontWeight: "bold",
+      fontWeight:
+        "bold",
     },
   });

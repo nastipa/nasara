@@ -64,117 +64,127 @@ export default function ApproveMentorsScreen() {
    =========================
   */
 
-  const approveMentor =
-    async (id: string) => {
-      try {
-        /*
-         =========================
-         GET MENTOR
-         =========================
-        */
+ const approveMentor =
+  async (id: string) => {
+    try {
+      /*
+       =========================
+       GET MENTOR
+       =========================
+      */
 
-        const {
-          data: mentorData,
-          error:
-            mentorFetchError,
-        } = await supabase
-          .from("mentors")
-          .select("*")
-          .eq("id", id)
-          .single();
+      const {
+        data: mentorData,
+        error:
+          mentorFetchError,
+      } = await (supabase as any)
+        .from("mentors")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-        if (
-          mentorFetchError ||
-          !mentorData
-        ) {
-          Alert.alert(
-            "Error",
-            "Mentor not found"
-          );
-
-          return;
-        }
-
-        /*
-         =========================
-         APPROVE MENTOR
-         =========================
-        */
-
-        const {
-  error: approveError,
-} = await (supabase as any)
-  .from("mentors")
-  .update({
-    approved: true,
-  })
-  .eq("id", id);
-
-if (approveError) {
-  Alert.alert(
-    "Error",
-    approveError.message
-  );
-
-  return;
-}
-
-        /*
-         =========================
-         ADD MENTOR BADGE
-         =========================
-        */
-
-        await (supabase as any)
-          .from("profiles")
-          .update({
-            mentor_badge: true,
-          })
-          .eq(
-            "id",
-            (mentorData as any).user_id
-          );
-
-        /*
-         =========================
-         SEND NOTIFICATION
-         =========================
-        */
-
-        await (supabase as any)
-          .from(
-            "notifications"
-          )
-          .insert({
-            user_id:
-              (mentorData as any).user_id,
-
-            title:
-              "Mentor Application Approved",
-
-            body:
-              "Congratulations! You are now an approved mentor on Nasara.",
-          });
-
-        Alert.alert(
-          "Success",
-          "Mentor approved successfully"
-        );
-
-        setMentors((prev) =>
-  prev.filter(
-    (m) => m.id !== id
-  )
-);
-
-      } catch (e: any) {
+      if (
+        mentorFetchError ||
+        !mentorData
+      ) {
         Alert.alert(
           "Error",
-          e.message
+          "Mentor not found"
         );
-      }
-    };
 
+        return;
+      }
+
+      /*
+       =========================
+       APPROVE MENTOR
+       =========================
+      */
+
+      const {
+        error: approveError,
+      } = await (supabase as any)
+        .from("mentors")
+        .update({
+          approved: true,
+
+          /*
+           IMPORTANT:
+           makes mentor visible
+           in mentor matching
+          */
+          status: "approved",
+        })
+        .eq("id", id);
+
+      if (approveError) {
+        Alert.alert(
+          "Error",
+          approveError.message
+        );
+
+        return;
+      }
+
+      /*
+       =========================
+       ADD MENTOR BADGE
+       =========================
+      */
+
+      await (supabase as any)
+        .from("profiles")
+        .update({
+          mentor_badge: true,
+        })
+        .eq(
+          "id",
+          mentorData.user_id
+        );
+
+      /*
+       =========================
+       SEND NOTIFICATION
+       =========================
+      */
+
+      await (supabase as any)
+        .from(
+          "notifications"
+        )
+        .insert({
+          user_id:
+            mentorData.user_id,
+
+          title:
+            "Mentor Application Approved",
+
+          body:
+            "Congratulations! You are now an approved mentor on Nasara.",
+        });
+
+      Alert.alert(
+        "Success",
+        "Mentor approved successfully"
+      );
+
+      /*
+       REMOVE FROM LIST
+      */
+
+      setMentors((prev) =>
+        prev.filter(
+          (m) => m.id !== id
+        )
+      );
+
+    } catch (e: any) {
+      Alert.alert(
+        "Error",
+        e.message
+      );
+    }
+  };
   /*
    =========================
    REJECT MENTOR

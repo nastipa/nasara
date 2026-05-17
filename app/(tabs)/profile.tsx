@@ -847,15 +847,16 @@ onPress={followUser}
       {/* ===== ACCOUNT ===== */}
       <Text style={styles.sectionTitle}>👤 Account</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+        
+
         <ActionTile
-          label="WhatsApp"
-          bg="#22c55e"
+          label="Favorites ❤️"
+          bg="#0ea5e9"
           onPress={() => {
             setShowActionsModal(false);
-            setShowWhatsappModal(true);
+            router.push("/favorite");
           }}
         />
-
         <ActionTile
           label="MoMo 💳"
           bg="#0ea5e9"
@@ -865,11 +866,11 @@ onPress={followUser}
           }}
         />
         <ActionTile
-          label="Battle ⚔️"
+          label="Offers 💌"
           bg="#f59e0b"
           onPress={() => {
             setShowActionsModal(false);
-            router.push("/battle"); // app/auction/index
+            router.push("/offers"); // app/offers/index
           }}
         />
       </View>
@@ -888,22 +889,26 @@ onPress={followUser}
         
 
         <ActionTile
-          label="Favorites ❤️"
-          bg="#0ea5e9"
-          onPress={() => {
-            setShowActionsModal(false);
-            router.push("/favorite");
-          }}
-        />
+    label="My Mentors"
+    bg="#2563eb"
+    onPress={() => {
+      setShowActionsModal(false);
+
+      router.push("/mentor/my-mentor");
+    }}
+  />
 
         <ActionTile
-          label="Offers 💌"
-          bg="#f59e0b"
-          onPress={() => {
-            setShowActionsModal(false);
-            router.push("/offers"); // app/offers/index
-          }}
-        />
+    label="My Mentees"
+    bg="#16a34a"
+    onPress={() => {
+      setShowActionsModal(false);
+
+      router.push(
+        "/mentor/my-mentees"
+      );
+    }}
+  />
       </View>
 
       {/* ===== WATCH & AUCTIONS ===== */}
@@ -932,26 +937,15 @@ onPress={followUser}
  
  
   <ActionTile
-    label="My Mentors"
-    bg="#2563eb"
-    onPress={() => {
-      setShowActionsModal(false);
+          label="Battle ⚔️"
+          bg="#f59e0b"
+          onPress={() => {
+            setShowActionsModal(false);
+            router.push("/battle"); // app/auction/index
+          }}
+        />
 
-      router.push("/mentor/my-mentor");
-    }}
-  />
-
-  <ActionTile
-    label="My Mentees"
-    bg="#16a34a"
-    onPress={() => {
-      setShowActionsModal(false);
-
-      router.push(
-        "/mentor/my-mentees"
-      );
-    }}
-  />
+  
 
  
       </View>

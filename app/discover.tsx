@@ -1,124 +1,103 @@
 import {
-  useLocalSearchParams,
-  useRouter,
-} from "expo-router";
-
-import {
-  useEffect,
-  useState,
+    useEffect,
+    useState,
 } from "react";
 
 import {
-  FlatList,
-  Image,
-  Text,
-  TouchableOpacity,
-  View,
+    FlatList,
+    Image,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
+
+import { useRouter } from "expo-router";
 
 import { supabase } from "../lib/supabase";
 
-export default function FollowingScreen() {
+export default function DiscoverScreen() {
   const router = useRouter();
-
-  const { id } =
-    useLocalSearchParams();
 
   const [users, setUsers] =
     useState<any[]>([]);
 
+  const [search, setSearch] =
+    useState("");
+
   useEffect(() => {
-    if (id) {
-      loadFollowing();
-    }
-  }, [id]);
+    loadUsers();
+  }, []);
 
-  const loadFollowing =
+  const loadUsers =
     async () => {
-      try {
-        const {
-          data: followRows,
-          error,
-        } = await supabase
-          .from("follows")
-          .select(
-            "following_id"
-          )
-          .eq(
-            "follower_id",
-            String(id)
-          );
+      const {
+        data,
+        error,
+      } = await (supabase as any)
+        .from("profiles")
+        .select(
+          "id, full_name, avatar_url, verified"
+        )
+        .limit(100);
 
-        if (error) {
-          console.log(
-            error
-          );
-          return;
-        }
-
-        const ids =
-          (followRows || []).map(
-            (x: any) =>
-              x.following_id
-          );
-
-        if (
-          ids.length === 0
-        ) {
-          setUsers([]);
-          return;
-        }
-
-        const {
-          data: profiles,
-          error:
-            profileError,
-        } = await supabase
-          .from("profiles")
-          .select(
-            "id, full_name, avatar_url, verified"
-          )
-          .in("id", ids);
-
-        if (
-          profileError
-        ) {
-          console.log(
-            profileError
-          );
-          return;
-        }
-
-        setUsers(
-          profiles || []
-        );
-      } catch (e) {
-        console.log(e);
+      if (error) {
+        console.log(error);
+        return;
       }
+
+      setUsers(data || []);
     };
+
+  const filtered =
+    users.filter((u) =>
+      (
+        u.full_name || ""
+      )
+        .toLowerCase()
+        .includes(
+          search.toLowerCase()
+        )
+    );
 
   return (
     <View
       style={{
         flex: 1,
-        padding: 15,
         backgroundColor:
           "#fff",
+        padding: 15,
       }}
     >
+      <Text
+        style={{
+          fontSize: 28,
+          fontWeight: "bold",
+          marginBottom: 15,
+        }}
+      >
+        Discover Users
+      </Text>
+
+      <TextInput
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Search users..."
+        style={{
+          borderWidth: 1,
+          borderColor: "#ddd",
+          borderRadius: 12,
+          padding: 12,
+          marginBottom: 20,
+        }}
+      />
+
       <FlatList
-        data={users}
+        data={filtered}
         keyExtractor={(i) =>
           i.id
         }
-        ListEmptyComponent={
-          <Text>
-            No following users
-          </Text>
-        }
-        renderItem={({
-          item,
-        }) => (
+        renderItem={({ item }) => (
           <TouchableOpacity
             onPress={() =>
               router.push(
@@ -132,14 +111,14 @@ export default function FollowingScreen() {
               alignItems:
                 "center",
 
-              marginBottom: 15,
+              marginBottom: 16,
 
               backgroundColor:
                 "#f9fafb",
 
               padding: 12,
 
-              borderRadius: 12,
+              borderRadius: 14,
             }}
           >
             <Image
@@ -149,8 +128,8 @@ export default function FollowingScreen() {
                   "https://ui-avatars.com/api/?name=User",
               }}
               style={{
-                width: 55,
-                height: 55,
+                width: 60,
+                height: 60,
                 borderRadius: 30,
                 marginRight: 12,
               }}
@@ -186,12 +165,8 @@ export default function FollowingScreen() {
                   <Text
                     style={{
                       marginLeft: 6,
-
                       color:
                         "#2563eb",
-
-                      fontWeight:
-                        "bold",
                     }}
                   >
                     ✔️
@@ -203,11 +178,10 @@ export default function FollowingScreen() {
                 style={{
                   color:
                     "#6b7280",
-
                   marginTop: 2,
                 }}
               >
-                View Profile
+                View profile
               </Text>
             </View>
           </TouchableOpacity>

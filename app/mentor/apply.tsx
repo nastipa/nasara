@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import {
   ActivityIndicator,
   Alert,
@@ -7,7 +8,8 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { useRouter } from "expo-router";
@@ -29,10 +31,13 @@ export default function ApplyMentorScreen() {
   const [bio, setBio] =
     useState("");
 
-  const [whatsapp, setWhatsapp] =
+  const [phoneNumber, setPhoneNumber] =
     useState("");
 
   const [email, setEmail] =
+    useState("");
+
+  const [occupation, setOccupation] =
     useState("");
 
   const [
@@ -47,10 +52,15 @@ export default function ApplyMentorScreen() {
 
   const applyMentor = async () => {
     try {
-      if (!fullName || !field) {
+      if (
+        !fullName ||
+        !field ||
+        !phoneNumber ||
+        !email
+      ) {
         Alert.alert(
           "Missing Info",
-          "Full name and field are required"
+          "Please fill all required fields"
         );
 
         return;
@@ -80,11 +90,17 @@ export default function ApplyMentorScreen() {
             user_id: user.id,
 
             full_name: fullName,
+
             field,
+
             bio,
 
-            whatsapp,
+            phone_number:
+              phoneNumber,
+
             email,
+
+            occupation,
 
             years_experience:
               yearsExperience,
@@ -105,15 +121,15 @@ export default function ApplyMentorScreen() {
       }
 
       if (Platform.OS === "web") {
-  window.alert(
-    "Mentor application submitted successfully"
-  );
-} else {
-  Alert.alert(
-    "Success",
-    "Application submitted successfully"
-  );
-}
+        window.alert(
+          "Mentor application submitted successfully"
+        );
+      } else {
+        Alert.alert(
+          "Success",
+          "Application submitted successfully"
+        );
+      }
 
       router.back();
 
@@ -135,68 +151,172 @@ export default function ApplyMentorScreen() {
       contentContainerStyle={{
         paddingBottom: 40,
       }}
+      showsVerticalScrollIndicator={false}
     >
       <Text style={styles.title}>
         Become a Mentor
       </Text>
 
-      <TextInput
-        placeholder="Full Name"
-        value={fullName}
-        onChangeText={setFullName}
-        style={styles.input}
-      />
+      {/* FULL NAME */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Full Name
+        </Text>
 
-      <TextInput
-        placeholder="Field (e.g. Business)"
-        value={field}
-        onChangeText={setField}
-        style={styles.input}
-      />
+        <TextInput
+          placeholder="Enter your full name"
+          placeholderTextColor="#9ca3af"
+          value={fullName}
+          onChangeText={setFullName}
+          style={styles.input}
+        />
+      </View>
 
-      <TextInput
-        placeholder="Short Bio"
-        value={bio}
-        onChangeText={setBio}
-        multiline
-        style={[
-          styles.input,
-          { height: 100 },
-        ]}
-      />
+      {/* FIELD */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Field
+        </Text>
 
-      <TextInput
-        placeholder="WhatsApp Number"
-        value={whatsapp}
-        onChangeText={setWhatsapp}
-        style={styles.input}
-      />
+        <TextInput
+          placeholder="e.g. Business"
+          placeholderTextColor="#9ca3af"
+          value={field}
+          onChangeText={setField}
+          style={styles.input}
+        />
+      </View>
 
-      <TextInput
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        style={styles.input}
-      />
+      {/* OCCUPATION */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Occupation / Profession
+        </Text>
 
-      <TextInput
-        placeholder="Years of Experience"
-        value={yearsExperience}
-        onChangeText={
-          setYearsExperience
-        }
-        style={styles.input}
-      />
+        <TextInput
+          placeholder="Your profession"
+          placeholderTextColor="#9ca3af"
+          value={occupation}
+          onChangeText={setOccupation}
+          style={styles.input}
+        />
+      </View>
 
-      <TextInput
-        placeholder="Availability"
-        value={availability}
-        onChangeText={
-          setAvailability
-        }
-        style={styles.input}
-      />
+      {/* BIO */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Short Bio
+        </Text>
+
+        <TextInput
+          placeholder="Tell mentees about yourself"
+          placeholderTextColor="#9ca3af"
+          value={bio}
+          onChangeText={setBio}
+          multiline
+          textAlignVertical="top"
+          style={[
+            styles.input,
+            {
+              height: 110,
+              paddingTop: 14,
+            },
+          ]}
+        />
+      </View>
+
+      {/* PHONE */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Phone Number
+        </Text>
+
+        <TextInput
+          placeholder="Enter phone number"
+          placeholderTextColor="#9ca3af"
+          value={phoneNumber}
+          onChangeText={
+            setPhoneNumber
+          }
+          keyboardType="phone-pad"
+          style={styles.input}
+        />
+      </View>
+
+      {/* EMAIL */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Email Address
+        </Text>
+
+        <TextInput
+          placeholder="Enter email"
+          placeholderTextColor="#9ca3af"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          style={styles.input}
+        />
+      </View>
+
+      {/* EXPERIENCE */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Years of Experience
+        </Text>
+
+        <TextInput
+          placeholder="e.g. 5 years"
+          placeholderTextColor="#9ca3af"
+          value={yearsExperience}
+          onChangeText={
+            setYearsExperience
+          }
+          style={styles.input}
+        />
+      </View>
+
+      {/* AVAILABILITY */}
+      <View
+        style={styles.fieldContainer}
+      >
+        <Text style={styles.label}>
+          Availability
+        </Text>
+
+        <TextInput
+          placeholder="e.g. Weekends"
+          placeholderTextColor="#9ca3af"
+          value={availability}
+          onChangeText={
+            setAvailability
+          }
+          style={styles.input}
+        />
+      </View>
+
+      <Text style={styles.infoText}>
+        After matching, mentees can
+        contact you using your phone
+        number or connect with you
+        through Discover Users on
+        Nasara.
+      </Text>
 
       <TouchableOpacity
         style={styles.button}
@@ -225,21 +345,43 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "bold",
     marginBottom: 25,
+    color: "#111827",
+  },
+
+  fieldContainer: {
+    marginBottom: 18,
+  },
+
+  label: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#111827",
+    marginBottom: 8,
   },
 
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
+    borderColor: "#d1d5db",
+    borderRadius: 12,
 
     padding: 14,
 
-    marginBottom: 15,
-
     fontSize: 16,
+
+    backgroundColor: "#fff",
+
+    color: "#111827",
+  },
+
+  infoText: {
+    color: "#4b5563",
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 20,
+    marginTop: 5,
   },
 
   button: {
@@ -247,7 +389,7 @@ const styles = StyleSheet.create({
 
     padding: 16,
 
-    borderRadius: 10,
+    borderRadius: 12,
 
     alignItems: "center",
 

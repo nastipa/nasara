@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
+
 import {
   ActivityIndicator,
   FlatList,
-  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -10,6 +10,7 @@ import {
 } from "react-native";
 
 import { useRouter } from "expo-router";
+
 import { supabase } from "../../lib/supabase";
 
 export default function MyMentorshipsScreen() {
@@ -56,11 +57,11 @@ export default function MyMentorshipsScreen() {
 
         if (error) {
           console.log(error);
+          setLoading(false);
           return;
         }
 
         setMatches(data || []);
-
       } catch (e) {
         console.log(e);
       }
@@ -68,97 +69,54 @@ export default function MyMentorshipsScreen() {
       setLoading(false);
     };
 
-  const openWhatsapp = (
-    phone: string
-  ) => {
-    if (!phone) return;
-
-    const clean =
-      phone.replace(/\D/g, "");
-
-    Linking.openURL(
-      `https://wa.me/${clean}`
-    );
-  };
-
-  /*
-   =========================
-   OPEN SHARED CHAT ROOM
-   =========================
-  */
-
-  const openChat = async (
-    roomId: string
-  ) => {
-    try {
-      if (!roomId) {
-        console.log(
-          "No room_id found"
-        );
-
-        return;
-      }
-
-      router.push(
-        `/chat/${roomId}`
-      );
-
-    } catch (e) {
-      console.log(
-        "openChat error:",
-        e
-      );
-    }
-  };
-
   const renderItem = ({
     item,
   }: any) => {
     return (
       <View style={styles.card}>
         <Text style={styles.name}>
-          👨‍🏫 {item.mentor_name}
+          👨‍🏫 {item.mentor_name || "Mentor"}
         </Text>
 
         <Text style={styles.field}>
-          📚 Field:
-          {" "}
-          {item.field}
+          📚 Field:{" "}
+          {item.field || "Not specified"}
         </Text>
 
-        {!!item.mentor_whatsapp && (
-          <TouchableOpacity
-            style={
-              styles.whatsappBtn
-            }
-            onPress={() =>
-              openWhatsapp(
-                item.mentor_whatsapp
-              )
-            }
-          >
-            <Text
-              style={
-                styles.btnText
-              }
-            >
-              💬 Chat on WhatsApp
-            </Text>
-          </TouchableOpacity>
+        {item.email && (
+          <Text style={styles.info}>
+            📧 {item.email}
+          </Text>
         )}
 
+        {item.phone && (
+          <Text style={styles.info}>
+            📞 {item.phone}
+          </Text>
+        )}
+
+        {item.profession && (
+          <Text style={styles.info}>
+            💼 {item.profession}
+          </Text>
+        )}
+
+        <View style={styles.noticeBox}>
+          <Text style={styles.noticeText}>
+            💬 You can connect and
+            chat on Nasara using
+            Discover Users.
+          </Text>
+        </View>
+
         <TouchableOpacity
-          style={styles.chatBtn}
+          style={styles.discoverBtn}
           onPress={() =>
-            openChat(
-              item.room_id
-            )
+            router.push("/discover")
           }
         >
-          <Text
-            style={styles.btnText}
-          >
-            📩 Chat on Nasara
+          <Text style={styles.btnText}>
+            Discover Users
           </Text>
         </TouchableOpacity>
       </View>
@@ -249,6 +207,9 @@ const styles =
       padding: 15,
 
       marginBottom: 15,
+
+      backgroundColor:
+        "#fff",
     },
 
     name: {
@@ -258,27 +219,41 @@ const styles =
     },
 
     field: {
-      marginTop: 5,
+      marginTop: 8,
 
       color: "#2563eb",
 
       fontWeight: "600",
     },
 
-    whatsappBtn: {
+    info: {
+      marginTop: 8,
+
+      fontSize: 15,
+
+      color: "#374151",
+    },
+
+    noticeBox: {
+      marginTop: 15,
+
       backgroundColor:
-        "#16a34a",
+        "#eff6ff",
 
       padding: 12,
 
       borderRadius: 10,
-
-      marginTop: 15,
-
-      alignItems: "center",
     },
 
-    chatBtn: {
+    noticeText: {
+      color: "#1d4ed8",
+
+      fontSize: 14,
+
+      lineHeight: 20,
+    },
+
+    discoverBtn: {
       backgroundColor:
         "#2563eb",
 
@@ -286,7 +261,7 @@ const styles =
 
       borderRadius: 10,
 
-      marginTop: 10,
+      marginTop: 15,
 
       alignItems: "center",
     },

@@ -1,8 +1,6 @@
 import { supabase } from "./supabase";
 
-export async function startChat(
-  otherUserId: string
-) {
+export async function startChat(otherUserId: string) {
   try {
     const {
       data: { user },
@@ -12,64 +10,41 @@ export async function startChat(
 
     const myId = user.id;
 
-    /* FIND EXISTING DM ROOM */
-
-    const {
-      data: myRooms,
-      error: roomError,
-    } = await (supabase as any)
-      .from("chat_participants")
-      .select("room_id")
-      .eq("user_id", myId);
-
-    if (roomError) {
-      console.log(roomError);
-      return null;
-    }
-
-    const roomIds =
-      (myRooms || []).map(
-        (r: any) => r.room_id
-      );
-
-    if (roomIds.length > 0) {
-      const {
-        data: otherRooms,
-      } = await (supabase as any)
-        .from("chat_participants")
-        .select("room_id")
-        .eq("user_id", otherUserId)
-        .in("room_id", roomIds);
-
-      if (
-        otherRooms &&
-        otherRooms.length > 0
-      ) {
-        return otherRooms[0].room_id;
-      }
-    }
-
-    /* CREATE ROOM */
-
-    const {
-      data: newRoom,
-      error: createError,
-    } = await (supabase as any)
+    // FIND ALL MATCHING NORMAL CHATS
+    const { data: rooms, error } = await (supabase as any)
       .from("chat_rooms")
-      .insert({
-        buyer_id: myId,
-        seller_id: otherUserId,
-        item_id: null,
-      })
-      .select("id")
-      .single();
+      .select("id, created_at")
+      .is("item_id", null)
+      .or(
+        `and(buyer_id.eq.${myId},seller_id.eq.${otherUserId}),and(buyer_id.eq.${otherUserId},seller_id.eq.${myId})
+      `)
+      .order("created_at", { ascending: true });
 
-    if (createError) {
-      console.log(createError);
-      return null;
+    if (error) {
+      console.log("find room error:", error);
     }
 
-    /* ADD PARTICIPANTS */
+    // RETURN FIRST OLD ROOM
+    if (rooms && rooms.length > 0) {
+      return rooms[0].id;
+    }
+
+    // CREATE NEW ONLY IF NONE
+    const { data: newRoom, error: createError } =
+      await (supabase as any)
+        .from("chat_rooms")
+        .insert({
+          buyer_id: myId,
+          seller_id: otherUserId,
+          item_id: null,
+        })
+        .select("id")
+        .single();
+
+    if (createError || !newRoom) {
+      console.log("create room error:", createError);
+      return null;
+    }
 
     await (supabase as any)
       .from("chat_participants")
@@ -85,13 +60,8 @@ export async function startChat(
       ]);
 
     return newRoom.id;
-
   } catch (e) {
-    console.log(
-      "startChat error:",
-      e
-    );
-
+    console.log("startChat error:", e);
     return null;
   }
 }

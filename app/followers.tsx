@@ -16,7 +16,6 @@ import {
   View,
 } from "react-native";
 
-import { startChat } from "../lib/startChat";
 import { supabase } from "../lib/supabase";
 
 export default function FollowersScreen() {
@@ -77,7 +76,7 @@ export default function FollowersScreen() {
         } = await supabase
           .from("profiles")
           .select(
-            "id, full_name, avatar_url"
+            "id, full_name, avatar_url, verified"
           )
           .in("id", ids);
 
@@ -103,6 +102,8 @@ export default function FollowersScreen() {
       style={{
         flex: 1,
         padding: 15,
+        backgroundColor:
+          "#fff",
       }}
     >
       <FlatList
@@ -118,93 +119,98 @@ export default function FollowersScreen() {
         renderItem={({
           item,
         }) => (
-          <View
+          <TouchableOpacity
+            onPress={() =>
+              router.push(
+                `/profile/${item.id}`
+              )
+            }
             style={{
               flexDirection:
                 "row",
+
               alignItems:
                 "center",
-              justifyContent:
-                "space-between",
+
               marginBottom: 15,
+
+              backgroundColor:
+                "#f9fafb",
+
+              padding: 12,
+
+              borderRadius: 12,
             }}
           >
-           <TouchableOpacity
-  onPress={async () => {
-    const roomId = await startChat(item.id);
-
-    if (roomId) {
-      router.push(`/chat/${roomId}`);
-    }
-  }}
+            <Image
+              source={{
+                uri:
+                  item.avatar_url ||
+                  "https://ui-avatars.com/api/?name=User",
+              }}
               style={{
-                flexDirection:
-                  "row",
-                alignItems:
-                  "center",
+                width: 55,
+                height: 55,
+                borderRadius: 30,
+                marginRight: 12,
+              }}
+            />
+
+            <View
+              style={{
                 flex: 1,
               }}
             >
-              <Image
-                source={{
-                  uri:
-                    item.avatar_url ||
-                    "https://ui-avatars.com/api/?name=User",
-                }}
+              <View
                 style={{
-                  width: 50,
-                  height: 50,
-                  borderRadius: 25,
-                  marginRight: 10,
-                }}
-              />
+                  flexDirection:
+                    "row",
 
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight:
-                    "bold",
+                  alignItems:
+                    "center",
                 }}
               >
-                {item.full_name ||
-                  "User"}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={{
+                    fontSize: 16,
 
-            <TouchableOpacity
-              onPress={async () => {
-                const roomId =
-                  await startChat(
-                    item.id
-                  );
+                    fontWeight:
+                      "bold",
+                  }}
+                >
+                  {item.full_name ||
+                    "User"}
+                </Text>
 
-                if (
-                  roomId
-                ) {
-                  router.push(
-                    `/chat/${roomId}`
-                  );
-                }
-              }}
-              style={{
-                backgroundColor:
-                  "#2563eb",
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 8,
-              }}
-            >
+                {item.verified && (
+                  <Text
+                    style={{
+                      marginLeft: 6,
+
+                      color:
+                        "#2563eb",
+
+                      fontWeight:
+                        "bold",
+                    }}
+                  >
+                    ✔️
+                  </Text>
+                )}
+              </View>
+
               <Text
                 style={{
                   color:
-                    "white",
-                  fontSize: 12,
+                    "#6b7280",
+
+                  marginTop: 2,
                 }}
               >
-                Chat
+                View Profile
               </Text>
-            </TouchableOpacity>
-          </View>
+            </View>
+          </TouchableOpacity>
         )}
       />
     </View>
