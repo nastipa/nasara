@@ -1159,8 +1159,9 @@ return (
 
     {/* STATUS BAR */}
 
-    <ScrollView
-      horizontal
+    <View style={{ height: 110 }}>
+  <ScrollView
+    horizontal
       showsHorizontalScrollIndicator={false}
       style={{
         paddingVertical: 10,
@@ -1390,6 +1391,7 @@ return (
         </TouchableOpacity>
       ))}
     </ScrollView>
+    </View>
 
     {/* TEXT STATUS MODAL */}
 
@@ -1524,6 +1526,7 @@ return (
     {/* CHAT LIST */}
 
     <FlatList
+  contentContainerStyle={{ paddingTop: 8 }}
       data={conversations}
       keyExtractor={(item) =>
         item.room_id
