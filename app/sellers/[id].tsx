@@ -21,8 +21,11 @@ import SafeVideo from "../../components/SafeVideo";
 import { supabase } from "../../lib/supabase";
 
 export default function SellersShopScreen() {
-  const { id } = useLocalSearchParams();
-  const router = useRouter();
+  const { id } =
+    useLocalSearchParams();
+
+  const router =
+    useRouter();
 
   const [seller, setSeller] =
     useState<any>(null);
@@ -31,29 +34,118 @@ export default function SellersShopScreen() {
     useState<any[]>([]);
 
   /* ================= LOAD SELLER PROFILE ================= */
-  const loadSeller = async () => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", id)
-      .single();
+  const loadSeller =
+    async () => {
+      const { data } =
+        await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", id)
+          .single();
 
-    setSeller(data);
-  };
+      setSeller(data);
+    };
 
   /* ================= LOAD SELLER ITEMS ================= */
   const loadSellerItems =
     async () => {
-      const { data } = await supabase
-        .from("items_live")
-        .select("*")
-        .eq("user_id", id)
-        .eq("status", "active")
-        .order("created_at", {
-          ascending: false,
-        });
+      const { data } =
+        await supabase
+          .from("items_live")
+          .select("*")
+          .eq("user_id", id)
+          .eq(
+            "status",
+            "active"
+          )
+          .order(
+            "created_at",
+            {
+              ascending:
+                false,
+            }
+          );
 
-      setItems(data || []);
+      const expanded =
+        (data || []).flatMap(
+          (
+            item: any
+          ) => {
+            let images: string[] =
+              [];
+
+            try {
+              if (
+                Array.isArray(
+                  item.image_urls
+                )
+              ) {
+                images =
+                  item.image_urls;
+              } else if (
+                typeof item.image_urls ===
+                "string"
+              ) {
+                images =
+                  JSON.parse(
+                    item.image_urls
+                  );
+              } else if (
+                item.image_url
+              ) {
+                images = [
+                  item.image_url,
+                ];
+              }
+            } catch {
+              images =
+                item.image_url
+                  ? [
+                      item.image_url,
+                    ]
+                  : [];
+            }
+
+            // VIDEO
+            if (
+              item.video_url
+            ) {
+              return [
+                {
+                  ...item,
+                  split_key: `${item.id}-video,
+                `},
+              ];
+            }
+
+            // MULTIPLE IMAGES
+            if (
+              images.length >
+              0
+            ) {
+              return images.map(
+                (
+                  img: string,
+                  index: number
+                ) => ({
+                  ...item,
+                  image_url:
+                    img,
+                  split_key: `${item.id}-${index}`,
+                })
+              );
+            }
+
+            return [
+              {
+                ...item,
+                split_key: `${item.id}-empty,
+              `},
+            ];
+          }
+        );
+
+      setItems(expanded);
     };
 
   useEffect(() => {
@@ -119,7 +211,9 @@ export default function SellersShopScreen() {
             marginTop: 10,
           }}
         >
-          {seller.full_name}
+          {
+            seller.full_name
+          }
         </Text>
 
         {seller.location && (
@@ -127,10 +221,14 @@ export default function SellersShopScreen() {
             style={{
               textAlign:
                 "center",
-              color: "gray",
+              color:
+                "gray",
             }}
           >
-            📍 {seller.location}
+            📍{" "}
+            {
+              seller.location
+            }
           </Text>
         )}
       </View>
@@ -138,7 +236,8 @@ export default function SellersShopScreen() {
       {/* ===== ITEMS ===== */}
       <Text
         style={{
-          fontWeight: "700",
+          fontWeight:
+            "700",
           marginBottom: 10,
           color: "white",
         }}
@@ -149,8 +248,10 @@ export default function SellersShopScreen() {
       <FlatList
         data={items}
         numColumns={2}
-        keyExtractor={(item) =>
-          String(item.id)
+        keyExtractor={(
+          item
+        ) =>
+          item.split_key
         }
         columnWrapperStyle={{
           justifyContent:
@@ -170,7 +271,7 @@ export default function SellersShopScreen() {
               styles.card
             }
           >
-            {/* MEDIA */}
+            {/* ===== MEDIA ===== */}
             {item.video_url ? (
               <SafeVideo
                 url={
@@ -200,7 +301,7 @@ export default function SellersShopScreen() {
               </View>
             )}
 
-            {/* DETAILS */}
+            {/* ===== DETAILS ===== */}
             <View
               style={{
                 padding: 8,
@@ -215,7 +316,9 @@ export default function SellersShopScreen() {
                     "bold",
                 }}
               >
-                {item.title}
+                {
+                  item.title
+                }
               </Text>
 
               <Text
@@ -225,7 +328,10 @@ export default function SellersShopScreen() {
                   marginTop: 2,
                 }}
               >
-                GH₵ {item.price}
+                GH₵{" "}
+                {
+                  item.price
+                }
               </Text>
             </View>
           </TouchableOpacity>
@@ -243,9 +349,11 @@ const styles =
         "#fff",
       marginBottom: 12,
       borderRadius: 10,
-      overflow: "hidden",
+      overflow:
+        "hidden",
       borderWidth: 1,
-      borderColor: "#eee",
+      borderColor:
+        "#eee",
     },
 
     squareMedia: {
