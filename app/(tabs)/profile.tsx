@@ -1,5 +1,6 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { Session } from "@supabase/supabase-js";
+import * as LocalAuthentication from "expo-local-authentication";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -76,6 +77,103 @@ const [isFollowing, setIsFollowing] = useState(false);
 
 const [menteeBadge, setMenteeBadge] =
   useState(false);
+  const [showAdminModal, setShowAdminModal] =
+  useState(false);
+
+const [adminPassword, setAdminPassword] =
+  useState("");
+
+const [checkingAdmin, setCheckingAdmin] =
+  useState(false);
+  /* ================= ADMIN SECURITY ================= */
+
+const adminSecurity = async () => {
+  try {
+    const compatible =
+      await LocalAuthentication.hasHardwareAsync();
+
+    const enrolled =
+      await LocalAuthentication.isEnrolledAsync();
+
+    // ✅ Face ID / Fingerprint
+    if (compatible && enrolled) {
+      const result =
+        await LocalAuthentication.authenticateAsync({
+          promptMessage:
+            "Authenticate to open Admin Panel",
+          fallbackLabel:
+            "Use Password",
+          disableDeviceFallback: false,
+        });
+
+      if (result.success) {
+        router.push("/(admin)");
+        return;
+      }
+    }
+
+    // 🔐 fallback to password modal
+    setShowAdminModal(true);
+
+  } catch (e) {
+    console.log(e);
+
+    setShowAdminModal(true);
+  }
+};
+
+const verifyAdminPassword = async () => {
+  try {
+    if (!adminPassword.trim()) {
+      Alert.alert(
+        "Enter admin password"
+      );
+      return;
+    }
+
+    setCheckingAdmin(true);
+
+    const { data } =
+      await supabase.auth.getUser();
+
+    const email =
+      data.user?.email;
+
+    if (!email) {
+      Alert.alert("Session expired");
+      return;
+    }
+
+    // ✅ Re-login verification
+    const { error } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password: adminPassword,
+      });
+
+    if (error) {
+      Alert.alert(
+        "Wrong password"
+      );
+      return;
+    }
+
+    setShowAdminModal(false);
+    setAdminPassword("");
+
+    router.push("/(admin)");
+
+  } catch (e) {
+    console.log(e);
+
+    Alert.alert(
+      "Verification failed"
+    );
+
+  } finally {
+    setCheckingAdmin(false);
+  }
+};
 
   /* ===== MOMO ===== */
   const [momoName, setMomoName] = useState("");
@@ -956,13 +1054,16 @@ onPress={followUser}
           <Text style={styles.sectionTitle}>🛠 Admin</Text>
           <View style={{ flexDirection: "row" }}>
             <ActionTile
-              label="Admin Panel"
-              bg="#111827"
-              onPress={() => {
-                setShowActionsModal(false);
-                router.push("/(admin)");
-              }}
-            />
+  label="Admin Panel"
+  bg="#111827"
+  onPress={() => {
+    setShowActionsModal(false);
+
+    setTimeout(() => {
+      adminSecurity();
+    }, 300);
+  }}
+/>
           </View>
         </>
       )}
@@ -979,7 +1080,75 @@ onPress={followUser}
 <View style={{ marginTop: 40, paddingHorizontal: 20 }}>
 
 </View>
+  {/* ===== ADMIN SECURITY MODAL ===== */}
 
+<Modal
+  visible={showAdminModal}
+  transparent
+  animationType="slide"
+>
+  <View style={styles.modalWrap}>
+    <View style={styles.modal}>
+
+      <Text style={styles.modalTitle}>
+        Admin Verification
+      </Text>
+
+      <TextInput
+        placeholder="Enter admin password"
+        secureTextEntry
+        value={adminPassword}
+        onChangeText={setAdminPassword}
+        style={styles.input}
+      />
+
+      <TouchableOpacity
+        onPress={verifyAdminPassword}
+        style={{
+          backgroundColor: "#111827",
+          padding: 14,
+          borderRadius: 10,
+          alignItems: "center",
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            fontWeight: "bold",
+          }}
+        >
+          {checkingAdmin
+            ? "Checking..."
+            : "Verify"}
+        </Text>
+      </TouchableOpacity>
+
+      <View style={{ height: 10 }} />
+
+      <TouchableOpacity
+        onPress={() =>
+          setShowAdminModal(false)
+        }
+        style={{
+          backgroundColor: "#9ca3af",
+          padding: 14,
+          borderRadius: 10,
+          alignItems: "center",
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            fontWeight: "bold",
+          }}
+        >
+          Cancel
+        </Text>
+      </TouchableOpacity>
+
+    </View>
+  </View>
+</Modal>
 
       {/* ===== WHATSAPP MODAL ===== */}
       <Modal visible={showWhatsappModal} transparent animationType="slide">

@@ -382,29 +382,119 @@ export default function ChatTab() {
     );
   };
 
-  /* ================= USER ================= */
+  /* ================= USER + REALTIME ================= */
 
-  useEffect(() => {
-    const getSession =
-      async () => {
-        const { data } =
-          await supabase.auth.getSession();
+useEffect(() => {
+  let mounted = true;
 
-        const uid =
-          data.session?.user.id ??
-          null;
+  const init = async () => {
+    const { data } =
+      await supabase.auth.getSession();
 
-        setUserId(uid);
+    const uid =
+      data.session?.user.id ??
+      null;
 
-        if (uid) {
-          loadChats(uid);
-          loadStatuses();
-        }
+    if (!mounted) return;
+
+    setUserId(uid);
+
+    if (uid) {
+      await loadChats(uid);
+      await loadStatuses();
+
+      /* REALTIME MESSAGES */
+
+      const messagesChannel =
+        supabase
+          .channel(
+            "messages-realtime"
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema:
+                "public",
+              table:
+                "messages",
+            },
+            async () => {
+              await loadChats(
+                uid
+              );
+            }
+          )
+          .subscribe();
+
+      /* REALTIME CHAT ROOMS */
+
+      const roomsChannel =
+        supabase
+          .channel(
+            "rooms-realtime"
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema:
+                "public",
+              table:
+                "chat_rooms",
+            },
+            async () => {
+              await loadChats(
+                uid
+              );
+            }
+          )
+          .subscribe();
+
+      /* REALTIME STATUS */
+
+      const statusChannel =
+        supabase
+          .channel(
+            "status-realtime"
+          )
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema:
+                "public",
+              table:
+                "statuses",
+            },
+            async () => {
+              await loadStatuses();
+            }
+          )
+          .subscribe();
+
+      return () => {
+        supabase.removeChannel(
+          messagesChannel
+        );
+
+        supabase.removeChannel(
+          roomsChannel
+        );
+
+        supabase.removeChannel(
+          statusChannel
+        );
       };
+    }
+  };
 
-    getSession();
-  }, []);
+  init();
 
+  return () => {
+    mounted = false;
+  };
+}, []);
   /* ================= LOAD STATUSES ================= */
 
 const loadStatuses = async () => {
@@ -457,179 +547,189 @@ const loadStatuses = async () => {
 };
   /* ================= LOAD CHATS ================= */
 
-  const loadChats = async (
-    uid?: string
-  ) => {
-    const currentUserId =
-      uid || userId;
+const loadChats = async (
+  uid?: string
+) => {
+  const currentUserId =
+    uid || userId;
 
-    if (!currentUserId) {
+  if (!currentUserId) {
+    setLoading(false);
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const {
+      data: rooms,
+      error,
+    } = await (supabase as any)
+      .from("chat_rooms")
+      .select("*")
+      .or(
+        `buyer_id.eq.${currentUserId},seller_id.eq.${currentUserId}`
+      );
+
+    if (
+      error ||
+      !rooms
+    ) {
+      setConversations([]);
       setLoading(false);
       return;
     }
 
-    try {
-      setLoading(true);
+    const formatted =
+      await Promise.all(
+        rooms.map(
+          async (
+            room: any
+          ) => {
+            const otherId =
+              room.buyer_id ===
+              currentUserId
+                ? room.seller_id
+                : room.buyer_id;
 
-      const {
-        data: rooms,
-      } = await (supabase as any)
-        .from("chat_rooms")
-        .select("*")
-        .or(
-          `buyer_id.eq.${currentUserId},seller_id.eq.${currentUserId}`
+            const {
+              data: profile,
+            } =
+              await (
+                supabase as any
+              )
+                .from(
+                  "profiles"
+                )
+                .select(`
+                  full_name,
+                  avatar_url,
+                  verified
+                `)
+                .eq(
+                  "id",
+                  otherId
+                )
+                .maybeSingle();
+
+            const {
+              data: messages,
+            } =
+              await (
+                supabase as any
+              )
+                .from(
+                  "messages"
+                )
+                .select(`
+                  text,
+                  image_url,
+                  file_url,
+                  created_at
+                `)
+                .eq(
+                  "room_id",
+                  room.id
+                )
+                .order(
+                  "created_at",
+                  {
+                    ascending:
+                      false,
+                  }
+                )
+                .limit(1);
+
+            const lastMsg =
+              messages?.[0];
+
+            const { count } =
+              await (
+                supabase as any
+              )
+                .from(
+                  "messages"
+                )
+                .select(
+                  "*",
+                  {
+                    count:
+                      "exact",
+                    head: true,
+                  }
+                )
+                .eq(
+                  "room_id",
+                  room.id
+                )
+                .eq(
+                  "seen",
+                  false
+                )
+                .neq(
+                  "sender_id",
+                  currentUserId
+                );
+
+            return {
+              room_id:
+                String(
+                  room.id
+                ),
+
+              last_message:
+                lastMsg?.text ||
+                (lastMsg?.image_url
+                  ? "📷 Image"
+                  : lastMsg?.file_url
+                  ? "📎 File"
+                  : "Start chatting"),
+
+              last_time:
+                lastMsg?.created_at ||
+                "",
+
+              unread_count:
+                count || 0,
+
+              full_name:
+                profile?.full_name ||
+                "User",
+
+              avatar_url:
+                profile?.avatar_url ||
+                "",
+
+              verified:
+                profile?.verified ||
+                false,
+            };
+          }
         )
-        .order("id", {
-          ascending: false,
-        });
-
-      if (
-        !rooms ||
-        rooms.length === 0
-      ) {
-        setConversations([]);
-        setLoading(false);
-        return;
-      }
-
-      const formatted =
-        await Promise.all(
-          rooms.map(
-            async (
-              room: any
-            ) => {
-              const otherId =
-                room.buyer_id ===
-                currentUserId
-                  ? room.seller_id
-                  : room.buyer_id;
-
-              const {
-                data: profile,
-              } =
-                await (
-                  supabase as any
-                )
-                  .from(
-                    "profiles"
-                  )
-                  .select(`
-                    full_name,
-                    avatar_url,
-                    verified
-                  `)
-                  .eq(
-                    "id",
-                    otherId
-                  )
-                  .maybeSingle();
-
-              const {
-                data: messages,
-              } =
-                await (
-                  supabase as any
-                )
-                  .from(
-                    "messages"
-                  )
-                  .select(`
-                    text,
-                    image_url,
-                    file_url,
-                    created_at
-                  `)
-                  .eq(
-                    "room_id",
-                    room.id
-                  )
-                  .order(
-                    "created_at",
-                    {
-                      ascending:
-                        false,
-                    }
-                  )
-                  .limit(1);
-
-              const lastMsg =
-                messages?.[0];
-
-              const { count } =
-                await (
-                  supabase as any
-                )
-                  .from(
-                    "messages"
-                  )
-                  .select(
-                    "*",
-                    {
-                      count:
-                        "exact",
-                      head: true,
-                    }
-                  )
-                  .eq(
-                    "room_id",
-                    room.id
-                  )
-                  .eq(
-                    "seen",
-                    false
-                  )
-                  .neq(
-                    "sender_id",
-                    currentUserId
-                  );
-
-              return {
-                room_id:
-                  String(
-                    room.id
-                  ),
-
-                last_message:
-                  lastMsg?.text ||
-                  (lastMsg?.image_url
-                    ? "📷 Image"
-                    : lastMsg?.file_url
-                    ? "📎 File"
-                    : "Start chatting"),
-
-                last_time:
-                  lastMsg?.created_at ||
-                  "",
-
-                unread_count:
-                  count || 0,
-
-                full_name:
-                  profile?.full_name ||
-                  "User",
-
-                avatar_url:
-                  profile?.avatar_url ||
-                  "",
-
-                verified:
-                  profile?.verified ||
-                  false,
-              };
-            }
-          )
-        );
-
-      setConversations(
-        formatted
       );
 
-    } catch (e) {
-      console.log(e);
-    }
+    /* MOVE LATEST CHAT TO TOP */
 
-    setLoading(false);
-  };
+    formatted.sort(
+      (a, b) =>
+        new Date(
+          b.last_time || 0
+        ).getTime() -
+        new Date(
+          a.last_time || 0
+        ).getTime()
+    );
+
+    setConversations(
+      formatted
+    );
+
+  } catch (e) {
+    console.log(e);
+  }
+
+  setLoading(false);
+};
 
   /* ================= UPLOAD STATUS ================= */
 

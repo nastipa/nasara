@@ -1,15 +1,15 @@
 import {
-    useEffect,
-    useState,
+  useEffect,
+  useState,
 } from "react";
 
 import {
-    FlatList,
-    Image,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  FlatList,
+  Image,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { useRouter } from "expo-router";
@@ -26,28 +26,55 @@ export default function DiscoverScreen() {
     useState("");
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+  loadUsers();
 
-  const loadUsers =
-    async () => {
-      const {
-        data,
-        error,
-      } = await (supabase as any)
-        .from("profiles")
-        .select(
-          "id, full_name, avatar_url, verified"
-        )
-        .limit(100);
+  const channel = supabase
+    .channel("discover-users")
 
-      if (error) {
-        console.log(error);
-        return;
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "profiles",
+      },
+
+      () => {
+        loadUsers();
       }
+    )
 
-      setUsers(data || []);
-    };
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
+  const loadUsers = async () => {
+  const { data, error } =
+    await (supabase as any)
+      .from("profiles")
+      .select(
+        `
+        id,
+        full_name,
+        avatar_url,
+        verified,
+        created_at
+      `
+      )
+      .order(
+        "created_at",
+        { ascending: false }
+      );
+
+  if (error) {
+    console.log(error);
+    return;
+  }
+
+  setUsers(data || []);
+};
 
   const filtered =
     users.filter((u) =>
