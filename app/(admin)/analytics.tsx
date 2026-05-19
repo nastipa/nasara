@@ -417,12 +417,47 @@ export default function Analytics() {
 
         /* ================= VALUATION ================= */
 
-        const valuation =
-          Math.round(
-            revenue * 40 +
-              users * 25 +
-              dau * 15
-          );
+// base startup valuation model
+let valuationUSD = 2000000; // minimum $2M floor
+
+// user growth value
+valuationUSD += users * 1200;
+
+// daily active value
+valuationUSD += dau * 3500;
+
+// monthly active value
+valuationUSD += mau * 1800;
+
+// marketplace inventory
+valuationUSD += (items || 0) * 900;
+
+// live platform bonus
+valuationUSD += (liveStreams || 0) * 5000;
+
+// battle engagement bonus
+valuationUSD += (battles || 0) * 3000;
+
+// revenue multiplier
+valuationUSD += revenue * 18;
+
+// trust score multiplier
+valuationUSD += trustScore * 800000;
+
+// cap realistic range
+if (valuationUSD > 8500000) {
+  valuationUSD = 8500000;
+}
+
+const usdToGhs = 15.5;
+
+const valuation = Math.round(
+  valuationUSD * usdToGhs
+);
+
+const valuationText = `$${Math.round(
+  valuationUSD
+).toLocaleString()} (~GH₵ ${valuation.toLocaleString()})`;
 
         /* ================= PITCH ================= */
 
@@ -471,7 +506,7 @@ export default function Analytics() {
 
           fundingScore,
           valuation,
-
+          valuationText,
           suspiciousUsers,
           latestUsers:
             usersData?.slice(
@@ -601,10 +636,10 @@ export default function Analytics() {
           value={`GH₵ ${data.revenue}`}
         />
 
-        <Card
-          title="Valuation"
-          value={`GH₵ ${data.valuation}`}
-        />
+       <Card
+  title="Valuation"
+  value={data.valuationText}
+/>
       </View>
 
       {/* ================= DAU WAU MAU ================= */}

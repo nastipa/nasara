@@ -75,7 +75,11 @@ export default function BrowseScreen() {
   const shareItem = async (item: Item) => {
     try {
       const link = `https://nasara-six.vercel.app/item/${item.id}`;
-
+      trackInteraction(item, "share");
+      await trackFeedAction(
+  item,
+  "share"
+);
       await Share.share({
         message: `🔥 Check this on Nasara:\n${item.title}\n${link}`,
       });
@@ -106,7 +110,10 @@ export default function BrowseScreen() {
   const [userVerifiedMap, setUserVerifiedMap] = useState<{
   [key: string]: boolean;
 }>({});
-
+ /* ================= AI PERSONALIZATION ================= */
+const [likedCategories, setLikedCategories] = useState<string[]>([]);
+const [likedLocations, setLikedLocations] = useState<string[]>([]);
+const [recentViews, setRecentViews] = useState<string[]>([]);
   /* ================= CURSOR PAGINATION ================= */
   const lastCursor = useRef<string | null>(null);
 
@@ -456,7 +463,46 @@ export default function BrowseScreen() {
       loadLiveStreams();
     }, [])
   );
+  /* ================= LOAD AI PREFERENCES ================= */
+const loadAIPreferences = async () => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
+    if (!user) return;
+
+    const { data } = await (supabase as any)
+      .from("user_feed_activity")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", {
+        ascending: false,
+      })
+      .limit(200);
+
+    if (!data) return;
+
+    const categories = data
+      .map((x: any) => x.category)
+      .filter(Boolean);
+
+    const locations = data
+      .map((x: any) => x.location)
+      .filter(Boolean);
+
+    const views = data
+      .map((x: any) => x.item_id)
+      .filter(Boolean);
+
+    setLikedCategories(categories);
+    setLikedLocations(locations);
+    setRecentViews(views);
+
+  } catch (e) {
+    console.log("AI preference error", e);
+  }
+};
   /* ================= REFRESH ALL ================= */
   const refreshAll = async () => {
     if (isRefreshing) return;
@@ -470,8 +516,8 @@ export default function BrowseScreen() {
       await Promise.all([
   loadItems(true),
   loadLiveStreams(),
+  loadAIPreferences(),
 ]);
-
 // load others lazily (non-blocking)
 loadPromoted();
 loadBoosted();
@@ -488,6 +534,7 @@ loadBanners();
     lastRefreshRef.current =
       Date.now();
   };
+  
 
   /* ================= LOAD ITEMS (CURSOR PAGINATION) ================= */
   const loadItems = async (reset = false) => {
@@ -672,6 +719,32 @@ const loadVerifiedUsers = async (itemsList: Item[]) => {
     });
 
     setUserVerifiedMap(map);
+  }
+};
+/* ================= AI TRACK USER BEHAVIOR ================= */
+const trackInteraction = async (
+  item: Item,
+  action: "view" | "chat" | "share"
+) => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    await (supabase as any)
+      .from("user_feed_activity")
+      .insert({
+        user_id: user.id,
+        item_id: item.original_id || item.id,
+        category: item.category,
+        location: item.location,
+        action,
+      });
+
+  } catch (e) {
+    console.log("AI tracking error", e);
   }
 };
   /* ================= LOAD PROMOTED ================= */
@@ -1049,48 +1122,147 @@ useEffect(() => {
       boosted,
     ]);
 
-  /* ================= FINAL FEED ================= */
- const combined: Item[] = useMemo(() => {
-  const all =
-    selectedCategory === "All"
-      ? [
-          ...promoted,
-          ...boosted,
-          ...ads,
-          ...banners,
-          ...cleanItems,
-        ]
-      : [
-          ...promoted,
-          ...boosted,
-          ...cleanItems,
-        ];
+ /* ================= FINAL AI FEED ================= */
+const combined: Item[] =
+  useMemo(() => {
+    const all =
+      selectedCategory ===
+      "All"
+        ? [
+            ...promoted,
+            ...boosted,
+            ...ads,
+            ...banners,
+            ...cleanItems,
+          ]
+        : [
+            ...promoted,
+            ...boosted,
+            ...cleanItems,
+          ];
 
-  return all.sort((a, b) => {
-    const aTime = new Date(
-      a.created_at || ""
-    ).getTime();
+    const scored = all.map(
+      (item) => {
+        let score = 0;
 
-    const bTime = new Date(
-      b.created_at || ""
-    ).getTime();
+        /* PROMOTED BOOST */
+        if (
+          item.type ===
+          "promoted"
+        )
+          score += 100;
 
-    return bTime - aTime;
-  });
-}, [
-  promoted,
-  boosted,
-  ads,
-  banners,
-  cleanItems,
-  selectedCategory,
-]);
+        if (
+          item.type ===
+          "boosted"
+        )
+          score += 80;
+
+        /* RECENCY BOOST */
+        const ageHours =
+          Math.max(
+            1,
+            (
+              Date.now() -
+              new Date(
+                item.created_at ||
+                  ""
+              ).getTime()
+            ) /
+              3600000
+          );
+
+        score +=
+          50 / ageHours;
+
+        /* SEARCH BOOST */
+        if (
+          debouncedSearch &&
+          item.title
+            ?.toLowerCase()
+            .includes(
+              debouncedSearch.toLowerCase()
+            )
+        ) {
+          score += 40;
+        }
+
+        /* CATEGORY BOOST */
+        if (
+          selectedCategory !==
+            "All" &&
+          item.category ===
+            selectedCategory
+        ) {
+          score += 60;
+        }
+
+        return {
+          ...item,
+          aiScore: score,
+        };
+      }
+    );
+
+    return scored.sort(
+      (a: any, b: any) =>
+        b.aiScore -
+        a.aiScore
+    );
+  }, [
+    promoted,
+    boosted,
+    ads,
+    banners,
+    cleanItems,
+    selectedCategory,
+    debouncedSearch,
+  ]);
 const loadMore = () => {
   if (!hasMore || loadingMore) return;
   loadItems(false);
 };
 
-const handlePress = (item: Item) => {
+const trackFeedAction = async (
+  item: Item,
+  action: string
+) => {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    await (supabase as any)
+      .from("user_feed_activity")
+      .insert({
+        user_id: user.id,
+        item_id:
+          Number(
+            item.original_id ||
+            item.id
+          ),
+        action,
+        category:
+          item.category || null,
+      });
+  } catch (e) {
+    console.log(
+      "Track error:",
+      e
+    );
+  }
+};
+
+const handlePress = async (
+  item: Item
+) => {
+  await trackFeedAction(
+    item,
+    "click"
+  );
+
   if (
     item.type === "ad" ||
     item.type === "banner"
@@ -1103,7 +1275,8 @@ const handlePress = (item: Item) => {
 
   router.push(
     "/itemdetail/" +
-      (item.original_id || item.id)
+      (item.original_id ||
+        item.id)
   );
 };
   
@@ -1250,7 +1423,7 @@ style={{ backgroundColor: "#0f172a" }}
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/4BwMKNDwB61mXA18Wo9Way.apk"
+      "https://expo.dev/artifacts/eas/vjZYJhubEvtXUFkunMSNZh.apk"
     )
   }
   style={{
@@ -1531,8 +1704,19 @@ style={{ backgroundColor: "#0f172a" }}
           }
 
           roomId = newRoom.id;
+          await (supabase as any)
+  .from("item_engagement")
+  .insert({
+    item_id: item.id,
+    user_id: buyerId,
+    action: "chat",
+  });
         }
-
+        trackInteraction(item, "chat");
+        await trackFeedAction(
+  item,
+  "chat"
+);
         router.push({
           pathname: "/chat/[id]",
           params: { id: roomId },

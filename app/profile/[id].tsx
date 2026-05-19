@@ -1,4 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -11,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 
 import {
   blockUser,
@@ -153,6 +155,38 @@ export default function ProfileScreen() {
 
   const [blocked, setBlocked] =
     useState(false);
+    useEffect(() => {
+  const saveLocation = async () => {
+    try {
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      if (!user) return;
+
+      const { status } =
+        await Location.requestForegroundPermissionsAsync();
+
+      if (status !== "granted") return;
+
+      const loc =
+        await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+      await (supabase as any)
+        .from("profiles")
+        .update({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
+  saveLocation();
+}, []);
     /* ================= TRACK PROFILE VIEW ================= */
 async function trackProfileView(
   viewerId: string | null,
