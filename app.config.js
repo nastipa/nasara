@@ -24,7 +24,7 @@ export default {
     web: {
       bundler: "metro",
       output: "static",
-      favicon: "./assets/images/icon.png",
+      favicon: "./assets/images/icon.png"
     },
 
     /* ===================================================== */
@@ -34,14 +34,10 @@ export default {
       "expo-router",
       "expo-video",
       "expo-asset",
-      "expo-location",
-
       [
         "expo-camera",
         {
-          cameraPermission:
-            "Allow Nasara to access your camera",
-
+          cameraPermission: "Allow Nasara to access your camera",
           microphonePermission:
             "Allow Nasara to record audio with videos",
         },
@@ -60,16 +56,10 @@ export default {
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-
-        // ✅ LOCATION
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
       ],
 
       adaptiveIcon: {
-        foregroundImage:
-          "./assets/images/adaptive-icon.png",
-
+        foregroundImage: "./assets/images/adaptive-icon.png",
         backgroundColor: "#ffffff",
       },
     },
@@ -78,28 +68,17 @@ export default {
     /* ✅ IOS PERMISSIONS */
     /* ===================================================== */
     ios: {
-      bundleIdentifier:
-        "com.nastipa.nasara",
+      bundleIdentifier: "com.nastipa.nasara",
 
       infoPlist: {
         NSCameraUsageDescription:
           "Nasara needs camera access to record reels.",
-
         NSMicrophoneUsageDescription:
           "Nasara needs microphone access to record audio in reels.",
-
         NSPhotoLibraryUsageDescription:
           "Nasara needs access to your gallery to upload videos.",
-
         NSPhotoLibraryAddUsageDescription:
           "Nasara needs permission to save media.",
-
-        // ✅ LOCATION
-        NSLocationWhenInUseUsageDescription:
-          "Allow Nasara to access your location to find nearby users.",
-
-        NSLocationAlwaysAndWhenInUseUsageDescription:
-          "Allow Nasara to access your location to find nearby users.",
       },
     },
 
@@ -107,17 +86,11 @@ export default {
     /* ✅ ENV + EAS PROJECT */
     /* ===================================================== */
     extra: {
-      supabaseUrl:
-        process.env
-          .EXPO_PUBLIC_SUPABASE_URL,
-
-      supabaseAnonKey:
-        process.env
-          .EXPO_PUBLIC_SUPABASE_ANON_KEY,
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
 
       eas: {
-        projectId:
-          "633ed251-5676-4382-83d6-34b631bc416b",
+        projectId: "633ed251-5676-4382-83d6-34b631bc416b",
       },
     },
   },
