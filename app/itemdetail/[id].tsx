@@ -418,7 +418,7 @@ useEffect(() => {
         supabase as any
       )
         .from(
-          "followers"
+          "follows"
         )
         .select("*", {
           count: "exact",
@@ -449,7 +449,7 @@ useEffect(() => {
         supabase as any
       )
         .from(
-          "followers"
+          "follows"
         )
         .select("id")
         .eq(
@@ -483,7 +483,7 @@ useEffect(() => {
           supabase as any
         )
           .from(
-            "followers"
+            "follows"
           )
           .delete()
           .eq(
@@ -508,7 +508,7 @@ useEffect(() => {
           supabase as any
         )
           .from(
-            "followers"
+            "follows"
           )
           .insert({
             follower_id:
