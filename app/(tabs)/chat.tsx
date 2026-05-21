@@ -148,6 +148,43 @@ const [
 ] = useState<
   "image" | "video" | null
 >(null);
+const [
+  pendingMediaUri,
+  setPendingMediaUri,
+] = useState<string | null>(null);
+
+const [
+  pendingMediaType,
+  setPendingMediaType,
+] = useState<
+  "image" | "video" | null
+>(null);
+
+const handleMediaPick = async (type: "image" | "video") => {
+  try {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes:
+        type === "image"
+          ? ImagePicker.MediaTypeOptions.Images
+          : ImagePicker.MediaTypeOptions.Videos,
+      quality: 0.8,
+    });
+
+    if (res.canceled) return;
+
+    const uri = res.assets[0].uri;
+
+    // store pending
+    setPendingMediaUri(uri);
+    setPendingMediaType(type);
+
+    // NOW open privacy modal (NOT alert)
+    setShowWebPrivacyModal(true);
+  } catch (e) {
+    console.log(e);
+    Alert.alert("Failed to pick media");
+  }
+};
   /* ================= UPLOAD ================= */
 
   const uploadFile = async (
@@ -1411,63 +1448,9 @@ return (
       </TouchableOpacity>
 
       {/* IMAGE STATUS */}
-
 <TouchableOpacity
-  onPress={() => {
-
-    /* WEB */
-
-    if (Platform.OS === "web") {
-
-      setPendingStatusType("image");
-
-      setShowWebPrivacyModal(true);
-
-      return;
-    }
-
-    /* IOS + ANDROID */
-
-    Alert.alert(
-      "Status Privacy",
-      "Who can view this status?",
-      [
-        {
-  text: "Public",
-
-  onPress: () => {
-
-    setStatusVisibility("public");
-
-    setTimeout(() => {
-      uploadStatus("image");
-    }, 300);
-  },
-},
-
-{
-  text: "Followers",
-
-  onPress: () => {
-
-    setStatusVisibility("followers");
-
-    setTimeout(() => {
-      uploadStatus("image");
-    }, 300);
-  },
-},
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-      ]
-    );
-  }}
-  style={{
-    marginRight: 14,
-    alignItems: "center",
-  }}
+  onPress={() => handleMediaPick("image")}
+  style={{ marginRight: 14, alignItems: "center" }}
 >
   <View
     style={{
@@ -1502,66 +1485,8 @@ return (
      {/* VIDEO STATUS */}
 
 <TouchableOpacity
-  onPress={() => {
-
-    /* WEB */
-
-    if (Platform.OS === "web") {
-
-      setPendingStatusType(
-        "video"
-      );
-
-      setShowWebPrivacyModal(
-        true
-      );
-
-      return;
-    }
-
-    /* IOS + ANDROID */
-
-    Alert.alert(
-      "Status Privacy",
-      "Who can view this status?",
-      [
-        {
-  text: "Public",
-
-  onPress: () => {
-
-    setStatusVisibility("public");
-
-    setTimeout(() => {
-      uploadStatus("video");
-    }, 300);
-  },
-},
-
-{
-  text: "Followers",
-
-  onPress: () => {
-
-    setStatusVisibility("followers");
-
-    setTimeout(() => {
-      uploadStatus("video");
-    }, 300);
-  },
-},
-
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-      ]
-    );
-  }}
-  style={{
-    marginRight: 14,
-    alignItems: "center",
-  }}
+  onPress={() => handleMediaPick("video")}
+  style={{ marginRight: 14, alignItems: "center" }}
 >
         <View
           style={{
@@ -1741,105 +1666,127 @@ return (
 
       {/* PUBLIC */}
 
-      <TouchableOpacity
-        onPress={() => {
+     <TouchableOpacity
+  onPress={async () => {
+    setStatusVisibility("public");
+    setShowWebPrivacyModal(false);
 
-          setStatusVisibility(
-            "public"
-          );
+    if (!pendingMediaUri || !pendingMediaType) return;
 
-          setShowWebPrivacyModal(
-            false
-          );
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-          setTimeout(() => {
+      if (!user) return;
 
-            if (
-              pendingStatusType
-            ) {
-              uploadStatus(
-                pendingStatusType
-              );
-            }
+      const uploadedUrl = await uploadFile(
+        pendingMediaUri,
+        pendingMediaType
+      );
 
-          }, 100);
-        }}
-        style={{
-          backgroundColor:
-            "#2563eb",
-          padding: 14,
-          borderRadius: 12,
-          marginBottom: 12,
-        }}
-      >
-        <Text
-          style={{
-            color: "white",
-            textAlign: "center",
-            fontWeight: "bold",
-          }}
-        >
-          🌍 Public
-        </Text>
-      </TouchableOpacity>
+      await (supabase as any)
+        .from("statuses")
+        .insert({
+          user_id: user.id,
+          type: pendingMediaType,
+          media_url: uploadedUrl,
+          visibility: "public",
+        });
+
+      Alert.alert("Status uploaded");
+      loadStatuses();
+    } catch (e) {
+      console.log(e);
+      Alert.alert("Upload failed");
+    } finally {
+      setPendingMediaUri(null);
+      setPendingMediaType(null);
+    }
+  }}
+  style={{
+    backgroundColor: "#2563eb",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  }}
+>
+  <Text
+    style={{
+      color: "white",
+      textAlign: "center",
+      fontWeight: "bold",
+    }}
+  >
+    🌍 Public
+  </Text>
+</TouchableOpacity>
 
       {/* FOLLOWERS */}
 
       <TouchableOpacity
-        onPress={() => {
+  onPress={async () => {
+    setStatusVisibility("followers");
+    setShowWebPrivacyModal(false);
 
-          setStatusVisibility(
-            "followers"
-          );
+    if (!pendingMediaUri || !pendingMediaType) return;
 
-          setShowWebPrivacyModal(
-            false
-          );
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-          setTimeout(() => {
+      if (!user) return;
 
-            if (
-              pendingStatusType
-            ) {
-              uploadStatus(
-                pendingStatusType
-              );
-            }
+      const uploadedUrl = await uploadFile(
+        pendingMediaUri,
+        pendingMediaType
+      );
 
-          }, 100);
-        }}
-        style={{
-          backgroundColor:
-            "#111827",
-          padding: 14,
-          borderRadius: 12,
-          marginBottom: 12,
-        }}
-      >
-        <Text
-          style={{
-            color: "white",
-            textAlign: "center",
-            fontWeight: "bold",
-          }}
-        >
-          👥 Followers
-        </Text>
-      </TouchableOpacity>
+      await (supabase as any)
+        .from("statuses")
+        .insert({
+          user_id: user.id,
+          type: pendingMediaType,
+          media_url: uploadedUrl,
+          visibility: "followers",
+        });
 
+      Alert.alert("Status uploaded");
+      loadStatuses();
+    } catch (e) {
+      console.log(e);
+      Alert.alert("Upload failed");
+    } finally {
+      setPendingMediaUri(null);
+      setPendingMediaType(null);
+    }
+  }}
+  style={{
+    backgroundColor: "#111827",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  }}
+>
+  <Text
+    style={{
+      color: "white",
+      textAlign: "center",
+      fontWeight: "bold",
+    }}
+  >
+    👥 Followers
+  </Text>
+</TouchableOpacity>
       {/* CANCEL */}
 
       <TouchableOpacity
-        onPress={() => {
-
-          setShowWebPrivacyModal(
-            false
-          );
-
-          setPendingStatusType(
-            null
-          );
-        }}
+       onPress={() => {
+  setShowWebPrivacyModal(false);
+  setPendingMediaUri(null);
+  setPendingMediaType(null);
+}}
         style={{
           padding: 14,
           borderRadius: 12,
