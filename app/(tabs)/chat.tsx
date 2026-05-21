@@ -137,7 +137,17 @@ const [
 ] = useState<"public" | "followers">(
   "public"
 );
+const [
+  showWebPrivacyModal,
+  setShowWebPrivacyModal,
+] = useState(false);
 
+const [
+  pendingStatusType,
+  setPendingStatusType,
+] = useState<
+  "image" | "video" | null
+>(null);
   /* ================= UPLOAD ================= */
 
   const uploadFile = async (
@@ -811,177 +821,6 @@ const loadChats = async (
   setLoading(false);
 };
 
-const pickAndUploadStatus = async (
-  type: "image" | "video",
-  visibility: "public" | "followers"
-) => {
-
-  try {
-
-    setStatusVisibility(
-      visibility
-    );
-
-    /* ================= WEB IOS FIX ================= */
-
-    if (Platform.OS === "web") {
-
-      const input =
-        document.createElement("input");
-
-      input.type = "file";
-
-      input.accept =
-        type === "image"
-          ? "image/*"
-          : "video/*";
-
-      input.click();
-
-      input.onchange =
-        async (event: any) => {
-
-          const file =
-            event.target.files?.[0];
-
-          if (!file) return;
-
-          const formData =
-            new FormData();
-
-          formData.append(
-            "file",
-            file
-          );
-
-          const response =
-            await fetch(
-              "https://nasara-upload-server.onrender.com/upload",
-              {
-                method: "POST",
-                body: formData,
-              }
-            );
-
-          const data =
-            await response.json();
-
-          if (!data?.url) {
-            Alert.alert(
-              "Upload failed"
-            );
-            return;
-          }
-
-          const {
-            data: { user },
-          } =
-            await supabase.auth.getUser();
-
-          if (!user) return;
-
-          const { error } =
-            await (supabase as any)
-              .from("statuses")
-              .insert({
-                user_id: user.id,
-                type,
-                media_url: data.url,
-                visibility,
-              });
-
-          if (error) {
-            Alert.alert(
-              error.message
-            );
-            return;
-          }
-
-          Alert.alert(
-            `${
-              type === "image"
-                ? "Image"
-                : "Video"
-            } uploaded`
-          );
-
-          await loadStatuses();
-        };
-
-      return;
-    }
-
-    /* ================= MOBILE ================= */
-
-    const result =
-      await ImagePicker.launchImageLibraryAsync(
-        {
-          mediaTypes:
-            type === "image"
-              ? ImagePicker.MediaTypeOptions.Images
-              : ImagePicker.MediaTypeOptions.Videos,
-
-          quality: 0.8,
-        }
-      );
-
-    if (result.canceled)
-      return;
-
-    const localUri =
-      result.assets[0].uri;
-
-    const uploadedUrl =
-      await uploadFile(
-        localUri,
-        type
-      );
-
-    const {
-      data: { user },
-    } =
-      await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const { error } =
-      await (supabase as any)
-        .from("statuses")
-        .insert({
-          user_id: user.id,
-          type,
-          media_url:
-            uploadedUrl,
-          visibility,
-        });
-
-    if (error) {
-      Alert.alert(
-        error.message
-      );
-      return;
-    }
-
-    Alert.alert(
-      `${
-        type === "image"
-          ? "Image"
-          : "Video"
-      } uploaded`
-    );
-
-    await loadStatuses();
-
-  } catch (e) {
-
-    console.log(e);
-
-    Alert.alert(
-      "Upload failed"
-    );
-  }
-};
-
   /* ================= UPLOAD STATUS ================= */
 
   const uploadStatus =
@@ -1571,42 +1410,64 @@ return (
         </Text>
       </TouchableOpacity>
 
-   {/* IMAGE STATUS */}
+      {/* IMAGE STATUS */}
 
 <TouchableOpacity
- onPress={() => {
+  onPress={() => {
 
-  Alert.alert(
-    "Status Privacy",
-    "Who can view this status?",
-    [
-      {
-        text: "Public",
+    /* WEB */
 
-        onPress: () =>
-          pickAndUploadStatus(
-            "image",
-            "public"
-          ),
-      },
+    if (Platform.OS === "web") {
 
-      {
-        text: "Followers",
+      setPendingStatusType("image");
 
-        onPress: () =>
-          pickAndUploadStatus(
-            "image",
-            "followers"
-          ),
-      },
+      setShowWebPrivacyModal(true);
 
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-    ]
-  );
-}}
+      return;
+    }
+
+    /* IOS + ANDROID */
+
+    Alert.alert(
+      "Status Privacy",
+      "Who can view this status?",
+      [
+        {
+  text: "Public",
+
+  onPress: () => {
+
+    setStatusVisibility("public");
+
+    setTimeout(() => {
+      uploadStatus("image");
+    }, 300);
+  },
+},
+
+{
+  text: "Followers",
+
+  onPress: () => {
+
+    setStatusVisibility("followers");
+
+    setTimeout(() => {
+      uploadStatus("image");
+    }, 300);
+  },
+},
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
+    );
+  }}
+  style={{
+    marginRight: 14,
+    alignItems: "center",
+  }}
 >
   <View
     style={{
@@ -1641,39 +1502,66 @@ return (
      {/* VIDEO STATUS */}
 
 <TouchableOpacity
- onPress={() => {
+  onPress={() => {
 
-  Alert.alert(
-    "Status Privacy",
-    "Who can view this status?",
-    [
-      {
-        text: "Public",
+    /* WEB */
 
-        onPress: () =>
-          pickAndUploadStatus(
-            "video",
-            "public"
-          ),
-      },
+    if (Platform.OS === "web") {
 
-      {
-        text: "Followers",
+      setPendingStatusType(
+        "video"
+      );
 
-        onPress: () =>
-          pickAndUploadStatus(
-            "video",
-            "followers"
-          ),
-      },
+      setShowWebPrivacyModal(
+        true
+      );
 
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-    ]
-  );
-}}
+      return;
+    }
+
+    /* IOS + ANDROID */
+
+    Alert.alert(
+      "Status Privacy",
+      "Who can view this status?",
+      [
+        {
+  text: "Public",
+
+  onPress: () => {
+
+    setStatusVisibility("public");
+
+    setTimeout(() => {
+      uploadStatus("video");
+    }, 300);
+  },
+},
+
+{
+  text: "Followers",
+
+  onPress: () => {
+
+    setStatusVisibility("followers");
+
+    setTimeout(() => {
+      uploadStatus("video");
+    }, 300);
+  },
+},
+
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
+    );
+  }}
+  style={{
+    marginRight: 14,
+    alignItems: "center",
+  }}
 >
         <View
           style={{
@@ -1802,7 +1690,177 @@ return (
       ))}
     </ScrollView>
     </View>
-    
+    {/* WEB PRIVACY MODAL */}
+
+<Modal
+  visible={showWebPrivacyModal}
+  transparent
+  animationType="fade"
+>
+  <View
+    style={{
+      flex: 1,
+      backgroundColor:
+        "rgba(0,0,0,0.5)",
+      justifyContent:
+        "center",
+      alignItems: "center",
+      padding: 20,
+    }}
+  >
+
+    <View
+      style={{
+        width: "100%",
+        maxWidth: 350,
+        backgroundColor: "white",
+        borderRadius: 18,
+        padding: 20,
+      }}
+    >
+
+      <Text
+        style={{
+          fontSize: 18,
+          fontWeight: "bold",
+          marginBottom: 10,
+          color: "#111",
+        }}
+      >
+        Status Privacy
+      </Text>
+
+      <Text
+        style={{
+          color: "#666",
+          marginBottom: 25,
+        }}
+      >
+        Who can view this status?
+      </Text>
+
+      {/* PUBLIC */}
+
+      <TouchableOpacity
+        onPress={() => {
+
+          setStatusVisibility(
+            "public"
+          );
+
+          setShowWebPrivacyModal(
+            false
+          );
+
+          setTimeout(() => {
+
+            if (
+              pendingStatusType
+            ) {
+              uploadStatus(
+                pendingStatusType
+              );
+            }
+
+          }, 100);
+        }}
+        style={{
+          backgroundColor:
+            "#2563eb",
+          padding: 14,
+          borderRadius: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            textAlign: "center",
+            fontWeight: "bold",
+          }}
+        >
+          🌍 Public
+        </Text>
+      </TouchableOpacity>
+
+      {/* FOLLOWERS */}
+
+      <TouchableOpacity
+        onPress={() => {
+
+          setStatusVisibility(
+            "followers"
+          );
+
+          setShowWebPrivacyModal(
+            false
+          );
+
+          setTimeout(() => {
+
+            if (
+              pendingStatusType
+            ) {
+              uploadStatus(
+                pendingStatusType
+              );
+            }
+
+          }, 100);
+        }}
+        style={{
+          backgroundColor:
+            "#111827",
+          padding: 14,
+          borderRadius: 12,
+          marginBottom: 12,
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            textAlign: "center",
+            fontWeight: "bold",
+          }}
+        >
+          👥 Followers
+        </Text>
+      </TouchableOpacity>
+
+      {/* CANCEL */}
+
+      <TouchableOpacity
+        onPress={() => {
+
+          setShowWebPrivacyModal(
+            false
+          );
+
+          setPendingStatusType(
+            null
+          );
+        }}
+        style={{
+          padding: 14,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: "#ddd",
+        }}
+      >
+        <Text
+          style={{
+            textAlign: "center",
+            fontWeight: "bold",
+            color: "#111",
+          }}
+        >
+          ❌ Cancel
+        </Text>
+      </TouchableOpacity>
+
+    </View>
+  </View>
+</Modal>
     {/* TEXT STATUS MODAL */}
 
     <Modal
