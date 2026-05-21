@@ -1441,11 +1441,13 @@ return (
             "public"
           );
 
-          setTimeout(() => {
-            uploadStatus(
-              "image"
-            );
-          }, 100);
+          if (
+  pendingStatusType
+) {
+  uploadStatus(
+    pendingStatusType
+  );
+}
         },
       },
 
@@ -1458,11 +1460,13 @@ return (
             "followers"
           );
 
-          setTimeout(() => {
-            uploadStatus(
-              "image"
-            );
-          }, 100);
+         if (
+  pendingStatusType
+) {
+  uploadStatus(
+    pendingStatusType
+  );
+};
         },
       },
 
