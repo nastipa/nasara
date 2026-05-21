@@ -1412,173 +1412,166 @@ return (
 
       {/* IMAGE STATUS */}
 
-      <TouchableOpacity
-       onPress={() => {
+<TouchableOpacity
+  onPress={() => {
 
-  if (Platform.OS === "web") {
+    /* WEB */
 
-    setPendingStatusType(
-      "image"
-    );
+    if (Platform.OS === "web") {
 
-    setShowWebPrivacyModal(
-      true
-    );
+      setPendingStatusType("image");
 
-    return;
-  }
+      setShowWebPrivacyModal(true);
 
-  Alert.alert(
-    "Status Privacy",
-    "Who can view this status?",
-    [
-      {
-        text: "Public",
+      return;
+    }
 
-        onPress: () => {
+    /* IOS + ANDROID */
 
-          setStatusVisibility(
-            "public"
-          );
+    Alert.alert(
+      "Status Privacy",
+      "Who can view this status?",
+      [
+        {
+          text: "Public",
 
-          if (
-  pendingStatusType
-) {
-  uploadStatus(
-    pendingStatusType
-  );
-}
+          onPress: async () => {
+
+            setStatusVisibility(
+              "public"
+            );
+
+            await uploadStatus(
+              "image"
+            );
+          },
         },
-      },
 
-      {
-        text: "Followers",
+        {
+          text: "Followers",
 
-        onPress: () => {
+          onPress: async () => {
 
-          setStatusVisibility(
-            "followers"
-          );
+            setStatusVisibility(
+              "followers"
+            );
 
-         if (
-  pendingStatusType
-) {
-  uploadStatus(
-    pendingStatusType
-  );
-};
+            await uploadStatus(
+              "image"
+            );
+          },
         },
-      },
 
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-    ]
-  );
-}}
-        style={{
-          marginRight: 14,
-          alignItems: "center",
-        }}
-      >
-        <View
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            backgroundColor: "#2563eb",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Text
-            style={{
-              color: "white",
-              fontSize: 30,
-            }}
-          >
-            📷
-          </Text>
-        </View>
-
-        <Text
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-          }}
-        >
-          Image
-        </Text>
-      </TouchableOpacity>
-
-      {/* VIDEO STATUS */}
-
-      <TouchableOpacity
-       onPress={() => {
-
-  if (Platform.OS === "web") {
-
-    setPendingStatusType(
-      "video"
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
     );
+  }}
+  style={{
+    marginRight: 14,
+    alignItems: "center",
+  }}
+>
+  <View
+    style={{
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: "#2563eb",
+      justifyContent: "center",
+      alignItems: "center",
+    }}
+  >
+    <Text
+      style={{
+        color: "white",
+        fontSize: 30,
+      }}
+    >
+      📷
+    </Text>
+  </View>
 
-    setShowWebPrivacyModal(
-      true
-    );
+  <Text
+    style={{
+      marginTop: 4,
+      fontSize: 12,
+    }}
+  >
+    Image
+  </Text>
+</TouchableOpacity>
 
-    return;
-  }
+     {/* VIDEO STATUS */}
 
-  Alert.alert(
-    "Status Privacy",
-    "Who can view this status?",
-    [
-      {
-        text: "Public",
+<TouchableOpacity
+  onPress={() => {
 
-        onPress: () => {
+    /* WEB */
 
-          setStatusVisibility(
-            "public"
-          );
+    if (Platform.OS === "web") {
 
-          setTimeout(() => {
-            uploadStatus(
+      setPendingStatusType(
+        "video"
+      );
+
+      setShowWebPrivacyModal(
+        true
+      );
+
+      return;
+    }
+
+    /* IOS + ANDROID */
+
+    Alert.alert(
+      "Status Privacy",
+      "Who can view this status?",
+      [
+        {
+          text: "Public",
+
+          onPress: async () => {
+
+            setStatusVisibility(
+              "public"
+            );
+
+            await uploadStatus(
               "video"
             );
-          }, 100);
+          },
         },
-      },
 
-      {
-        text: "Followers",
+        {
+          text: "Followers",
 
-        onPress: () => {
+          onPress: async () => {
 
-          setStatusVisibility(
-            "followers"
-          );
+            setStatusVisibility(
+              "followers"
+            );
 
-          setTimeout(() => {
-            uploadStatus(
+            await uploadStatus(
               "video"
             );
-          }, 100);
+          },
         },
-      },
 
-      {
-        text: "Cancel",
-        style: "cancel",
-      },
-    ]
-  );
-}}     style={{
-          marginRight: 14,
-          alignItems: "center",
-        }}
-      >
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+      ]
+    );
+  }}
+  style={{
+    marginRight: 14,
+    alignItems: "center",
+  }}
+>
         <View
           style={{
             width: 72,
