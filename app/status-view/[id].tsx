@@ -5,9 +5,12 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Platform,
   Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -23,6 +26,11 @@ export default function StatusView() {
   useState(false);
 
   const current = statuses[index];
+  const [editOpen, setEditOpen] =
+  useState(false);
+
+const [editText, setEditText] =
+  useState("");
 
   // always call hook
   const player = useVideoPlayer(
@@ -65,38 +73,46 @@ export default function StatusView() {
     }
 
     /* ================= FOLLOWERS ONLY ================= */
-    if (
-      user?.id &&
-      user.id !== first.user_id
-    ) {
-      const { data: followData } =
-        await (supabase as any)
-          .from("follows")
-          .select("id")
-          .eq("follower_id", user.id)
-          .eq(
-            "following_id",
-            first.user_id
-          )
-          .maybeSingle();
 
-      if (!followData) {
-        setStatuses([
-          {
-            id: "private",
-            type: "text",
-            text: "🔒 Followers only status",
-            background: "#111827",
-            user_id: first.user_id,
-          },
-        ]);
+if (
+  first.visibility ===
+    "followers" &&
+  user?.id &&
+  user.id !== first.user_id
+) {
+  const {
+    data: followData,
+  } = await (supabase as any)
+    .from("follows")
+    .select("id")
+    .eq(
+      "follower_id",
+      user.id
+    )
+    .eq(
+      "following_id",
+      first.user_id
+    )
+    .maybeSingle();
 
-        setLoading(false);
+  if (!followData) {
+    setStatuses([
+      {
+        id: "private",
+        type: "text",
+        text:
+          "🔒 Followers only status",
+        background: "#111827",
+        user_id:
+          first.user_id,
+      },
+    ]);
 
-        return;
-      }
-    }
+    setLoading(false);
 
+    return;
+  }
+}
     /* ================= 24 HOURS ONLY ================= */
     const now = new Date().getTime();
 
@@ -249,83 +265,31 @@ export default function StatusView() {
     setIndex(statuses.length - 1); // jump to last
   }
 }
-  async function deleteStatus() {
+  // ================= EDIT STATUS =================
+async function editStatus() {
   if (!current) return;
 
-  const confirmed =
-    typeof window !== "undefined"
-      ? window.confirm(
-          "Delete this status?"
-        )
-      : true;
-
-  if (!confirmed) return;
-
-  const { error } =
-    await supabase
-      .from("statuses")
-      .delete()
-      .eq("id", current.id);
-
-  if (error) {
-    console.log(error);
-
-    if (
-      typeof window !==
-      "undefined"
-    ) {
-      window.alert(
-        "Failed to delete status"
-      );
-    } else {
-      Alert.alert(
-        "Error",
-        "Failed to delete status"
-      );
-    }
+  if (current.type !== "text") {
+    Alert.alert(
+      "Info",
+      "Only text statuses can be edited"
+    );
 
     return;
   }
 
-  const updated =
-    statuses.filter(
-      (s) =>
-        s.id !== current.id
-    );
-
-  setStatuses(updated);
-
-  if (
-    index >= updated.length
-  ) {
-    setIndex(
-      Math.max(
-        0,
-        updated.length - 1
-      )
-    );
-  }
-
-  setMenuOpen(false);
-}
-async function editStatus() {
-  if (!current) return;
-
-  if (current.type === "text") {
+  // WEB
+  if (Platform.OS === "web") {
     const newText =
-      typeof window !==
-      "undefined"
-        ? window.prompt(
-            "Edit your status",
-            current.text || ""
-          )
-        : null;
+      window.prompt(
+        "Edit your status",
+        current.text || ""
+      );
 
     if (
       !newText ||
       newText.trim() === ""
     ) {
-      setMenuOpen(false);
       return;
     }
 
@@ -338,21 +302,9 @@ async function editStatus() {
         .eq("id", current.id);
 
     if (error) {
-      console.log(error);
-
-      if (
-        typeof window !==
-        "undefined"
-      ) {
-        window.alert(
-          "Failed to edit status"
-        );
-      } else {
-        Alert.alert(
-          "Error",
-          "Failed to edit status"
-        );
-      }
+      window.alert(
+        "Failed to edit status"
+      );
 
       return;
     }
@@ -368,25 +320,176 @@ async function editStatus() {
       );
 
     setStatuses(updated);
-  } else {
-    if (
-      typeof window !==
-      "undefined"
-    ) {
-      window.alert(
-        "Only text statuses can be edited for now"
-      );
-    } else {
-      Alert.alert(
-        "Info",
-        "Only text statuses can be edited for now"
-      );
-    }
+
+    setMenuOpen(false);
+
+    return;
   }
+
+  // MOBILE
+  setEditText(
+    current.text || ""
+  );
+
+  setEditOpen(true);
 
   setMenuOpen(false);
 }
 
+// ================= SAVE EDITED STATUS =================
+async function saveEditedStatus() {
+  if (
+    !editText ||
+    editText.trim() === ""
+  ) {
+    return;
+  }
+
+  const { error } =
+    await (supabase as any)
+      .from("statuses")
+      .update({
+        text: editText,
+      })
+      .eq("id", current.id);
+
+  if (error) {
+    console.log(error);
+
+    Alert.alert(
+      "Error",
+      "Failed to edit status"
+    );
+
+    return;
+  }
+
+  const updated =
+    statuses.map((s) =>
+      s.id === current.id
+        ? {
+            ...s,
+            text: editText,
+          }
+        : s
+    );
+
+  setStatuses(updated);
+
+  setEditOpen(false);
+}
+
+// ================= DELETE STATUS =================
+async function deleteStatus() {
+  if (!current) return;
+
+  // WEB
+  if (Platform.OS === "web") {
+    const confirmed =
+      window.confirm(
+        "Delete this status?"
+      );
+
+    if (!confirmed) return;
+
+    const { error } =
+      await supabase
+        .from("statuses")
+        .delete()
+        .eq("id", current.id);
+
+    if (error) {
+      window.alert(
+        "Failed to delete status"
+      );
+
+      return;
+    }
+
+    const updated =
+      statuses.filter(
+        (s) =>
+          s.id !== current.id
+      );
+
+    setStatuses(updated);
+
+    if (
+      index >= updated.length
+    ) {
+      setIndex(
+        Math.max(
+          0,
+          updated.length - 1
+        )
+      );
+    }
+
+    setMenuOpen(false);
+
+    return;
+  }
+
+  // MOBILE
+  Alert.alert(
+    "Delete Status",
+    "Are you sure you want to delete this status?",
+    [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const { error } =
+            await supabase
+              .from("statuses")
+              .delete()
+              .eq(
+                "id",
+                current.id
+              );
+
+          if (error) {
+            console.log(error);
+
+            Alert.alert(
+              "Error",
+              "Failed to delete status"
+            );
+
+            return;
+          }
+
+          const updated =
+            statuses.filter(
+              (s) =>
+                s.id !==
+                current.id
+            );
+
+          setStatuses(updated);
+
+          if (
+            index >=
+            updated.length
+          ) {
+            setIndex(
+              Math.max(
+                0,
+                updated.length - 1
+              )
+            );
+          }
+
+          setMenuOpen(false);
+        },
+      },
+    ]
+  );
+}
   if (loading || !current) {
     return (
       <View
@@ -627,8 +730,122 @@ async function editStatus() {
                   "User"}
               </Text>
             ))}
+            
         </View>
       )}
+     {/* EDIT MODAL */}
+<Modal
+  visible={editOpen}
+  transparent
+  animationType="fade"
+>
+  <View
+    style={{
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor:
+        "rgba(0,0,0,0.7)",
+      padding: 20,
+    }}
+  >
+    <View
+      style={{
+        width: "100%",
+        backgroundColor:
+          "#111827",
+        borderRadius: 12,
+        padding: 20,
+      }}
+    >
+      <Text
+        style={{
+          color: "white",
+          fontSize: 18,
+          fontWeight: "bold",
+          marginBottom: 15,
+        }}
+      >
+        Edit Status
+      </Text>
+
+      <TextInput
+        value={editText}
+        onChangeText={
+          setEditText
+        }
+        placeholder="Edit status..."
+        placeholderTextColor="#9ca3af"
+        multiline
+        style={{
+          color: "white",
+          borderWidth: 1,
+          borderColor: "#374151",
+          borderRadius: 10,
+          padding: 12,
+          minHeight: 100,
+          textAlignVertical:
+            "top",
+        }}
+      />
+
+      <View
+        style={{
+          flexDirection: "row",
+          marginTop: 20,
+          gap: 10,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() =>
+            setEditOpen(false)
+          }
+          style={{
+            flex: 1,
+            backgroundColor:
+              "#374151",
+            padding: 14,
+            borderRadius: 10,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              color: "white",
+              fontWeight: "bold",
+            }}
+          >
+            Cancel
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={
+            saveEditedStatus
+          }
+          style={{
+            flex: 1,
+            backgroundColor:
+              "#2563eb",
+            padding: 14,
+            borderRadius: 10,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              color: "white",
+              fontWeight: "bold",
+            }}
+          >
+            Save
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
-  );
+  </View>
+</Modal>
+
+</View>
+);
 }

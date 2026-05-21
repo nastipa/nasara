@@ -133,106 +133,253 @@ export default function AuctionRoomScreen() {
   bids.length > 0
     ? bids[0].bid_amount
     : Number(room?.starting_price || 0);
+  const isBidAccepted = bids.some(
+  (b) => b.status === "accepted"
+);
+ /* ================= PLACE BID ================= */
 
-  /* ================= PLACE BID ================= */
-
-  const placeBid = async () => {
-    if (auctionEnded) {
-      Alert.alert("Auction Ended");
-      return;
-    }
-
-    const numericAmount = Number(bidAmount);
-
-    const MIN_INCREMENT = 10;
-
-if (!numericAmount || numericAmount < highestBid + MIN_INCREMENT) {
+const placeBid = async () => {
+  if (isBidAccepted) {
   Alert.alert(
-    "Bid Too Low",
-    `Minimum bid is GH₵ ${highestBid + MIN_INCREMENT}`
+    "Auction Completed",
+    "A bid has already been accepted."
   );
   return;
 }
-if (userId === room?.seller_id) {
-  Alert.alert("You cannot bid on your own auction");
-  return;
-}
+  if (auctionEnded) {
+    Alert.alert(
+      "Auction Ended"
+    );
 
-    const { error } = await (supabase as any).from("auction_bids").insert({
-      auction_id: id,
-      bidder_id: userId,
-      bid_amount: numericAmount,
-      status: "pending",
-    });
+    return;
+  }
 
-    if (!error) {
-      setBidAmount("");
-      loadBids();
-      if (timeLeft < 10) {
-  setTimeLeft((prev) => prev + 10);
-}
+  /* STOP IF BID ALREADY ACCEPTED */
+  const acceptedBid =
+    bids.find(
+      (b) =>
+        b.status ===
+        "accepted"
+    );
+
+  if (acceptedBid) {
+    Alert.alert(
+      "Auction already completed"
+    );
+
+    return;
+  }
+
+  const numericAmount =
+    Number(bidAmount);
+
+  const MIN_INCREMENT = 10;
+
+  if (
+    !numericAmount ||
+    numericAmount <
+      highestBid +
+        MIN_INCREMENT
+  ) {
+    Alert.alert(
+      "Bid Too Low",
+      `Minimum bid is GH₵ ${
+        highestBid +
+        MIN_INCREMENT
+      }`
+    );
+
+    return;
+  }
+
+  if (
+    userId ===
+    room?.seller_id
+  ) {
+    Alert.alert(
+      "You cannot bid on your own auction"
+    );
+
+    return;
+  }
+
+  const { error } =
+    await (supabase as any)
+      .from("auction_bids")
+      .insert({
+        auction_id: id,
+        bidder_id: userId,
+        bid_amount:
+          numericAmount,
+        status: "pending",
+      });
+
+  if (!error) {
+    setBidAmount("");
+
+    loadBids();
+
+    if (timeLeft < 10) {
+      setTimeLeft(
+        (prev) =>
+          prev + 10
+      );
     }
-  };
+  }
+};
 
   /* ================= ACCEPT BID ================= */
 
-  const acceptBid = async (bidId: string, amount: number) => {
-    try {
-      const commissionRate = 0.05;
+const acceptBid = async (
+  bidId: string,
+  amount: number,
+  bidderId: string
+) => {
+  try {
+    /* STOP IF ALREADY ACCEPTED */
+    const alreadyAccepted = bids.find(
+      (b) => b.status === "accepted"
+    );
 
-      const commission = amount * commissionRate;
-      const sellerEarning = amount - commission;
+    if (alreadyAccepted) {
+      Alert.alert(
+        "Auction already completed"
+      );
 
-      const { error: bidError } = await (supabase as any)
+      return;
+    }
+
+    const commissionRate = 0.05;
+
+    const commission =
+      amount * commissionRate;
+
+    const sellerEarning =
+      amount - commission;
+
+    /* ACCEPT BID */
+    const { error: bidError } =
+      await (supabase as any)
         .from("auction_bids")
         .update({
           status: "accepted",
-          commission: commission,
-          seller_earning: sellerEarning,
+          commission,
+          seller_earning:
+            sellerEarning,
         })
         .eq("id", bidId);
 
-      if (bidError) throw bidError;
+    if (bidError)
+      throw bidError;
 
-      const { error: auctionError } = await (supabase as any)
-        .from("auctions")
-        .update({ status: "ended" })
-        .eq("id", room?.id);
+    /* REJECT OTHER BIDS */
+    await (supabase as any)
+      .from("auction_bids")
+      .update({
+        status: "rejected",
+      })
+      .eq(
+        "auction_id",
+        room?.id
+      )
+      .neq("id", bidId);
 
-      if (auctionError) throw auctionError;
+    /* END AUCTION */
+    const {
+      error: auctionError,
+    } = await (supabase as any)
+      .from("auctions")
+      .update({
+        status: "ended",
+      })
+      .eq("id", room?.id);
 
-      const { data: wallet } = await (supabase as any)
-        .from("seller_wallets")
-        .select("*")
-        .eq("seller_id", room?.seller_id)
-        .single();
+    if (auctionError)
+      throw auctionError;
 
-      if (wallet) {
-        await (supabase as any)
-          .from("seller_wallets")
-          .update({
-            balance: Number(wallet.balance) + sellerEarning,
-          })
-          .eq("seller_id", room?.seller_id);
-      } else {
-        await (supabase as any).from("seller_wallets").insert({
-          seller_id: room?.seller_id,
-          balance: sellerEarning,
-        });
-      }
+    /* ================= CHAT ================= */
 
-      setAuctionEnded(true);
-      loadBids();
+let roomId = "";
 
-      Alert.alert(
-        "Bid Accepted",
-        `Commission: GH₵ ${commission}\nSeller Receives: GH₵ ${sellerEarning}`
-      );
-    } catch (err: any) {
-      Alert.alert("Error", err.message);
-    }
-  };
+const {
+  data: existingRoom,
+} = await (supabase as any)
+  .from("chat_rooms")
+  .select("*")
+  .or(
+    `and(buyer_id.eq.${bidderId},seller_id.eq.${room?.seller_id}),and(buyer_id.eq.${room?.seller_id},seller_id.eq.${bidderId})
+  `)
+  .maybeSingle();
 
+if (existingRoom) {
+  roomId = existingRoom.id;
+} else {
+  const {
+    data: newRoom,
+    error: roomError,
+  } = await (supabase as any)
+    .from("chat_rooms")
+    .insert({
+      buyer_id: bidderId,
+      seller_id:
+        room?.seller_id,
+    })
+    .select()
+    .single();
+
+  if (roomError)
+    throw roomError;
+
+  roomId = newRoom.id;
+}
+
+    /* ================= MOMO MESSAGE ================= */
+
+    Alert.alert(
+      "Bid Accepted",
+      `Winner accepted successfully
+
+5% Commission Payment
+
+Amount: GH₵ ${commission.toFixed(
+        2
+      )}
+
+Momo Name: Nasara app
+Momo Number: 0539703374
+Network: MTN
+
+A chat has been opened between both users.`,
+      [
+        {
+          text: "Open Chat",
+          onPress: () => {
+            router.push({
+              pathname:
+                "/chat/[id]",
+              params: {
+                id: roomId,
+              },
+            });
+          },
+        },
+      ]
+    );
+
+    setAuctionEnded(true);
+
+    loadBids();
+
+    loadRoom();
+  } catch (err: any) {
+    console.log(err);
+
+    Alert.alert(
+      "Error",
+      err.message
+    );
+  }
+};
   /* ================= REALTIME ================= */
 
   useEffect(() => {
@@ -345,7 +492,7 @@ if (userId === room?.seller_id) {
   Next minimum bid: GH₵ {highestBid + 10}
 </Text>
 
-        {!isSeller && !auctionEnded && (
+        {!isSeller && !auctionEnded && !isBidAccepted && (
           <View style={{ marginTop: 20 }}>
             <TextInput
               value={bidAmount}
@@ -408,9 +555,13 @@ if (userId === room?.seller_id) {
 
               {isSeller && index === 0 && !auctionEnded && (
                 <TouchableOpacity
-                  onPress={() =>
-                    acceptBid(item.id, item.bid_amount)
-                  }
+                 onPress={() =>
+  acceptBid(
+    item.id,
+    item.bid_amount,
+    item.bidder_id
+  )
+}
                   style={{
                     backgroundColor: "green",
                     padding: 10,

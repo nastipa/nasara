@@ -39,6 +39,7 @@ type Status = {
   id: number;
   user_id: string;
   type: "text" | "image" | "video";
+  visibility?: "public" | "followers";
   text?: string;
   media_url?: string;
   background?: string;
@@ -130,7 +131,12 @@ export default function ChatTab() {
     "#ea580c",
     "#db2777",
   ];
-
+const [
+  statusVisibility,
+  setStatusVisibility,
+] = useState<"public" | "followers">(
+  "public"
+);
   /* ================= UPLOAD ================= */
 
   const uploadFile = async (
@@ -499,6 +505,14 @@ useEffect(() => {
 
 const loadStatuses = async () => {
   try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    const currentUserId = user.id;
+
     const { data, error } = await (supabase as any)
       .from("statuses")
       .select(`
@@ -508,39 +522,104 @@ const loadStatuses = async () => {
         text,
         media_url,
         background,
+        visibility,
         created_at
       `)
-      .order("created_at", { ascending: false });
+      .order("created_at", {
+        ascending: false,
+      });
 
     if (error || !data) {
       setStatuses([]);
       return;
     }
 
+    const visibleStatuses: any[] = [];
+
+    for (const status of data) {
+      /* PUBLIC */
+      if (
+        status.visibility === "public" ||
+        !status.visibility
+      ) {
+        visibleStatuses.push(status);
+        continue;
+      }
+
+      /* OWN STATUS */
+      if (
+        status.user_id === currentUserId
+      ) {
+        visibleStatuses.push(status);
+        continue;
+      }
+
+      /* FOLLOWERS ONLY */
+      if (
+        status.visibility ===
+        "followers"
+      ) {
+        const {
+          data: follow,
+        } = await (supabase as any)
+          .from("follows")
+          .select("id")
+          .eq(
+            "follower_id",
+            currentUserId
+          )
+          .eq(
+            "following_id",
+            status.user_id
+          )
+          .maybeSingle();
+
+        if (follow) {
+          visibleStatuses.push(status);
+        }
+      }
+    }
+
     const seen = new Set<string>();
     const grouped: any[] = [];
 
-    for (const status of data) {
-      if (seen.has(status.user_id)) continue;
+    for (const status of visibleStatuses) {
+      if (
+        seen.has(status.user_id)
+      )
+        continue;
 
       seen.add(status.user_id);
 
-      const { data: profile } = await (supabase as any)
+      const {
+        data: profile,
+      } = await (supabase as any)
         .from("profiles")
-        .select("full_name, avatar_url")
-        .eq("id", status.user_id)
+        .select(
+          "full_name, avatar_url"
+        )
+        .eq(
+          "id",
+          status.user_id
+        )
         .maybeSingle();
 
       grouped.push({
         ...status,
         profiles: {
-          full_name: profile?.full_name || "User",
-          avatar_url: profile?.avatar_url || "",
+          full_name:
+            profile?.full_name ||
+            "User",
+
+          avatar_url:
+            profile?.avatar_url ||
+            "",
         },
       });
     }
 
     setStatuses(grouped);
+
   } catch (e) {
     console.log(e);
   }
@@ -778,17 +857,20 @@ const loadChats = async (
                 "statuses"
               )
               .insert({
-                user_id:
-                  user.id,
+  user_id:
+    user.id,
 
-                type: "text",
+  type: "text",
 
-                text:
-                  textStatus,
+  text:
+    textStatus,
 
-                background:
-                  selectedColor,
-              });
+  background:
+    selectedColor,
+
+  visibility:
+    statusVisibility,
+});
 
           if (error) {
             Alert.alert(
@@ -926,16 +1008,18 @@ const loadChats = async (
                 "statuses"
               )
               .insert({
-                user_id:
-                  user.id,
+  user_id:
+    user.id,
 
-                type:
-                  "image",
+  type:
+    "image",
 
-                media_url:
-                  uploadedUrl,
-              });
+  media_url:
+    uploadedUrl,
 
+  visibility:
+    statusVisibility,
+});
           if (error) {
             Alert.alert(
               error.message
@@ -1063,16 +1147,18 @@ const loadChats = async (
                 "statuses"
               )
               .insert({
-                user_id:
-                  user.id,
+  user_id:
+    user.id,
 
-                type:
-                  "video",
+  type:
+    "video",
 
-                media_url:
-                  uploadedUrl,
-              });
+  media_url:
+    uploadedUrl,
 
+  visibility:
+    statusVisibility,
+});
           if (error) {
             Alert.alert(
               error.message
@@ -1317,8 +1403,47 @@ return (
 
       <TouchableOpacity
         onPress={() =>
-          uploadStatus("image")
-        }
+  Alert.alert(
+    "Status Privacy",
+    "Who can view this status?",
+    [
+      {
+        text: "Public",
+        onPress: () => {
+          setStatusVisibility(
+            "public"
+          );
+
+          setTimeout(() => {
+            uploadStatus(
+              "image"
+            );
+          }, 100);
+        },
+      },
+
+      {
+        text: "Followers",
+        onPress: () => {
+          setStatusVisibility(
+            "followers"
+          );
+
+          setTimeout(() => {
+            uploadStatus(
+              "image"
+            );
+          }, 100);
+        },
+      },
+
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+    ]
+  )
+}
         style={{
           marginRight: 14,
           alignItems: "center",
@@ -1358,8 +1483,47 @@ return (
 
       <TouchableOpacity
         onPress={() =>
-          uploadStatus("video")
-        }
+  Alert.alert(
+    "Status Privacy",
+    "Who can view this status?",
+    [
+      {
+        text: "Public",
+        onPress: () => {
+          setStatusVisibility(
+            "public"
+          );
+
+          setTimeout(() => {
+            uploadStatus(
+              "video"
+            );
+          }, 100);
+        },
+      },
+
+      {
+        text: "Followers",
+        onPress: () => {
+          setStatusVisibility(
+            "followers"
+          );
+
+          setTimeout(() => {
+            uploadStatus(
+              "video"
+            );
+          }, 100);
+        },
+      },
+
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+    ]
+  )
+}
         style={{
           marginRight: 14,
           alignItems: "center",
@@ -1595,7 +1759,82 @@ return (
             )
           )}
         </ScrollView>
+        {/* VISIBILITY */}
 
+<View
+  style={{
+    flexDirection: "row",
+    marginTop: 25,
+    justifyContent: "center",
+  }}
+>
+  <TouchableOpacity
+    onPress={() =>
+      setStatusVisibility(
+        "public"
+      )
+    }
+    style={{
+      backgroundColor:
+        statusVisibility ===
+        "public"
+          ? "white"
+          : "rgba(255,255,255,0.2)",
+
+      paddingVertical: 12,
+      paddingHorizontal: 22,
+      borderRadius: 12,
+      marginRight: 12,
+    }}
+  >
+    <Text
+      style={{
+        color:
+          statusVisibility ===
+          "public"
+            ? "#111"
+            : "white",
+
+        fontWeight: "bold",
+      }}
+    >
+      🌍 Public
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() =>
+      setStatusVisibility(
+        "followers"
+      )
+    }
+    style={{
+      backgroundColor:
+        statusVisibility ===
+        "followers"
+          ? "white"
+          : "rgba(255,255,255,0.2)",
+
+      paddingVertical: 12,
+      paddingHorizontal: 22,
+      borderRadius: 12,
+    }}
+  >
+    <Text
+      style={{
+        color:
+          statusVisibility ===
+          "followers"
+            ? "#111"
+            : "white",
+
+        fontWeight: "bold",
+      }}
+    >
+      👥 Followers
+    </Text>
+  </TouchableOpacity>
+</View>
         {/* POST BUTTON */}
 
         <TouchableOpacity
