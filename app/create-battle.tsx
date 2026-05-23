@@ -116,7 +116,8 @@ export default function CreateBattle() {
   const [category, setCategory] = useState("");
  const [candidateImages, setCandidateImages] =
   useState<Record<string, string>>({});
-
+  const [candidatePositions, setCandidatePositions] =
+  useState<Record<string, string>>({});
   /* ================= BATTLE TYPE ================= */
   const [battleType, setBattleType] =
     useState<"public" | "institution">(
@@ -487,11 +488,13 @@ if (localImage) {
   }
 
   candidatePayload.push({
-    battle_id: data.id,
-    name,
-    image_url: imageUrl,
-    votes: 0,
-  });
+  battle_id: data.id,
+  name,
+  position:
+    candidatePositions[name] || "",
+  image_url: imageUrl,
+  votes: 0,
+});
 }
 
 const {
@@ -687,7 +690,9 @@ async function pickCandidateImage(
             fontWeight: "bold",
           }}
         >
-          ⚔️ Create Battle
+          {battleType === "public"
+  ? "🚀 Create Public Battle"
+  : "🗳️ Create Institution Election"}
         </Text>
 
         {/* ================= BATTLE TYPE ================= */}
@@ -938,7 +943,7 @@ Any country format allowed.
               fontWeight: "bold",
             }}
           >
-            🔒 Private Battle
+            🔒 Private Election
           </Text>
 
           <Switch
@@ -965,7 +970,7 @@ Any country format allowed.
           style={styles.input}
           multiline
         />
-       <View style={{ marginTop: 15 }}>
+      <View style={{ marginTop: 15 }}>
 
   <Text
     style={{
@@ -973,7 +978,7 @@ Any country format allowed.
       marginBottom: 10,
     }}
   >
-    Candidate Photos
+    Candidates
   </Text>
 
   {compare
@@ -997,20 +1002,46 @@ Any country format allowed.
           style={{
             fontWeight: "bold",
             marginBottom: 10,
+            fontSize: 16,
           }}
         >
           {candidate}
         </Text>
 
-        <TouchableOpacity
-          onPress={() =>
-            pickCandidateImage(
-              candidate
-            )
+        {/* ================= POSITION ================= */}
+
+        <TextInput
+          placeholder={
+            battleType === "institution"
+              ? "Position (President, SRC, Treasurer...)"
+              : "Role / Nickname (optional)"
+          }
+          value={
+            candidatePositions[candidate] || ""
+          }
+          onChangeText={(text) =>
+            setCandidatePositions((prev) => ({
+              ...prev,
+              [candidate]: text,
+            }))
           }
           style={{
-            backgroundColor:
-              "#2563eb",
+            borderWidth: 1,
+            borderColor: "#ddd",
+            borderRadius: 8,
+            padding: 10,
+            marginBottom: 12,
+          }}
+        />
+
+        {/* ================= PHOTO ================= */}
+
+        <TouchableOpacity
+          onPress={() =>
+            pickCandidateImage(candidate)
+          }
+          style={{
+            backgroundColor: "#2563eb",
             padding: 10,
             borderRadius: 8,
           }}
@@ -1027,16 +1058,11 @@ Any country format allowed.
 
         </TouchableOpacity>
 
-        {candidateImages[
-          candidate
-        ] ? (
+        {candidateImages[candidate] ? (
 
           <Image
             source={{
-              uri:
-                candidateImages[
-                  candidate
-                ],
+              uri: candidateImages[candidate],
             }}
             style={{
               width: 90,
@@ -1167,7 +1193,7 @@ Any country format allowed.
               fontSize: 16,
             }}
           >
-            💳 Battle Creation Fee
+            💳  Creation Fee
           </Text>
 
           <Text
@@ -1176,8 +1202,8 @@ Any country format allowed.
             }}
           >
             {battleType === "public"
-  ? "Public Battle: GH₵ 500"
-  : "Institution Battle: GH₵ 1000"}
+  ? "⚔️ Public Battle Fee: GH₵ 1000"
+  : "🗳️ Institution Election Fee: GH₵ 2000"}
           </Text>
 
           <Text
@@ -1211,7 +1237,9 @@ Any country format allowed.
           >
             {loading
               ? "Creating..."
-              : "🚀 Create Battle"}
+             :battleType === "public"
+  ? "🚀 Create Public Battle"
+  : "🗳️ Create Institution Election"}
           </Text>
         </TouchableOpacity>
 

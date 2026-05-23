@@ -439,7 +439,7 @@ export default function BattleRoom() {
 
       Alert.alert(
         "Access Denied",
-        "This number is not approved for this institution voting."
+        "This number is not approved for this institution election."
       );
 
       return;
@@ -463,7 +463,7 @@ export default function BattleRoom() {
 
   Alert.alert(
     "Already Voted",
-    "You already used your vote in this battle."
+    "You already used your vote in this election."
   );
 
   return;
@@ -678,7 +678,7 @@ After admin approval your extra votes will activate automatically.`
       if (isEnded()) {
 
         Alert.alert(
-          "Battle Ended"
+          "Election/Battle Ended"
         );
 
         setVoting(false);
@@ -1299,16 +1299,31 @@ return;
 
 ) : null}
             <Text
-              style={{
-                fontWeight: "bold",
-                fontSize: 16,
-              }}
-            >
-              {index === 0
-                ? "👑 "
-                : ""}
-              {item.name}
-            </Text>
+  style={{
+    fontWeight: "bold",
+    fontSize: 16,
+  }}
+>
+  {index === 0
+    ? "👑 "
+    : ""}
+  {item.name}
+</Text>
+
+{item.position ? (
+
+  <Text
+    style={{
+      marginTop: 5,
+      color: "#2563eb",
+      fontWeight: "600",
+      fontSize: 14,
+    }}
+  >
+    🏛️ Position: {item.position}
+  </Text>
+
+) : null}
 
             <Text
               style={{

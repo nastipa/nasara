@@ -415,7 +415,7 @@ export default function MyBattles() {
                     "bold",
                 }}
               >
-                🏫 Institution Battle
+                🏫 Institution Election
               </Text>
             )}
 
@@ -427,7 +427,7 @@ export default function MyBattles() {
                   color: "orange",
                 }}
               >
-                🔒 Private Battle
+                🔒 Private Election
               </Text>
             )}
 

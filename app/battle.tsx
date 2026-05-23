@@ -635,11 +635,11 @@ export default function BattleScreen() {
               }}
             >
               {t === "all"
-                ? "⚔️ Active Battles"
+                ? "⚔️ Active Elections/Battles"
                 : t ===
                   "my"
-                ? "🏠 My Battles"
-                : "📜 Ended Battles"}
+                ? "🏠 My Elections/Battles"
+                : "📜 Ended Elections/Battles"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -866,7 +866,7 @@ export default function BattleScreen() {
               >
                 {item.battle_type ===
                 "institution"
-                  ? "Institution Battle"
+                  ? "Institution Election"
                   : "Public Battle"}
               </Text>
 
@@ -881,7 +881,7 @@ export default function BattleScreen() {
                   }}
                 >
                   🔒 Private
-                  Battle
+                  Election
                 </Text>
               )}
 
@@ -949,7 +949,7 @@ export default function BattleScreen() {
                   }}
                 >
                   🔗 Share
-                  Battle
+                  Election/Battle
                 </Text>
               </TouchableOpacity>
 
@@ -977,8 +977,7 @@ export default function BattleScreen() {
                       "600",
                   }}
                 >
-                  Enter
-                  Battle ⚔️
+                  Voting Booth ⚔️
                 </Text>
               </TouchableOpacity>
 
@@ -1130,7 +1129,7 @@ export default function BattleScreen() {
                   "gray",
               }}
             >
-              Institution battles
+              Institution Election
               require approved
               phone numbers
             </Text>

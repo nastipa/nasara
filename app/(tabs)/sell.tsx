@@ -375,15 +375,15 @@ image_urls:
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/create-battle")}>
-            <Text style={styles.quickText}>⚔️ Create Battle</Text>
+            <Text style={styles.quickText}>⚔️ Create Election/Battle</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/ads/create")}>
-            <Text style={styles.quickText}>💵 Post Ad(Paid)</Text>
+            <Text style={styles.quickText}>💵 Create Ad (Paid)</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/banner/create")}>
-            <Text style={styles.quickText}>📢 Banner (Paid)</Text>
+            <Text style={styles.quickText}>📢Create Banner (Paid)</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/go-auction")}>
