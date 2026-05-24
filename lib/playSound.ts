@@ -14,12 +14,12 @@ const sounds = {
     "../assets/sounds/message.mp3"
   ),
 
-  send: require(
-    "../assets/sounds/send.mp3"
-  ),
-
   like: require(
     "../assets/sounds/like.mp3"
+  ),
+
+  send: require(
+    "../assets/sounds/message.mp3"
   ),
 };
 
@@ -49,8 +49,6 @@ export async function playSound(
     | "live"
 ) {
   try {
-    /* ================= FALLBACK ================= */
-
     let soundType:
       | "post"
       | "message"
@@ -69,8 +67,6 @@ export async function playSound(
       soundType = "like";
     }
 
-    /* ================= WEB ================= */
-
     if (Platform.OS === "web") {
       const audio =
         new window.Audio(
@@ -83,8 +79,6 @@ export async function playSound(
 
       return;
     }
-
-    /* ================= MOBILE ================= */
 
     await configureAudio();
 
