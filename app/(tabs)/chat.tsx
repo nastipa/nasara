@@ -561,8 +561,19 @@ const loadStatuses = async () => {
 
     const currentUserId = user.id;
 
-    const { data, error } = await (supabase as any)
-      .from("statuses")
+    /* DELETE EXPIRED STATUSES */
+const expiryDate = new Date(
+  Date.now() - 24 * 60 * 60 * 1000
+).toISOString();
+
+await supabase
+  .from("statuses")
+  .delete()
+  .lt("created_at", expiryDate);
+
+/* NOW LOAD ACTIVE STATUSES */
+const { data, error } = await (supabase as any)
+  .from("statuses")
       .select(`
         id,
         user_id,
@@ -581,10 +592,27 @@ const loadStatuses = async () => {
       setStatuses([]);
       return;
     }
-
+    
     const visibleStatuses: any[] = [];
 
-    for (const status of data) {
+const now = new Date().getTime();
+
+for (const status of data) {
+
+  /* SKIP EXPIRED */
+  const created = new Date(
+    status.created_at
+  ).getTime();
+
+  const diff =
+    now - created;
+
+  if (
+    diff >
+    24 * 60 * 60 * 1000
+  ) {
+    continue;
+  }
       /* PUBLIC */
       if (
         status.visibility === "public" ||
