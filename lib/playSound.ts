@@ -1,11 +1,10 @@
 import {
-  createAudioPlayer,
-  setAudioModeAsync,
+    createAudioPlayer,
+    setAudioModeAsync,
 } from "expo-audio";
 
 import { Platform } from "react-native";
 
-/* ================= ONLY EXISTING FILES ================= */
 const sounds = {
   post: require(
     "../assets/sounds/post.mp3"
@@ -15,16 +14,19 @@ const sounds = {
     "../assets/sounds/message.mp3"
   ),
 
+  send: require(
+    "../assets/sounds/send.mp3"
+  ),
+
   like: require(
     "../assets/sounds/like.mp3"
   ),
 };
 
-/* ================= CONFIG FLAG ================= */
 let configured = false;
 
-/* ================= AUDIO CONFIG ================= */
 async function configureAudio() {
+
   if (configured) return;
 
   await setAudioModeAsync({
@@ -35,25 +37,24 @@ async function configureAudio() {
   configured = true;
 }
 
-/* ================= MAIN FUNCTION ================= */
 export async function playSound(
   type:
     | "post"
     | "message"
+    | "send"
     | "like"
 ) {
+
   try {
+
     /* ================= WEB ================= */
+
     if (Platform.OS === "web") {
-      const file =
-        type === "post"
-          ? "/sounds/post.mp3"
-          : type === "message"
-          ? "/sounds/message.mp3"
-          : "/sounds/like.mp3";
 
       const audio =
-        new window.Audio(file);
+        new window.Audio(
+          `/sounds/${type}.mp3`
+        );
 
       audio.volume = 1;
 
@@ -63,6 +64,7 @@ export async function playSound(
     }
 
     /* ================= MOBILE ================= */
+
     await configureAudio();
 
     const player =
@@ -72,13 +74,18 @@ export async function playSound(
 
     player.play();
 
-    /* auto cleanup */
     setTimeout(() => {
+
       try {
+
         player.remove();
+
       } catch {}
+
     }, 3000);
+
   } catch (err) {
+
     console.log(
       "Sound error:",
       err

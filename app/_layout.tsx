@@ -10,7 +10,7 @@ import {
 
 import { AuthProvider } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
-import { Platform } from "react-native";
+
 /* 🔥 PUSH */
 import { registerPush } from "../lib/registerPush";
 
@@ -30,33 +30,6 @@ Notifications.setNotificationHandler({
       shouldShowList: true,
     }),
 });
-/* ================= ANDROID NOTIFICATION CHANNEL ================= */
-
-useEffect(() => {
-  if (Platform.OS === "android") {
-    Notifications.setNotificationChannelAsync(
-      "default",
-      {
-        name: "default",
-
-        importance:
-          Notifications.AndroidImportance.MAX,
-
-        vibrationPattern: [
-          0,
-          250,
-          250,
-          250,
-        ],
-
-        lightColor:
-          "#22c55e",
-
-        sound: "default",
-      }
-    );
-  }
-}, []);
 export default function RootLayout() {
   const router = useRouter();
 
@@ -77,7 +50,6 @@ export default function RootLayout() {
     mounted,
     setMounted,
   ] = useState(false);
-  
 
   /* ================= STEP 5: DEEP LINK HANDLER ================= */
 
