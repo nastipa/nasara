@@ -10,7 +10,7 @@ import {
 
 import { AuthProvider } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
-
+import { Platform } from "react-native";
 /* 🔥 PUSH */
 import { registerPush } from "../lib/registerPush";
 
@@ -30,6 +30,33 @@ Notifications.setNotificationHandler({
       shouldShowList: true,
     }),
 });
+/* ================= ANDROID NOTIFICATION CHANNEL ================= */
+
+useEffect(() => {
+  if (Platform.OS === "android") {
+    Notifications.setNotificationChannelAsync(
+      "default",
+      {
+        name: "default",
+
+        importance:
+          Notifications.AndroidImportance.MAX,
+
+        vibrationPattern: [
+          0,
+          250,
+          250,
+          250,
+        ],
+
+        lightColor:
+          "#22c55e",
+
+        sound: "default",
+      }
+    );
+  }
+}, []);
 export default function RootLayout() {
   const router = useRouter();
 
@@ -50,6 +77,7 @@ export default function RootLayout() {
     mounted,
     setMounted,
   ] = useState(false);
+  
 
   /* ================= STEP 5: DEEP LINK HANDLER ================= */
 
@@ -146,12 +174,12 @@ export default function RootLayout() {
       subscription.remove();
   }, []);
 
-  /* ================= 🔥 GLOBAL REALTIME SOUNDS ================= */
+  /* ================= 🔥 GLOBAL REALTIME BROADCAST ================= */
 
 useEffect(() => {
   if (!session?.user?.id) return;
 
-  /* ================= ITEM POSTS ================= */
+  /* ================= ITEMS ================= */
 
   const itemsChannel = supabase
     .channel("global-items")
@@ -161,22 +189,44 @@ useEffect(() => {
       {
         event: "INSERT",
         schema: "public",
-
-        /* IMPORTANT */
         table: "items_live",
       },
 
-      (payload) => {
+      async (payload) => {
         const item = payload.new as any;
 
-        /* DON'T PLAY FOR PERSON WHO POSTED */
+        /* DON'T NOTIFY OWNER */
 
         if (
-          item.user_id !==
+          item.user_id ===
           session.user.id
         ) {
-          playSound("post");
+          return;
         }
+
+        /* SOUND */
+
+        playSound("post");
+
+        /* POPUP */
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🛒 New Item Posted",
+            body:
+              item.title ||
+              "New item available",
+
+            sound: "default",
+
+            data: {
+              type: "item",
+              id: item.id,
+            },
+          },
+
+          trigger: null,
+        });
       }
     )
 
@@ -197,30 +247,127 @@ useEffect(() => {
         table: "notifications",
       },
 
-      (payload) => {
+      async (payload) => {
         const notif =
           payload.new as any;
 
-        /* MESSAGE */
+        /* ONLY CURRENT USER */
 
         if (
-          notif.type === "message" &&
-          notif.user_id ===
-            session.user.id
+          notif.user_id !==
+          session.user.id
         ) {
-          playSound(
-            "message"
-          );
+          return;
         }
 
-        /* LIKE */
+        /* ===== MESSAGE ===== */
 
         if (
-          notif.type === "like" &&
-          notif.user_id ===
-            session.user.id
+          notif.type ===
+          "message"
+        ) {
+          playSound("message");
+
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title:
+                notif.title ||
+                "💬 New Message",
+
+              body:
+                notif.body ||
+                "Someone sent a message",
+
+              sound: "default",
+
+              data: {
+                type: "chat",
+              },
+            },
+
+            trigger: null,
+          });
+        }
+
+        /* ===== LIKE ===== */
+
+        if (
+          notif.type ===
+          "like"
         ) {
           playSound("like");
+
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title:
+                notif.title ||
+                "❤️ New Like",
+
+              body:
+                notif.body ||
+                "Someone liked your post",
+
+              sound: "default",
+            },
+
+            trigger: null,
+          });
+        }
+
+        /* ===== REEL ===== */
+
+        if (
+          notif.type ===
+          "reel"
+        ) {
+          playSound("post");
+
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title:
+                "🎬 New Reel",
+
+              body:
+                notif.body ||
+                "New reel uploaded",
+
+              sound: "default",
+
+              data: {
+                type: "reel",
+              },
+            },
+
+            trigger: null,
+          });
+        }
+
+        /* ===== BATTLE ===== */
+
+        if (
+          notif.type ===
+          "battle"
+        ) {
+          playSound("post");
+
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title:
+                "⚔️ New Battle",
+
+              body:
+                notif.body ||
+                "New battle started",
+
+              sound: "default",
+
+              data: {
+                type: "battle",
+              },
+            },
+
+            trigger: null,
+          });
         }
       }
     )
