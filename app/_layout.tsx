@@ -3,37 +3,88 @@ import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import {
+  ActivityIndicator,
+  View,
+} from "react-native";
+
 import { AuthProvider } from "../lib/AuthContext";
 import { supabase } from "../lib/supabase";
 
-/* 🔥 ADD THIS */
+/* 🔥 PUSH */
 import { registerPush } from "../lib/registerPush";
 
+/* 🔥 SOUND */
+import { playSound } from "../lib/playSound";
+
+/* ================= FOREGROUND PUSH ================= */
+Notifications.setNotificationHandler({
+  handleNotification:
+    async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+
+      /* ✅ NEW REQUIRED */
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+});
 export default function RootLayout() {
   const router = useRouter();
-  const pathname = usePathname();
 
-  const [session, setSession] = useState<Session | null>(null);
-  const [ready, setReady] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const pathname =
+    usePathname();
+
+  const [
+    session,
+    setSession,
+  ] = useState<Session | null>(
+    null
+  );
+
+  const [ready, setReady] =
+    useState(false);
+
+  const [
+    mounted,
+    setMounted,
+  ] = useState(false);
 
   /* ================= STEP 5: DEEP LINK HANDLER ================= */
-  useEffect(() => {
-    const handleDeepLink = (event: any) => {
-      const url = event.url;
-      const parsed = Linking.parse(url);
 
-      if (parsed.path === "battle-room") {
-        router.push(`/battle-room?id=${parsed.queryParams?.id}`);
+  useEffect(() => {
+    const handleDeepLink = (
+      event: any
+    ) => {
+      const url = event.url;
+
+      const parsed =
+        Linking.parse(url);
+
+      if (
+        parsed.path ===
+        "battle-room"
+      ) {
+        router.push(
+          `/battle-room?id=${parsed.queryParams?.id}`
+        );
       }
 
-      if (parsed.path === "item") {
-        router.push(`/item/${parsed.queryParams?.id}`);
+      if (
+        parsed.path === "item"
+      ) {
+        router.push(
+          `/item/${parsed.queryParams?.id}`
+        );
       }
     };
 
-    const subscription = Linking.addEventListener("url", handleDeepLink);
+    const subscription =
+      Linking.addEventListener(
+        "url",
+        handleDeepLink
+      );
 
     return () => {
       subscription.remove();
@@ -41,71 +92,221 @@ export default function RootLayout() {
   }, []);
 
   /* ================= PUSH CLICK HANDLE ================= */
+
   useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const data = response.notification.request.content.data;
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(
+        (
+          response
+        ) => {
+          const data =
+            response
+              .notification
+              .request.content.data;
 
-        if (data?.type === "battle") {
-          router.push("/battle");
+          if (
+            data?.type ===
+            "battle"
+          ) {
+            router.push(
+              "/battle"
+            );
+          }
+
+          if (
+            data?.type ===
+            "reel"
+          ) {
+            router.push(
+              "/reels"
+            );
+          }
+
+          if (
+            data?.type ===
+            "item"
+          ) {
+            router.push(
+              "/browse"
+            );
+          }
+
+          if (
+            data?.type ===
+            "chat"
+          ) {
+            router.push(
+              "/chat"
+            );
+          }
         }
+      );
 
-        if (data?.type === "reel") {
-          router.push("/reels");
-        }
-
-        if (data?.type === "item") {
-          router.push("/browse");
-        }
-
-        if (data?.type === "chat") {
-          router.push("/chat");
-        }
-      }
-    );
-
-    return () => subscription.remove();
+    return () =>
+      subscription.remove();
   }, []);
 
+  /* ================= 🔥 GLOBAL REALTIME SOUNDS ================= */
+
+useEffect(() => {
+  if (!session?.user?.id) return;
+
+  /* ================= ITEM POSTS ================= */
+
+  const itemsChannel = supabase
+    .channel("global-items")
+
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+
+        /* IMPORTANT */
+        table: "items_live",
+      },
+
+      (payload) => {
+        const item = payload.new as any;
+
+        /* DON'T PLAY FOR PERSON WHO POSTED */
+
+        if (
+          item.user_id !==
+          session.user.id
+        ) {
+          playSound("post");
+        }
+      }
+    )
+
+    .subscribe();
+
+  /* ================= NOTIFICATIONS ================= */
+
+  const notifChannel = supabase
+    .channel(
+      "global-notifications"
+    )
+
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "notifications",
+      },
+
+      (payload) => {
+        const notif =
+          payload.new as any;
+
+        /* MESSAGE */
+
+        if (
+          notif.type === "message" &&
+          notif.user_id ===
+            session.user.id
+        ) {
+          playSound(
+            "message"
+          );
+        }
+
+        /* LIKE */
+
+        if (
+          notif.type === "like" &&
+          notif.user_id ===
+            session.user.id
+        ) {
+          playSound("like");
+        }
+      }
+    )
+
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(
+      itemsChannel
+    );
+
+    supabase.removeChannel(
+      notifChannel
+    );
+  };
+}, [session?.user?.id]);
   /* ================= MOUNT ================= */
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
   /* ================= LOAD SESSION ================= */
+
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
+    const init =
+      async () => {
+        try {
+          const {
+            data,
+            error,
+          } =
+            await supabase.auth.getSession();
 
-        if (error) {
-          console.log("Session error:", error.message);
-          await supabase.auth.signOut();
+          if (error) {
+            console.log(
+              "Session error:",
+              error.message
+            );
+
+            await supabase.auth.signOut();
+
+            setSession(null);
+          } else {
+            setSession(
+              data.session
+            );
+          }
+        } catch (err) {
+          console.log(
+            "Init error:",
+            err
+          );
+
           setSession(null);
-        } else {
-          setSession(data.session);
         }
-      } catch (err) {
-        console.log("Init error:", err);
-        setSession(null);
-      }
 
-      setReady(true);
-    };
+        setReady(true);
+      };
 
     init();
 
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (String(event) === "TOKEN_REFRESH_FAILED") {
-          await supabase.auth.signOut();
-          setSession(null);
-          return;
-        }
+    const {
+      data: listener,
+    } =
+      supabase.auth.onAuthStateChange(
+        async (
+          event,
+          session
+        ) => {
+          if (
+            String(event) ===
+            "TOKEN_REFRESH_FAILED"
+          ) {
+            await supabase.auth.signOut();
 
-        setSession(session);
-      }
-    );
+            setSession(null);
+
+            return;
+          }
+
+          setSession(
+            session
+          );
+        }
+      );
 
     return () => {
       listener.subscription.unsubscribe();
@@ -113,87 +314,169 @@ export default function RootLayout() {
   }, []);
 
   /* ================= 🔥 REGISTER PUSH TOKEN ================= */
-  useEffect(() => {
-    const setupPush = async () => {
-      if (!session?.user) return;
 
-      try {
-        await registerPush(session.user.id);
-        console.log("✅ Push token saved");
-      } catch (err) {
-        console.log("Push setup error:", err);
-      }
-    };
+  useEffect(() => {
+    const setupPush =
+      async () => {
+        if (
+          !session?.user
+        )
+          return;
+
+        try {
+          await registerPush(
+            session.user.id
+          );
+
+          console.log(
+            "✅ Push token saved"
+          );
+        } catch (err) {
+          console.log(
+            "Push setup error:",
+            err
+          );
+        }
+      };
 
     setupPush();
   }, [session]);
 
   /* ================= SAFE ROUTING ================= */
+
   useEffect(() => {
-    if (!ready || !mounted) return;
+    if (
+      !ready ||
+      !mounted
+    )
+      return;
 
-    const path = pathname || "";
+    const path =
+      pathname || "";
 
-    const isAdminRoute = path.startsWith("/(admin)");
+    const isAdminRoute =
+      path.startsWith(
+        "/(admin)"
+      );
+
     const isProtected =
-      path.startsWith("/(tabs)/sell") ||
-      path.startsWith("/(tabs)/profile") ||
-      path.startsWith("/verify-phone") ||
+      path.startsWith(
+        "/(tabs)/sell"
+      ) ||
+      path.startsWith(
+        "/(tabs)/profile"
+      ) ||
+      path.startsWith(
+        "/verify-phone"
+      ) ||
       isAdminRoute;
 
     const isAuthPage =
-      path.startsWith("/(auth)/login") ||
-      path.startsWith("/(auth)/signup");
+      path.startsWith(
+        "/(auth)/login"
+      ) ||
+      path.startsWith(
+        "/(auth)/signup"
+      );
 
     const isAdmin =
-      session?.user?.user_metadata?.role === "admin";
+      session?.user
+        ?.user_metadata
+        ?.role ===
+      "admin";
 
-    if (!session && isProtected) {
-      if (!isAuthPage) {
-        router.replace("/(auth)/login");
+    if (
+      !session &&
+      isProtected
+    ) {
+      if (
+        !isAuthPage
+      ) {
+        router.replace(
+          "/(auth)/login"
+        );
       }
+
       return;
     }
 
-    if (session && isAuthPage) {
-      router.replace("/(tabs)/browse");
+    if (
+      session &&
+      isAuthPage
+    ) {
+      router.replace(
+        "/(tabs)/browse"
+      );
+
       return;
     }
 
-    if (isAdminRoute && !isAdmin) {
-      router.replace("/(tabs)/browse");
+    if (
+      isAdminRoute &&
+      !isAdmin
+    ) {
+      router.replace(
+        "/(tabs)/browse"
+      );
+
       return;
     }
-  }, [pathname, session, ready, mounted]);
+  }, [
+    pathname,
+    session,
+    ready,
+    mounted,
+  ]);
 
   /* ================= LOADING ================= */
+
   if (!ready) {
     return (
       <View
         style={{
           flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#020617",
+
+          justifyContent:
+            "center",
+
+          alignItems:
+            "center",
+
+          backgroundColor:
+            "#020617",
         }}
       >
-        <ActivityIndicator size="large" color="#22c55e" />
+        <ActivityIndicator
+          size="large"
+          color="#22c55e"
+        />
       </View>
     );
   }
 
   /* ================= NAV ================= */
+
   return (
     <AuthProvider>
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
         <Stack.Screen name="index" />
+
         <Stack.Screen name="(tabs)" />
+
         <Stack.Screen name="(auth)/login" />
+
         <Stack.Screen name="(auth)/signup" />
+
         <Stack.Screen name="verify-phone" />
+
         <Stack.Screen name="(admin)" />
 
         <Stack.Screen name="item/[id]" />
+
         <Stack.Screen name="battle-room" />
       </Stack>
     </AuthProvider>

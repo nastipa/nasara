@@ -2,8 +2,8 @@ import * as ImagePicker from "expo-image-picker";
 
 import { useRouter } from "expo-router";
 
+import { usePathname } from "expo-router";
 import { useEffect, useState } from "react";
-
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import {
   useVideoPlayer,
 } from "expo-video";
 
+import { playSound } from "../../lib/playSound";
 import { supabase } from "../../lib/supabase";
 
 type Conversation = {
@@ -112,7 +113,8 @@ export default function ChatTab() {
     showTextModal,
     setShowTextModal,
   ] = useState(false);
-  
+  const pathname =
+  usePathname();
 
   const [textStatus, setTextStatus] =
     useState("");
@@ -457,30 +459,82 @@ useEffect(() => {
       await loadChats(uid);
       await loadStatuses();
 
-      /* REALTIME MESSAGES */
+     /* REALTIME MESSAGES */
 
-      const messagesChannel =
-        supabase
-          .channel(
-            "messages-realtime"
-          )
-          .on(
-            "postgres_changes",
-            {
-              event: "*",
-              schema:
-                "public",
-              table:
-                "messages",
-            },
-            async () => {
-              await loadChats(
-                uid
-              );
-            }
-          )
-          .subscribe();
+const messagesChannel =
+  supabase
+    .channel(
+      "messages-realtime"
+    )
 
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "messages",
+      },
+
+      async (payload) => {
+        const msg =
+          payload.new as any;
+
+        /* ================= ONLY ROOM PARTICIPANTS ================= */
+
+        const {
+          data: room,
+        } = await (
+          supabase as any
+        )
+          .from(
+            "chat_rooms"
+          )
+          .select(
+            "buyer_id, seller_id"
+          )
+          .eq(
+            "id",
+            msg.room_id
+          )
+          .single();
+
+        if (!room) return;
+
+        const isParticipant =
+          room.buyer_id === uid ||
+          room.seller_id === uid;
+
+        if (!isParticipant)
+          return;
+
+        /* ================= DON'T PLAY FOR SENDER ================= */
+
+        if (
+          msg.sender_id === uid
+        )
+          return;
+
+        /* ================= DON'T PLAY INSIDE OPEN CHAT ================= */
+
+        const currentPath =
+          pathname || "";
+
+        const inChatRoom =
+          currentPath.includes(
+            `/chat/${msg.room_id}`
+          );
+
+        if (!inChatRoom) {
+          playSound(
+            "message"
+          );
+        }
+
+        await loadChats(uid);
+      }
+    )
+
+    .subscribe();
       /* REALTIME CHAT ROOMS */
 
       const roomsChannel =

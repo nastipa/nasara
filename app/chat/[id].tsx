@@ -268,7 +268,15 @@ useEffect(() => {
         try {
           const msg =
             payload.new as Message;
+           /* ================= RECEIVE SOUND ONLY FOR REAL RECEIVER ================= */
 
+const isReceiver =
+  msg.sender_id !== userId &&
+  receiverId === userId;
+
+if (isReceiver) {
+ 
+}
           /* ================= ADD MESSAGE ================= */
           setMessages((prev) => {
             const exists =
@@ -288,48 +296,67 @@ useEffect(() => {
           });
 
           /* ================= SAVE NOTIFICATION ================= */
-          if (
-            msg.sender_id !==
-              userId &&
-            receiverId
-          ) {
-            await (
-              supabase as any
-            )
-              .from(
-                "notifications"
-              )
-              .insert({
-                user_id:
-                  receiverId,
 
-                sender_id:
-                  msg.sender_id,
+if (
+  msg.sender_id !== userId
+) {
+  const { data: participants } =
+    await (supabase as any)
+      .from(
+        "chat_participants"
+      )
+      .select("user_id")
+      .eq(
+        "room_id",
+        roomId
+      );
 
-                type: "chat",
+  const targetUser =
+    participants?.find(
+      (p: any) =>
+        p.user_id !==
+        msg.sender_id
+    );
 
-                title:
-                  receiverName ||
-                  "New Message",
+  if (targetUser) {
+    await (
+      supabase as any
+    )
+      .from(
+        "notifications"
+      )
+      .insert({
+        user_id:
+          targetUser.user_id,
 
-                body:
-                  msg.text ||
-                  (msg.image_url
-                    ? "📷 Image"
-                    : msg.file_url
-                    ? "📎 File"
-                    : "📩 Message"),
+        sender_id:
+          msg.sender_id,
 
-                ref_id:
-                  roomId,
+        type: "message",
 
-                read: false,
+        title:
+          receiverName ||
+          "New Message",
 
-                message:
-                  msg.text ||
-                  "New message received",
-              });
-          }
+        body:
+          msg.text ||
+          (msg.image_url
+            ? "📷 Image"
+            : msg.file_url
+            ? "📎 File"
+            : "📩 Message"),
+
+        ref_id:
+          roomId,
+
+        read: false,
+
+        message:
+          msg.text ||
+          "New message received",
+      });
+  }
+}
 
           /* ================= LOCAL PUSH ================= */
           if (
@@ -440,9 +467,10 @@ const handleSlashReply = (value: string) => {
       seen: false,
       created_at: new Date().toISOString(),
     };
+setMessages((prev) => [...prev, tempMessage]);
 
-    setMessages((prev) => [...prev, tempMessage]);
-    setText("");
+
+setText("");
 
     try {
       const { data, error } = await (supabase as any)
@@ -450,6 +478,7 @@ const handleSlashReply = (value: string) => {
         .insert({
           room_id: roomId,
           sender_id: userId,
+          receiver_id: receiverId,
           text: messageText,
            reply_to: replyTo?.id || null,
           reply_text: replyTo?.text || null,
@@ -460,6 +489,7 @@ const handleSlashReply = (value: string) => {
       if (error) throw error;
 
       if (data) {
+      
         setMessages((prev) =>
          prev.map((m) =>
   m.id === tempId
@@ -500,6 +530,7 @@ const handleSlashReply = (value: string) => {
     };
 
     setMessages((prev) => [...prev, tempMessage]);
+   
 
     try {
       const uploadedUrl = await uploadToServer(asset.uri);
@@ -509,6 +540,7 @@ const handleSlashReply = (value: string) => {
         .insert({
           room_id: roomId,
           sender_id: userId,
+          receiver_id: receiverId,
           image_url: uploadedUrl,
           reply_to: replyTo?.id || null,
          reply_text: replyTo?.text || null,
@@ -555,6 +587,7 @@ const handleSlashReply = (value: string) => {
     };
 
     setMessages((prev) => [...prev, tempMessage]);
+    
 
     try {
       const uploadedUrl = await uploadToServer(asset.uri);
@@ -564,6 +597,7 @@ const handleSlashReply = (value: string) => {
         .insert({
           room_id: roomId,
           sender_id: userId,
+          receiver_id: receiverId,
           image_url: uploadedUrl,
           reply_to: replyTo?.id || null,
          reply_text: replyTo?.text || null,
@@ -608,6 +642,7 @@ const handleSlashReply = (value: string) => {
     };
 
     setMessages((prev) => [...prev, tempMessage]);
+   
 
     try {
       const uploadedUrl = await uploadToServer(
@@ -620,6 +655,7 @@ const handleSlashReply = (value: string) => {
         .insert({
           room_id: roomId,
           sender_id: userId,
+          receiver_id: receiverId,
           file_url: uploadedUrl,
           file_name: file.name,
           reply_to: replyTo?.id || null,

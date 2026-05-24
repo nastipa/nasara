@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 import { supabase } from "../../lib/supabase";
 
 /* ================= PRO UPLOAD ================= */
@@ -303,12 +304,14 @@ image_urls:
         .select()
         .single();
 
-      if (error) throw error;
+    if (error) throw error;
 
-      /* ===== FAST UI ===== */
-      Alert.alert("Success 🚀");
-      router.replace("/browse");
 
+
+/* ===== FAST UI ===== */
+Alert.alert("Success 🚀");
+
+router.replace("/browse");
       /* ===== NOTIFICATIONS ===== */
       setTimeout(async () => {
         const { data: users } = await (supabase as any)
