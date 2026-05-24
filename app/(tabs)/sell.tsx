@@ -316,7 +316,8 @@ router.replace("/browse");
       setTimeout(async () => {
         const { data: users } = await (supabase as any)
           .from("profiles")
-          .select("id");
+  .select("id")
+  .neq("id", user.id);
 
         if (users) {
           const inserts = users.map((u: any) => ({
