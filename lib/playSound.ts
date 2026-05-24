@@ -5,6 +5,7 @@ import {
 
 import { Platform } from "react-native";
 
+/* ================= ONLY EXISTING FILES ================= */
 const sounds = {
   post: require(
     "../assets/sounds/post.mp3"
@@ -17,61 +18,42 @@ const sounds = {
   like: require(
     "../assets/sounds/like.mp3"
   ),
-
-  send: require(
-    "../assets/sounds/message.mp3"
-  ),
 };
 
+/* ================= CONFIG FLAG ================= */
 let configured = false;
 
+/* ================= AUDIO CONFIG ================= */
 async function configureAudio() {
   if (configured) return;
 
   await setAudioModeAsync({
     playsInSilentMode: true,
-
     shouldPlayInBackground: false,
   });
 
   configured = true;
 }
 
+/* ================= MAIN FUNCTION ================= */
 export async function playSound(
   type:
     | "post"
     | "message"
-    | "send"
     | "like"
-    | "battle"
-    | "reel"
-    | "auction"
-    | "live"
 ) {
   try {
-    let soundType:
-      | "post"
-      | "message"
-      | "send"
-      | "like" = "post";
-
-    if (type === "message") {
-      soundType = "message";
-    }
-
-    if (type === "send") {
-      soundType = "send";
-    }
-
-    if (type === "like") {
-      soundType = "like";
-    }
-
+    /* ================= WEB ================= */
     if (Platform.OS === "web") {
+      const file =
+        type === "post"
+          ? "/sounds/post.mp3"
+          : type === "message"
+          ? "/sounds/message.mp3"
+          : "/sounds/like.mp3";
+
       const audio =
-        new window.Audio(
-          `/sounds/${soundType}.mp3`
-        );
+        new window.Audio(file);
 
       audio.volume = 1;
 
@@ -80,15 +62,17 @@ export async function playSound(
       return;
     }
 
+    /* ================= MOBILE ================= */
     await configureAudio();
 
     const player =
       createAudioPlayer(
-        sounds[soundType]
+        sounds[type]
       );
 
     player.play();
 
+    /* auto cleanup */
     setTimeout(() => {
       try {
         player.remove();
