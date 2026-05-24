@@ -1,6 +1,6 @@
 import {
-    createAudioPlayer,
-    setAudioModeAsync,
+  createAudioPlayer,
+  setAudioModeAsync,
 } from "expo-audio";
 
 import { Platform } from "react-native";
@@ -26,11 +26,11 @@ const sounds = {
 let configured = false;
 
 async function configureAudio() {
-
   if (configured) return;
 
   await setAudioModeAsync({
     playsInSilentMode: true,
+
     shouldPlayInBackground: false,
   });
 
@@ -43,17 +43,38 @@ export async function playSound(
     | "message"
     | "send"
     | "like"
+    | "battle"
+    | "reel"
+    | "auction"
+    | "live"
 ) {
-
   try {
+    /* ================= FALLBACK ================= */
+
+    let soundType:
+      | "post"
+      | "message"
+      | "send"
+      | "like" = "post";
+
+    if (type === "message") {
+      soundType = "message";
+    }
+
+    if (type === "send") {
+      soundType = "send";
+    }
+
+    if (type === "like") {
+      soundType = "like";
+    }
 
     /* ================= WEB ================= */
 
     if (Platform.OS === "web") {
-
       const audio =
         new window.Audio(
-          `/sounds/${type}.mp3`
+          `/sounds/${soundType}.mp3`
         );
 
       audio.volume = 1;
@@ -69,23 +90,17 @@ export async function playSound(
 
     const player =
       createAudioPlayer(
-        sounds[type]
+        sounds[soundType]
       );
 
     player.play();
 
     setTimeout(() => {
-
       try {
-
         player.remove();
-
       } catch {}
-
     }, 3000);
-
   } catch (err) {
-
     console.log(
       "Sound error:",
       err
