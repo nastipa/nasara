@@ -73,25 +73,30 @@ export default {
     /* ===================================================== */
     /* ✅ IOS PERMISSIONS */
     /* ===================================================== */
-    ios: {
-      bundleIdentifier:
-        "com.nastipa.nasara",
+   ios: {
+  bundleIdentifier:
+    "com.nastipa.nasara",
 
-      infoPlist: {
-        NSCameraUsageDescription:
-          "Nasara needs camera access to record reels.",
+  supportsTablet: true,
 
-        NSMicrophoneUsageDescription:
-          "Nasara needs microphone access to record audio in reels and voice notes.",
+  infoPlist: {
+    NSCameraUsageDescription:
+      "Nasara needs camera access to record reels.",
 
-        NSPhotoLibraryUsageDescription:
-          "Nasara needs access to your gallery to upload videos.",
+    NSMicrophoneUsageDescription:
+      "Nasara needs microphone access to record audio in reels and voice notes.",
 
-        NSPhotoLibraryAddUsageDescription:
-          "Nasara needs permission to save media.",
-      },
-    },
+    NSPhotoLibraryUsageDescription:
+      "Nasara needs access to your gallery to upload videos.",
 
+    NSPhotoLibraryAddUsageDescription:
+      "Nasara needs permission to save media.",
+
+    UIBackgroundModes: [
+      "audio",
+    ],
+  },
+},
     /* ===================================================== */
     /* ✅ ENV + EAS PROJECT */
     /* ===================================================== */
