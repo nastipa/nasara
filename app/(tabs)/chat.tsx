@@ -34,8 +34,10 @@ type Conversation = {
   full_name: string;
   avatar_url: string;
   verified: boolean;
-};
 
+  /* ADD THIS */
+  chat_type?: "private" | "group";
+};
 type Status = {
   id: number;
   user_id: string;
@@ -558,7 +560,54 @@ const messagesChannel =
             }
           )
           .subscribe();
+      /* REALTIME GROUPS */
 
+const groupsChannel =
+  supabase
+    .channel(
+      "groups-realtime"
+    )
+
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "group_members",
+      },
+
+      async () => {
+        await loadChats(uid);
+      }
+    )
+
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "group_messages",
+      },
+
+      async () => {
+        await loadChats(uid);
+      }
+    )
+
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "groups",
+      },
+
+      async () => {
+        await loadChats(uid);
+      }
+    )
+
+    .subscribe();
       /* REALTIME STATUS */
 
       const statusChannel =
@@ -593,6 +642,9 @@ const messagesChannel =
         supabase.removeChannel(
           statusChannel
         );
+        supabase.removeChannel(
+  groupsChannel
+);
       };
     }
   };
@@ -603,6 +655,8 @@ const messagesChannel =
     mounted = false;
   };
 }, []);
+
+
   /* ================= LOAD STATUSES ================= */
 
 const loadStatuses = async () => {
@@ -770,6 +824,8 @@ const loadChats = async (
   try {
     setLoading(true);
 
+    /* ================= PRIVATE CHATS ================= */
+
     const {
       data: rooms,
       error,
@@ -780,18 +836,16 @@ const loadChats = async (
         `buyer_id.eq.${currentUserId},seller_id.eq.${currentUserId}`
       );
 
-    if (
-      error ||
-      !rooms
-    ) {
+    if (error) {
+      console.log(error);
       setConversations([]);
       setLoading(false);
       return;
     }
 
-    const formatted =
+    const privateChats =
       await Promise.all(
-        rooms.map(
+        (rooms || []).map(
           async (
             room: any
           ) => {
@@ -800,6 +854,8 @@ const loadChats = async (
               currentUserId
                 ? room.seller_id
                 : room.buyer_id;
+
+            /* USER PROFILE */
 
             const {
               data: profile,
@@ -820,6 +876,8 @@ const loadChats = async (
                   otherId
                 )
                 .maybeSingle();
+
+            /* LAST MESSAGE */
 
             const {
               data: messages,
@@ -851,6 +909,8 @@ const loadChats = async (
 
             const lastMsg =
               messages?.[0];
+
+            /* UNREAD */
 
             const { count } =
               await (
@@ -886,6 +946,18 @@ const loadChats = async (
                   room.id
                 ),
 
+              full_name:
+                profile?.full_name ||
+                "User",
+
+              avatar_url:
+                profile?.avatar_url ||
+                "",
+
+              verified:
+                profile?.verified ||
+                false,
+
               last_message:
                 lastMsg?.text ||
                 (lastMsg?.image_url
@@ -901,26 +973,167 @@ const loadChats = async (
               unread_count:
                 count || 0,
 
-              full_name:
-                profile?.full_name ||
-                "User",
-
-              avatar_url:
-                profile?.avatar_url ||
-                "",
-
-              verified:
-                profile?.verified ||
-                false,
+              chat_type:
+                "private",
             };
           }
         )
       );
 
-    /* MOVE LATEST CHAT TO TOP */
+    /* ================= GROUP CHATS ================= */
 
-    formatted.sort(
-      (a, b) =>
+const {
+  data: groupMembers,
+  error: groupError,
+} = await (supabase as any)
+  .from("group_members")
+  .select(`
+    group_id,
+    groups (
+      id,
+      name,
+      image_url
+    )
+  `)
+  .eq(
+    "user_id",
+    currentUserId
+  );
+
+if (groupError) {
+  console.log(groupError);
+}
+
+const groupChats =
+  await Promise.all(
+    (
+      groupMembers || []
+    ).map(
+      async (
+        member: any
+      ) => {
+
+        const group =
+          Array.isArray(
+            member.groups
+          )
+            ? member.groups[0]
+            : member.groups;
+
+        if (!group)
+          return null;
+
+        /* LAST GROUP MESSAGE */
+
+        const {
+          data: messages,
+        } =
+          await (
+            supabase as any
+          )
+            .from(
+              "group_messages"
+            )
+            .select(`
+              text,
+              image_url,
+              created_at
+            `)
+            .eq(
+              "group_id",
+              group.id
+            )
+            .order(
+              "created_at",
+              {
+                ascending:
+                  false,
+              }
+            )
+            .limit(1);
+
+        const lastMsg =
+          messages?.[0];
+
+        /* UNREAD */
+
+        const { count } =
+          await (
+            supabase as any
+          )
+            .from(
+              "group_messages"
+            )
+            .select(
+              "*",
+              {
+                count:
+                  "exact",
+                head: true,
+              }
+            )
+            .eq(
+              "group_id",
+              group.id
+            )
+            .neq(
+              "sender_id",
+              currentUserId
+            );
+
+        return {
+          room_id: String(group.id),
+
+          full_name:
+            group.name ||
+            "Group",
+
+          avatar_url:
+            group.image_url ||
+            "https://ui-avatars.com/api/?name=Group",
+
+          verified: false,
+
+          last_message:
+            lastMsg?.text ||
+            (lastMsg?.image_url
+              ? "📷 Image"
+              : "Start chatting"),
+
+          unread_count:
+            count || 0,
+
+          last_time:
+            lastMsg?.created_at ||
+            "",
+
+          chat_type:
+            "group",
+        };
+      }
+    )
+  );
+    /* REMOVE NULL GROUPS */
+
+    const cleanGroups =
+      groupChats.filter(
+        Boolean
+      );
+
+    /* ================= MERGE ================= */
+
+    const allChats = [
+      ...privateChats,
+      ...cleanGroups,
+    ];
+
+    /* ================= SORT BY LATEST ================= */
+
+    allChats.sort(
+      (
+        a: any,
+        b: any
+      ) =>
         new Date(
           b.last_time || 0
         ).getTime() -
@@ -929,8 +1142,10 @@ const loadChats = async (
         ).getTime()
     );
 
+    /* ================= FINAL ================= */
+
     setConversations(
-      formatted
+      allChats
     );
 
   } catch (e) {
@@ -939,6 +1154,7 @@ const loadChats = async (
 
   setLoading(false);
 };
+
 
   /* ================= UPLOAD STATUS ================= */
 
@@ -1408,11 +1624,18 @@ const loadChats = async (
     );
   }
 const deleteChat = async (
-  roomId: string
+  roomId: string,
+  type?: "private" | "group"
 ) => {
   Alert.alert(
-    "Delete Chat",
-    "Delete this conversation?",
+    type === "group"
+      ? "Delete Group"
+      : "Delete Chat",
+
+    type === "group"
+      ? "Delete this group permanently?"
+      : "Delete this conversation?",
+
     [
       {
         text: "Cancel",
@@ -1421,44 +1644,67 @@ const deleteChat = async (
 
       {
         text: "Delete",
-        style:
-          "destructive",
+        style: "destructive",
 
-        onPress:
-          async () => {
-            await (
-              supabase as any
-            )
-              .from(
-                "messages"
+        onPress: async () => {
+          try {
+
+            /* ================= GROUP DELETE ================= */
+
+            if (type === "group") {
+
+              /* DELETE GROUP MESSAGES */
+
+              await (supabase as any)
+                .from("group_messages")
+                .delete()
+                .eq("group_id", roomId);
+
+              /* DELETE GROUP MEMBERS */
+
+              await (supabase as any)
+                .from("group_members")
+                .delete()
+                .eq("group_id", roomId);
+
+              /* DELETE GROUP */
+
+              await (supabase as any)
+                .from("groups")
+                .delete()
+                .eq("id", roomId);
+
+            } else {
+
+              /* ================= PRIVATE CHAT DELETE ================= */
+
+              await (supabase as any)
+                .from("messages")
+                .delete()
+                .eq("room_id", roomId);
+
+              await (supabase as any)
+                .from("chat_rooms")
+                .delete()
+                .eq("id", roomId);
+            }
+
+            /* REMOVE FROM UI */
+
+            setConversations((prev) =>
+              prev.filter(
+                (c) => c.room_id !== roomId
               )
-              .delete()
-              .eq(
-                "room_id",
-                roomId
-              );
-
-            await (
-              supabase as any
-            )
-              .from(
-                "chat_rooms"
-              )
-              .delete()
-              .eq(
-                "id",
-                roomId
-              );
-
-            setConversations(
-              (prev) =>
-                prev.filter(
-                  (c) =>
-                    c.room_id !==
-                    roomId
-                )
             );
-          },
+
+          } catch (e) {
+            console.log(e);
+
+            Alert.alert(
+              "Failed to delete"
+            );
+          }
+        },
       },
     ]
   );
@@ -2094,6 +2340,51 @@ return (
         </TouchableOpacity>
       </View>
     </Modal>
+    {/* TOP ACTIONS */}
+
+<View
+  style={{
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  }}
+>
+  <Text
+    style={{
+      fontSize: 18,
+      fontWeight: "bold",
+      color: "#111",
+    }}
+  >
+    Chats
+  </Text>
+
+  <TouchableOpacity
+    onPress={() =>
+      router.push("/groups/create")
+    }
+    style={{
+      backgroundColor: "#2563eb",
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 12,
+    }}
+  >
+    <Text
+      style={{
+        color: "white",
+        fontWeight: "bold",
+      }}
+    >
+      👥 Create Group
+    </Text>
+  </TouchableOpacity>
+</View>
 
     {/* CHAT LIST */}
 
@@ -2119,20 +2410,24 @@ return (
       renderItem={({ item }) => (
         <TouchableOpacity
           onLongPress={() =>
-            deleteChat(
-              item.room_id
-            )
-          }
+  deleteChat(
+    item.room_id,
+    item.chat_type
+  )
+}
 
           onPress={() =>
-            router.push({
-              pathname:
-                "/chat/[id]",
-              params: {
-                id: item.room_id,
-              },
-            })
-          }
+  router.push({
+    pathname:
+      item.chat_type === "group"
+        ? "/groups/[id]"
+        : "/chat/[id]",
+
+    params: {
+      id: item.room_id,
+    },
+  })
+}
 
           style={{
             padding: 14,
@@ -2186,7 +2481,16 @@ return (
               >
                 {item.full_name}
               </Text>
-
+               {item.chat_type === "group" && (
+  <Text
+    style={{
+      marginLeft: 6,
+      fontSize: 12,
+    }}
+  >
+    👥
+  </Text>
+)}
               {item.verified && (
                 <Text
                   style={{

@@ -1,9 +1,12 @@
 import { useRouter } from "expo-router";
+
 import { useEffect, useState } from "react";
+
 import {
   ActivityIndicator,
   Alert,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -13,6 +16,7 @@ import {
 import { supabase } from "../lib/supabase";
 
 export default function SettingsScreen() {
+
   const router = useRouter();
 
   const [loggedIn, setLoggedIn] =
@@ -21,248 +25,406 @@ export default function SettingsScreen() {
   const [deleting, setDeleting] =
     useState(false);
 
-  /* ================= CHECK LOGIN ================= */
   useEffect(() => {
+
     checkUser();
 
     const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
-      () => {
-        checkUser();
-      }
-    );
+      data: {
+        subscription,
+      },
+    } =
+      supabase.auth.onAuthStateChange(
+        () => {
+          checkUser();
+        }
+      );
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
 
-  const checkUser = async () => {
-    const { data } =
-      await supabase.auth.getUser();
+  const checkUser =
+    async () => {
 
-    setLoggedIn(!!data?.user);
-  };
+      const { data } =
+        await supabase.auth.getUser();
 
-  /* ================= LOGOUT ================= */
-  const logoutUser = async () => {
-    try {
-      await supabase.auth.signOut();
-
-      if (Platform.OS === "web") {
-        window.location.href = "/browse";
-        return;
-      }
-
-      router.replace("/browse");
-    } catch (error: any) {
-      Alert.alert(
-        "Logout Error",
-        error.message
+      setLoggedIn(
+        !!data?.user
       );
-    }
-  };
+    };
 
-  /* ================= DELETE ACCOUNT ================= */
-  const confirmDelete = () => {
-    // WEB FIX
-    if (Platform.OS === "web") {
-      const ok = window.confirm(
-        "Are you sure you want to delete your account? This action is permanent."
-      );
+  const logoutUser =
+    async () => {
 
-      if (ok) {
-        deleteAccount();
-      }
+      try {
 
-      return;
-    }
+        await supabase.auth.signOut();
 
-    Alert.alert(
-      "Delete Account",
-      "Are you sure you want to delete your account?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Yes",
-          style: "destructive",
-          onPress: deleteAccount,
-        },
-      ]
-    );
-  };
+        if (
+          Platform.OS ===
+          "web"
+        ) {
 
-  const deleteAccount = async () => {
-    try {
-      setDeleting(true);
+          window.location.href =
+            "/browse";
 
-      const { error } =
-        await supabase.rpc(
-          "delete_my_account"
+          return;
+        }
+
+        router.replace(
+          "/browse"
         );
 
-      if (error) {
-        console.log(error);
+      } catch (
+        error: any
+      ) {
 
         Alert.alert(
-          "Delete Error",
+          "Logout Error",
           error.message
         );
+      }
+    };
 
-        setDeleting(false);
+  const confirmDelete =
+    () => {
+
+      if (
+        Platform.OS ===
+        "web"
+      ) {
+
+        const ok =
+          window.confirm(
+            "Are you sure you want to delete your account?"
+          );
+
+        if (ok) {
+          deleteAccount();
+        }
+
         return;
       }
 
-      await supabase.auth.signOut();
+      Alert.alert(
+        "Delete Account",
+        "Are you sure you want to delete your account?",
+        [
+          {
+            text:
+              "Cancel",
 
-      // WEB FIX
-      if (Platform.OS === "web") {
-        alert(
-          "Account deleted successfully"
+            style:
+              "cancel",
+          },
+
+          {
+            text:
+              "Delete",
+
+            style:
+              "destructive",
+
+            onPress:
+              deleteAccount,
+          },
+        ]
+      );
+    };
+
+  const deleteAccount =
+    async () => {
+
+      try {
+
+        setDeleting(
+          true
         );
 
-        window.location.href =
-          "/browse";
+        const {
+          error,
+        } =
+          await supabase.rpc(
+            "delete_my_account"
+          );
 
-        return;
+        if (error) {
+
+          Alert.alert(
+            "Delete Error",
+            error.message
+          );
+
+          setDeleting(
+            false
+          );
+
+          return;
+        }
+
+        await supabase.auth.signOut();
+
+        if (
+          Platform.OS ===
+          "web"
+        ) {
+
+          alert(
+            "Account deleted"
+          );
+
+          window.location.href =
+            "/browse";
+
+          return;
+        }
+
+        Alert.alert(
+          "Deleted",
+          "Account removed"
+        );
+
+        router.replace(
+          "/browse"
+        );
+
+      } catch (
+        e: any
+      ) {
+
+        Alert.alert(
+          "Error",
+          e.message
+        );
       }
 
-      Alert.alert(
-        "Deleted",
-        "Account removed successfully"
+      setDeleting(
+        false
       );
-
-      router.replace("/browse");
-
-    } catch (e: any) {
-      console.log(e);
-
-      Alert.alert(
-        "Error",
-        e.message ||
-          "Failed to delete account"
-      );
-    }
-
-    setDeleting(false);
-  };
+    };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>
+
+    <ScrollView
+      style={
+        styles.container
+      }
+    >
+
+      <Text
+        style={
+          styles.title
+        }
+      >
         ⚙️ Settings
       </Text>
 
-      {/* PRIVACY */}
       <TouchableOpacity
-        style={styles.item}
+        style={
+          styles.item
+        }
+
         onPress={() =>
-          router.push("/privacy")
+          router.push(
+            "/privacy"
+          )
         }
       >
-        <Text style={styles.text}>
+        <Text
+          style={
+            styles.text
+          }
+        >
           🔒 Privacy Policy
         </Text>
       </TouchableOpacity>
 
-      {/* TERMS */}
       <TouchableOpacity
-        style={styles.item}
+        style={
+          styles.item
+        }
+
         onPress={() =>
-          router.push("/terms")
+          router.push(
+            "/terms"
+          )
         }
       >
-        <Text style={styles.text}>
+        <Text
+          style={
+            styles.text
+          }
+        >
           📜 Terms of Service
         </Text>
       </TouchableOpacity>
 
-      {/* ONLY SHOW WHEN LOGGED IN */}
-      {loggedIn && (
-        <>
-          {/* DELETE ACCOUNT */}
+      <TouchableOpacity
+        style={
+          styles.item
+        }
+
+        onPress={() =>
+          router.push(
+            "/profile"
+          )
+        }
+      >
+        <Text
+          style={
+            styles.text
+          }
+        >
+          👤 Edit Profile
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={
+          styles.item
+        }
+
+        onPress={() =>
+          router.push(
+            "/notifications"
+          )
+        }
+      >
+        <Text
+          style={
+            styles.text
+          }
+        >
+          🔔 Notifications
+        </Text>
+      </TouchableOpacity>
+
+     
+
+      {loggedIn ? (
+
+        <View>
+
           <TouchableOpacity
-            style={styles.deleteBtn}
-            onPress={confirmDelete}
-            disabled={deleting}
+            style={
+              styles.deleteBtn
+            }
+
+            onPress={
+              confirmDelete
+            }
+
+            disabled={
+              deleting
+            }
           >
             {deleting ? (
+
               <ActivityIndicator color="#fff" />
+
             ) : (
-              <Text style={styles.deleteText}>
+
+              <Text
+                style={
+                  styles.deleteText
+                }
+              >
                 🗑️ Delete Account
               </Text>
             )}
           </TouchableOpacity>
 
-          {/* LOGOUT */}
           <TouchableOpacity
-            onPress={logoutUser}
-            style={styles.logoutBtn}
+            onPress={
+              logoutUser
+            }
+
+            style={
+              styles.logoutBtn
+            }
           >
             <Text
-              style={styles.logoutText}
+              style={
+                styles.logoutText
+              }
             >
               Logout
             </Text>
           </TouchableOpacity>
-        </>
-      )}
-    </View>
+
+        </View>
+
+      ) : null}
+
+    </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-  },
+const styles =
+  StyleSheet.create({
 
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
+    container: {
+      flex: 1,
+      padding: 20,
+      backgroundColor:
+        "#0f172a",
+    },
 
-  item: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
-  },
+    title: {
+      fontSize: 24,
+      fontWeight:
+        "bold",
+      marginBottom: 20,
+      color: "white",
+    },
 
-  text: {
-    fontSize: 16,
-    color: "#000",
-    fontWeight: "500",
-  },
+    item: {
+      padding: 15,
+      borderBottomWidth: 1,
+      borderBottomColor:
+        "#1e293b",
+    },
 
-  deleteBtn: {
-    marginTop: 40,
-    backgroundColor: "#dc2626",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-  },
+    text: {
+      fontSize: 16,
+      color: "white",
+      fontWeight:
+        "500",
+    },
 
-  deleteText: {
-    color: "white",
-    fontWeight: "bold",
-  },
+    deleteBtn: {
+      marginTop: 40,
+      backgroundColor:
+        "#dc2626",
+      padding: 15,
+      borderRadius: 10,
+      alignItems:
+        "center",
+    },
 
-  logoutBtn: {
-    backgroundColor: "#ef4444",
-    padding: 14,
-    borderRadius: 10,
-    marginTop: 20,
-  },
+    deleteText: {
+      color: "white",
+      fontWeight:
+        "bold",
+    },
 
-  logoutText: {
-    color: "white",
-    textAlign: "center",
-    fontWeight: "bold",
-  },
-});
+    logoutBtn: {
+      backgroundColor:
+        "#ef4444",
+      padding: 14,
+      borderRadius: 10,
+      marginTop: 20,
+      marginBottom: 40,
+    },
+
+    logoutText: {
+      color: "white",
+      textAlign:
+        "center",
+      fontWeight:
+        "bold",
+    },
+  });

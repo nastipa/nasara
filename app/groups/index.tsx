@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 
 import {
-    FlatList,
-    Image,
-    Text,
-    TouchableOpacity,
-    View,
+  FlatList,
+  Image,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { useRouter } from "expo-router";
@@ -19,69 +19,62 @@ export default function GroupsScreen() {
   const [groups, setGroups] =
     useState<any[]>([]);
 
-  const [userId, setUserId] =
-    useState<string | null>(null);
-
   useEffect(() => {
     loadGroups();
   }, []);
 
-  const loadGroups = async () => {
+  const loadGroups =
+    async () => {
 
-    const { data: auth } =
-      await (supabase as any)
-        .auth.getUser();
+      const {
+        data: { user },
+      } =
+        await supabase.auth.getUser();
 
-    if (!auth.user) return;
+      if (!user)
+        return;
 
-    setUserId(auth.user.id);
+      const { data } =
+        await (supabase as any)
+          .from(
+            "group_members"
+          )
+          .select(`
+            group_id,
+            groups(*)
+          `)
+          .eq(
+            "user_id",
+            user.id
+          );
 
-    const { data: memberships } =
-      await (supabase as any)
-        .from("group_members")
-        .select("group_id")
-        .eq("user_id", auth.user.id);
-
-    if (!memberships) return;
-
-    const ids =
-      memberships.map(
-        (m: any) => m.group_id
-      );
-
-    if (ids.length === 0) {
-      setGroups([]);
-      return;
-    }
-
-    const { data } =
-      await (supabase as any)
-        .from("groups")
-        .select("*")
-        .in("id", ids)
-        .order("created_at", {
-          ascending: false,
-        });
-
-    if (data) {
-      setGroups(data);
-    }
-  };
+      if (data) {
+        setGroups(
+          data.map(
+            (x: any) =>
+              x.groups
+          )
+        );
+      }
+    };
 
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: "#0f172a",
-        padding: 20,
+        backgroundColor:
+          "#0f172a",
+        padding: 16,
       }}
     >
-      {/* HEADER */}
       <View
         style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
+          flexDirection:
+            "row",
+          justifyContent:
+            "space-between",
+          alignItems:
+            "center",
           marginBottom: 20,
         }}
       >
@@ -89,7 +82,8 @@ export default function GroupsScreen() {
           style={{
             color: "white",
             fontSize: 28,
-            fontWeight: "bold",
+            fontWeight:
+              "bold",
           }}
         >
           Groups
@@ -97,19 +91,23 @@ export default function GroupsScreen() {
 
         <TouchableOpacity
           onPress={() =>
-            router.push("/groups/create")
+            router.push(
+              "/groups/create"
+            )
           }
           style={{
-            backgroundColor: "#22c55e",
-            paddingHorizontal: 16,
+            backgroundColor:
+              "#22c55e",
+            paddingHorizontal: 14,
             paddingVertical: 10,
-            borderRadius: 14,
+            borderRadius: 12,
           }}
         >
           <Text
             style={{
               color: "black",
-              fontWeight: "bold",
+              fontWeight:
+                "bold",
             }}
           >
             + Create
@@ -117,34 +115,36 @@ export default function GroupsScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* GROUPS */}
       <FlatList
         data={groups}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) =>
+          item.id
+        }
         renderItem={({ item }) => (
           <TouchableOpacity
             onPress={() =>
-              router.push({
-                pathname:
-                  "/groups/chat",
-                params: {
-                  id: item.id,
-                },
-              })
+              router.push(
+                `/groups/${item.id}`
+              )
             }
+
             style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: "#1f2937",
-              padding: 14,
+              backgroundColor:
+                "#1e293b",
               borderRadius: 16,
-              marginBottom: 12,
+              padding: 16,
+              marginBottom: 14,
+              flexDirection:
+                "row",
+              alignItems:
+                "center",
             }}
           >
-            {item.image_url ? (
+            {!!item.image_url && (
               <Image
                 source={{
-                  uri: item.image_url,
+                  uri:
+                    item.image_url,
                 }}
                 style={{
                   width: 60,
@@ -153,48 +153,41 @@ export default function GroupsScreen() {
                   marginRight: 14,
                 }}
               />
-            ) : (
-              <View
-                style={{
-                  width: 60,
-                  height: 60,
-                  borderRadius: 30,
-                  backgroundColor: "#374151",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  marginRight: 14,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "white",
-                    fontSize: 24,
-                  }}
-                >
-                  👥
-                </Text>
-              </View>
             )}
 
-            <View>
+            <View
+              style={{
+                flex: 1,
+              }}
+            >
               <Text
                 style={{
-                  color: "white",
+                  color:
+                    "white",
                   fontSize: 18,
-                  fontWeight: "600",
+                  fontWeight:
+                    "bold",
                 }}
               >
                 {item.name}
               </Text>
 
-              <Text
-                style={{
-                  color: "#9ca3af",
-                  marginTop: 4,
-                }}
-              >
-                Group Chat
-              </Text>
+              {!!item.description && (
+                <Text
+                  style={{
+                    color:
+                      "#94a3b8",
+                    marginTop: 4,
+                  }}
+                  numberOfLines={
+                    2
+                  }
+                >
+                  {
+                    item.description
+                  }
+                </Text>
+              )}
             </View>
           </TouchableOpacity>
         )}
