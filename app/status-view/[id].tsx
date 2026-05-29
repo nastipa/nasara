@@ -1,3 +1,6 @@
+import {
+  useAudioPlayer
+} from "expo-audio";
 import { useLocalSearchParams } from "expo-router";
 import {
   VideoView,
@@ -6,7 +9,7 @@ import {
 
 import {
   useEffect,
-  useState,
+  useState
 } from "react";
 
 import {
@@ -77,7 +80,14 @@ export default function StatusView() {
         }
       }
     );
+    /* ================= AUDIO PLAYER ================= */
 
+const audioPlayer =
+  useAudioPlayer(
+    current?.type === "audio"
+      ? current.media_url
+      : null
+  );
   /* ================= LOAD ================= */
 
   useEffect(() => {
@@ -316,9 +326,9 @@ export default function StatusView() {
     saveViewAndLoad();
 
     if (
-      current.type !==
-      "video"
-    ) {
+  current.type !== "video" &&
+  current.type !== "audio"
+) {
       const t =
         setTimeout(() => {
           nextStatus();
@@ -335,11 +345,34 @@ export default function StatusView() {
           nextStatus();
         }
       );
+      const audioSub =
+  audioPlayer?.addListener(
+    "playbackStatusUpdate",
+    (status: any) => {
+      if (
+        status?.didJustFinish
+      ) {
+        nextStatus();
+      }
+    }
+  );
 
-    return () =>
-      sub?.remove();
+   return () => {
+  sub?.remove();
+  audioSub?.remove();
+};
 
   }, [current?.id]);
+  /* ================= AUTO PLAY AUDIO ================= */
+
+useEffect(() => {
+  if (
+    current?.type === "audio" &&
+    audioPlayer
+  ) {
+    audioPlayer.play();
+  }
+}, [current?.id]);
 
   /* ================= SAVE VIEW ================= */
 
@@ -1022,9 +1055,76 @@ export default function StatusView() {
           resizeMode="contain"
         />
 
-      ) : (
-        <VideoView
-          player={player}
+      ) : current.type ===
+  "audio" ? (
+
+  <View
+    style={{
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 30,
+    }}
+  >
+    <View
+      style={{
+        width: 180,
+        height: 180,
+        borderRadius: 90,
+        backgroundColor: "#2563eb",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 70,
+          color: "white",
+        }}
+      >
+        🎤
+      </Text>
+    </View>
+
+    <Text
+      style={{
+        color: "white",
+        fontSize: 24,
+        fontWeight: "bold",
+        marginTop: 30,
+      }}
+    >
+      Voice Status
+    </Text>
+
+    <TouchableOpacity
+      onPress={() =>
+        audioPlayer.play()
+      }
+      style={{
+        marginTop: 25,
+        backgroundColor: "#22c55e",
+        paddingHorizontal: 30,
+        paddingVertical: 14,
+        borderRadius: 14,
+      }}
+    >
+      <Text
+        style={{
+          color: "white",
+          fontWeight: "bold",
+          fontSize: 18,
+        }}
+      >
+        ▶️ Play Voice
+      </Text>
+    </TouchableOpacity>
+  </View>
+
+) : (
+
+  <VideoView
+    player={player}
           style={{
             width: "100%",
             height: "100%",

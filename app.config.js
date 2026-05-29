@@ -35,6 +35,7 @@ export default {
       "expo-video",
       "expo-asset",
       "expo-audio",
+      "expo-font",
 
       [
         "expo-camera",
@@ -73,30 +74,31 @@ export default {
     /* ===================================================== */
     /* ✅ IOS PERMISSIONS */
     /* ===================================================== */
-   ios: {
-  bundleIdentifier:
-    "com.nastipa.nasara",
+    ios: {
+      bundleIdentifier:
+        "com.nastipa.nasara",
 
-  supportsTablet: true,
+      supportsTablet: true,
 
-  infoPlist: {
-    NSCameraUsageDescription:
-      "Nasara needs camera access to record reels.",
+      infoPlist: {
+        NSCameraUsageDescription:
+          "Nasara needs camera access to record reels.",
 
-    NSMicrophoneUsageDescription:
-      "Nasara needs microphone access to record audio in reels and voice notes.",
+        NSMicrophoneUsageDescription:
+          "Nasara needs microphone access to record audio in reels, voice notes, and voice statuses.",
 
-    NSPhotoLibraryUsageDescription:
-      "Nasara needs access to your gallery to upload videos.",
+        NSPhotoLibraryUsageDescription:
+          "Nasara needs access to your gallery to upload videos.",
 
-    NSPhotoLibraryAddUsageDescription:
-      "Nasara needs permission to save media.",
+        NSPhotoLibraryAddUsageDescription:
+          "Nasara needs permission to save media.",
 
-    UIBackgroundModes: [
-      "audio",
-    ],
-  },
-},
+        UIBackgroundModes: [
+          "audio",
+        ],
+      },
+    },
+
     /* ===================================================== */
     /* ✅ ENV + EAS PROJECT */
     /* ===================================================== */

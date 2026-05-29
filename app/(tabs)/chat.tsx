@@ -1,5 +1,11 @@
 import * as ImagePicker from "expo-image-picker";
 
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from "expo-audio";
 import { useRouter } from "expo-router";
 
 import { usePathname } from "expo-router";
@@ -41,7 +47,11 @@ type Conversation = {
 type Status = {
   id: number;
   user_id: string;
-  type: "text" | "image" | "video";
+ type:
+  | "text"
+  | "image"
+  | "video"
+  | "audio"
   visibility?: "public" | "followers";
   text?: string;
   media_url?: string;
@@ -107,6 +117,20 @@ export default function ChatTab() {
 
   const [statuses, setStatuses] =
     useState<Status[]>([]);
+    const recorder =
+  useAudioRecorder(
+    RecordingPresets.HIGH_QUALITY
+  );
+
+const [recording, setRecording] =
+  useState(false);
+
+const [
+  recordingUri,
+  setRecordingUri,
+] = useState<string | null>(
+  null
+);
 
   const [loading, setLoading] =
     useState(true);
@@ -161,7 +185,10 @@ const [
   pendingMediaType,
   setPendingMediaType,
 ] = useState<
-  "image" | "video" | null
+  | "image"
+  | "video"
+  | "audio"
+  | null
 >(null);
 
 const handleMediaPick = async (type: "image" | "video") => {
@@ -191,129 +218,58 @@ const handleMediaPick = async (type: "image" | "video") => {
 };
   /* ================= UPLOAD ================= */
 
-  const uploadFile = async (
-    uri: string,
-    type: "image" | "video",
-    onProgress?: (p: number) => void
-  ): Promise<string> => {
-    const isWeb =
-      Platform.OS === "web";
+const uploadFile = async (
+  uri: string,
+  type: "image" | "video" | "audio",
+  onProgress?: (p: number) => void
+): Promise<string> => {
+  const isWeb =
+    Platform.OS === "web";
 
-    const MAX_RETRIES = 2;
+  const MAX_RETRIES = 2;
 
-    const uploadOnce =
-      async (): Promise<string> => {
+  const uploadOnce =
+    async (): Promise<string> => {
 
-        /* ============ WEB ============ */
+      /* ============ WEB ============ */
 
-        if (isWeb) {
-          const res =
-            await fetch(uri);
+      if (isWeb) {
+        const res =
+          await fetch(uri);
 
-          const blob =
-            await res.blob();
+        const blob =
+          await res.blob();
 
-          const formData =
-            new FormData();
+        const formData =
+          new FormData();
 
-          formData.append(
-            "file",
+        const fileName =
+          type === "image"
+            ? "image.jpg"
+            : type === "audio"
+            ? "audio.mp3"
+            : "video.mp4";
 
-            new File(
-              [blob],
+        const mimeType =
+          type === "image"
+            ? "image/jpeg"
+            : type === "audio"
+            ? "audio/mpeg"
+            : "video/mp4";
 
-              type === "image"
-                ? "image.jpg"
-                : "video.mp4",
+        formData.append(
+          "file",
 
-              {
-                type:
-                  blob.type ||
-                  (type === "image"
-                    ? "image/jpeg"
-                    : "video/mp4"),
-              }
-            )
-          );
-
-          return new Promise(
-            (
-              resolve,
-              reject
-            ) => {
-              const xhr =
-                new XMLHttpRequest();
-
-              xhr.open(
-                "POST",
-                "https://nasara-upload-server.onrender.com/upload"
-              );
-
-              xhr.upload.onprogress =
-                (e) => {
-                  if (
-                    e.lengthComputable &&
-                    onProgress
-                  ) {
-                    onProgress(
-                      Math.round(
-                        (e.loaded /
-                          e.total) *
-                          100
-                      )
-                    );
-                  }
-                };
-
-              xhr.onload = () => {
-                try {
-                  if (
-                    xhr.status !==
-                    200
-                  ) {
-                    return reject(
-                      "Upload failed"
-                    );
-                  }
-
-                  const data =
-                    JSON.parse(
-                      xhr.responseText
-                    );
-
-                  if (
-                    !data?.url
-                  ) {
-                    return reject(
-                      "Invalid response"
-                    );
-                  }
-
-                  resolve(
-                    data.url
-                  );
-
-                } catch {
-                  reject(
-                    "Invalid JSON"
-                  );
-                }
-              };
-
-              xhr.onerror =
-                () =>
-                  reject(
-                    "Network error"
-                  );
-
-              xhr.send(
-                formData
-              );
+          new File(
+            [blob],
+            fileName,
+            {
+              type:
+                blob.type ||
+                mimeType,
             }
-          );
-        }
-
-        /* ============ MOBILE ============ */
+          )
+        );
 
         return new Promise(
           (
@@ -322,32 +278,6 @@ const handleMediaPick = async (type: "image" | "video") => {
           ) => {
             const xhr =
               new XMLHttpRequest();
-
-            const formData =
-              new FormData();
-
-            formData.append(
-              "file",
-              {
-                uri: uri.startsWith(
-                  "file://"
-                )
-                  ? uri
-                  : `file://${uri}`,
-
-                name:
-                  type ===
-                  "image"
-                    ? "image.jpg"
-                    : "video.mp4",
-
-                type:
-                  type ===
-                  "image"
-                    ? "image/jpeg"
-                    : "video/mp4",
-              } as any
-            );
 
             xhr.open(
               "POST",
@@ -416,29 +346,140 @@ const handleMediaPick = async (type: "image" | "video") => {
             );
           }
         );
-      };
+      }
 
-    for (
-      let i = 0;
-      i <= MAX_RETRIES;
-      i++
-    ) {
-      try {
-        return await uploadOnce();
+      /* ============ MOBILE ============ */
 
-      } catch (err) {
-        if (
-          i === MAX_RETRIES
-        ) {
-          throw err;
+      return new Promise(
+        (
+          resolve,
+          reject
+        ) => {
+          const xhr =
+            new XMLHttpRequest();
+
+          const formData =
+            new FormData();
+
+          const fileName =
+            type === "image"
+              ? "image.jpg"
+              : type === "audio"
+              ? "audio.m4a"
+              : "video.mp4";
+
+          const mimeType =
+            type === "image"
+              ? "image/jpeg"
+              : type === "audio"
+              ? "audio/mp4"
+              : "video/mp4";
+
+          formData.append(
+            "file",
+            {
+              uri: uri.startsWith(
+                "file://"
+              )
+                ? uri
+                : `file://${uri}`,
+
+              name: fileName,
+
+              type: mimeType,
+            } as any
+          );
+
+          xhr.open(
+            "POST",
+            "https://nasara-upload-server.onrender.com/upload"
+          );
+
+          xhr.upload.onprogress =
+            (e) => {
+              if (
+                e.lengthComputable &&
+                onProgress
+              ) {
+                onProgress(
+                  Math.round(
+                    (e.loaded /
+                      e.total) *
+                      100
+                  )
+                );
+              }
+            };
+
+          xhr.onload = () => {
+            try {
+              if (
+                xhr.status !==
+                200
+              ) {
+                return reject(
+                  "Upload failed"
+                );
+              }
+
+              const data =
+                JSON.parse(
+                  xhr.responseText
+                );
+
+              if (
+                !data?.url
+              ) {
+                return reject(
+                  "Invalid response"
+                );
+              }
+
+              resolve(
+                data.url
+              );
+
+            } catch {
+              reject(
+                "Invalid JSON"
+              );
+            }
+          };
+
+          xhr.onerror =
+            () =>
+              reject(
+                "Network error"
+              );
+
+          xhr.send(
+            formData
+          );
         }
+      );
+    };
+
+  for (
+    let i = 0;
+    i <= MAX_RETRIES;
+    i++
+  ) {
+    try {
+      return await uploadOnce();
+
+    } catch (err) {
+      if (
+        i === MAX_RETRIES
+      ) {
+        throw err;
       }
     }
+  }
 
-    throw new Error(
-      "Upload failed"
-    );
-  };
+  throw new Error(
+    "Upload failed"
+  );
+};
 
   /* ================= USER + REALTIME ================= */
 
@@ -625,7 +666,9 @@ const groupsChannel =
                 "statuses",
             },
             async () => {
-              await loadStatuses();
+             setTimeout(async () => {
+  await loadStatuses();
+}, 500);
             }
           )
           .subscribe();
@@ -1154,16 +1197,104 @@ const groupChats =
 
   setLoading(false);
 };
+/* ================= START RECORDING ================= */
 
+const [recordingTime, setRecordingTime] =
+  useState(0);
 
+const [recordingInterval, setRecordingInterval] =
+  useState<any>(null);
+
+const startRecording = async () => {
+  try {
+
+    const permission =
+      await AudioModule.requestRecordingPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert("Permission denied");
+      return;
+    }
+
+    /* IMPORTANT FOR IOS */
+
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+    });
+
+    await recorder.prepareToRecordAsync();
+
+    await recorder.record();
+
+    setRecording(true);
+
+    /* TIMER */
+
+    setRecordingTime(0);
+
+    const interval = setInterval(() => {
+      setRecordingTime((prev) => prev + 1);
+    }, 1000);
+
+    setRecordingInterval(interval);
+
+  } catch (e) {
+    console.log(e);
+
+    Alert.alert(
+      "Failed to start recording"
+    );
+  }
+};
+  /* ================= STOP RECORDING ================= */
+
+const stopRecording = async () => {
+  try {
+
+    await recorder.stop();
+
+    /* RESET IOS AUDIO MODE */
+
+    await setAudioModeAsync({
+      allowsRecording: false,
+    });
+
+    if (recordingInterval) {
+      clearInterval(recordingInterval);
+    }
+
+    const uri = recorder.uri;
+
+    if (!uri) return;
+
+    setRecording(false);
+
+    setRecordingUri(uri);
+
+    setShowWebPrivacyModal(true);
+
+    setPendingMediaUri(uri);
+
+    setPendingMediaType("audio");
+
+  } catch (e) {
+    console.log(e);
+
+    Alert.alert(
+      "Failed to stop recording"
+    );
+  }
+};
   /* ================= UPLOAD STATUS ================= */
 
   const uploadStatus =
     async (
       type:
-        | "text"
-        | "image"
-        | "video"
+  | "text"
+  | "image"
+  | "video"
+  | "audio"
     ) => {
 
       try {
@@ -1845,6 +1976,59 @@ return (
           Video
         </Text>
       </TouchableOpacity>
+       {/* VOICE STATUS */}
+      <TouchableOpacity
+  onPress={() => {
+    if (recording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  }}
+  style={{
+    marginRight: 14,
+    alignItems: "center",
+  }}
+>
+  <View
+    style={{
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor:
+        recording
+          ? "#dc2626"
+          : "#16a34a",
+
+      justifyContent:
+        "center",
+
+      alignItems:
+        "center",
+    }}
+  >
+    <Text
+  style={{
+    color: "white",
+    fontSize: 30,
+  }}
+>
+  {recording ? "🔴" : "🎤"}
+</Text>
+  </View>
+
+  <Text
+    style={{
+      marginTop: 4,
+      fontSize: 12,
+    }}
+  >{recording
+  ? `${Math.floor(recordingTime / 60)}:${String(
+      recordingTime % 60
+    ).padStart(2, "0")}`
+  : "audio"}
+  </Text>
+</TouchableOpacity>
 
       {/* USER STATUSES */}
 
@@ -1916,13 +2100,37 @@ return (
               }}
               resizeMode="cover"
             />
-          ) : (
-            
-            <StatusVideo
-  uri={
-    status.media_url || ""
-  }
-/>
+         ) : status.type ===
+  "audio" ? (
+
+  <View
+    style={{
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: "#16a34a",
+      justifyContent: "center",
+      alignItems: "center",
+    }}
+  >
+    <Text
+      style={{
+        fontSize: 30,
+        color: "white",
+      }}
+    >
+      🎤
+    </Text>
+  </View>
+
+) : (
+
+  <StatusVideo
+    uri={
+      status.media_url || ""
+    }
+  />
+
           )}
 
           <Text
@@ -2007,17 +2215,19 @@ return (
       } = await supabase.auth.getUser();
 
       if (!user) return;
-
-      const uploadedUrl = await uploadFile(
-        pendingMediaUri,
-        pendingMediaType
-      );
+const uploadedUrl = await uploadFile(
+  pendingMediaUri,
+  pendingMediaType
+);
 
       await (supabase as any)
         .from("statuses")
         .insert({
           user_id: user.id,
-          type: pendingMediaType,
+          type:
+  pendingMediaType === "audio"
+    ? "audio"
+    : pendingMediaType,
           media_url: uploadedUrl,
           visibility: "public",
         });
@@ -2067,15 +2277,20 @@ return (
       if (!user) return;
 
       const uploadedUrl = await uploadFile(
-        pendingMediaUri,
-        pendingMediaType
-      );
+  pendingMediaUri,
+  pendingMediaType === "audio"
+    ? "video"
+    : pendingMediaType
+);
 
       await (supabase as any)
         .from("statuses")
         .insert({
           user_id: user.id,
-          type: pendingMediaType,
+          type:
+  pendingMediaType === "audio"
+    ? "audio"
+    : pendingMediaType,
           media_url: uploadedUrl,
           visibility: "followers",
         });
