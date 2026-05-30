@@ -1100,30 +1100,28 @@ const groupChats =
 
         /* UNREAD */
 
-        const { count } =
-          await (
-            supabase as any
-          )
-            .from(
-              "group_messages"
-            )
-            .select(
-              "*",
-              {
-                count:
-                  "exact",
-                head: true,
-              }
-            )
-            .eq(
-              "group_id",
-              group.id
-            )
-            .neq(
-              "sender_id",
-              currentUserId
-            );
-
+const { count } =
+  await (supabase as any)
+    .from("group_messages")
+    .select(
+      "*",
+      {
+        count: "exact",
+        head: true,
+      }
+    )
+    .eq(
+      "group_id",
+      group.id
+    )
+    .eq(
+      "seen",
+      false
+    )
+    .neq(
+      "sender_id",
+      currentUserId
+    );
         return {
           room_id: String(group.id),
 

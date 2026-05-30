@@ -261,6 +261,27 @@ const [groupMembers, setGroupMembers] =
     })();
   }, []);
 
+  useEffect(() => {
+  markGroupMessagesRead();
+}, []);
+
+const markGroupMessagesRead = async () => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  await (supabase as any)
+    .from("group_messages")
+    .update({
+      seen: true,
+    })
+    .eq("group_id", id)
+    .neq("sender_id", user.id)
+    .eq("seen", false);
+};
+
   /* ================= GROUP INFO ================= */
 
  useEffect(() => {
