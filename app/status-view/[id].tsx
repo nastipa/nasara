@@ -1,7 +1,10 @@
 import {
   useAudioPlayer
 } from "expo-audio";
-import { useLocalSearchParams } from "expo-router";
+import {
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
 import {
   VideoView,
   useVideoPlayer,
@@ -27,6 +30,7 @@ import {
 import { supabase } from "../../lib/supabase";
 
 export default function StatusView() {
+  const router = useRouter();
   const { id } =
     useLocalSearchParams();
 
@@ -46,6 +50,7 @@ export default function StatusView() {
     useState<string | null>(
       null
     );
+    
 
   const [menuOpen, setMenuOpen] =
     useState(false);
@@ -55,6 +60,15 @@ export default function StatusView() {
 
   const [editText, setEditText] =
     useState("");
+    const [
+  comments,
+  setComments,
+] = useState<any[]>([]);
+
+const [
+  commentText,
+  setCommentText,
+] = useState("");
 
   const current =
     statuses[index];
@@ -88,6 +102,7 @@ const audioPlayer =
       ? current.media_url
       : null
   );
+
   /* ================= LOAD ================= */
 
   useEffect(() => {
@@ -106,6 +121,8 @@ const audioPlayer =
       setUserId(
         user?.id ?? null
       );
+
+      
 
       /* ================= FIRST STATUS ================= */
 
@@ -1179,7 +1196,121 @@ useEffect(() => {
           zIndex: 20,
         }}
       />
+      
+     
+      /* ================= REPLY BUTTON ================= */
 
+<TouchableOpacity
+  onPress={async () => {
+    try {
+      if (!current?.user_id) return;
+
+      if (
+        current.user_id === userId
+      ) {
+        Alert.alert(
+          "This is your own status"
+        );
+        return;
+      }
+
+      const {
+        data: rooms,
+        error: roomError,
+      } = await (supabase as any)
+        .from("chat_rooms")
+        .select("*")
+        .or(
+          `and(buyer_id.eq.${userId},seller_id.eq.${current.user_id}),and(buyer_id.eq.${current.user_id},seller_id.eq.${userId})`
+        )
+        .limit(1);
+
+      if (roomError) {
+        console.log(roomError);
+      }
+
+      let room =
+        rooms?.[0] || null;
+
+      if (!room) {
+        const {
+          data: created,
+          error,
+        } = await (supabase as any)
+          .from("chat_rooms")
+          .insert({
+            buyer_id: userId,
+            seller_id:
+              current.user_id,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.log(error);
+
+          Alert.alert(
+            "Failed to create chat"
+          );
+
+          return;
+        }
+
+        room = created;
+      }
+
+      router.push({
+        pathname: "/chat/[id]",
+        params: {
+          id: String(room.id),
+
+          reply_status_id:
+            String(current.id),
+
+          reply_status_type:
+            current.type || "",
+
+          reply_status_text:
+            current.text || "",
+
+          reply_status_media:
+            current.media_url || "",
+
+          reply_status_user:
+            current.user_id,
+        },
+      });
+    } catch (e) {
+      console.log(e);
+
+      Alert.alert(
+        "Failed to open chat"
+      );
+    }
+  }}
+
+  style={{
+    position: "absolute",
+    bottom: 120,
+    alignSelf: "center",
+    backgroundColor:
+      "rgba(0,0,0,0.6)",
+    paddingHorizontal: 22,
+    paddingVertical: 14,
+    borderRadius: 30,
+    zIndex: 999,
+  }}
+>
+  <Text
+    style={{
+      color: "white",
+      fontWeight: "bold",
+      fontSize: 16,
+    }}
+  >
+    💬 Reply
+  </Text>
+</TouchableOpacity>
       {/* VIEWERS */}
 
       {current.user_id ===

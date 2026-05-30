@@ -50,6 +50,7 @@ type Message = {
   file_name: string | null;
   reaction: string | null;
   seen: boolean;
+    seen_by?: string[];
   deleted_for_everyone?: boolean;
   created_at: string;
   reply_to?: number | null;
@@ -618,6 +619,87 @@ useEffect(() => {
     );
   };
 }, [roomId]);
+
+useEffect(() => {
+  if (
+    !roomId ||
+    !userId ||
+    messages.length === 0
+  ) {
+    return;
+  }
+
+  const markMessagesSeen =
+    async () => {
+      try {
+        const unseenMessages =
+          messages.filter(
+            (msg) =>
+              msg.sender_id !==
+                userId &&
+              !(
+                msg.seen_by || []
+              ).includes(
+                userId
+              )
+          );
+
+        if (
+          unseenMessages.length ===
+          0
+        ) {
+          return;
+        }
+
+        for (const msg of unseenMessages) {
+          const updatedSeenBy =
+            [
+              ...(msg.seen_by ||
+                []),
+              userId,
+            ];
+
+          const {
+            data,
+            error,
+          } = await (
+            supabase as any
+          )
+            .from(
+              "group_messages"
+            )
+            .update({
+              seen_by:
+                updatedSeenBy,
+            })
+            .eq(
+              "id",
+              msg.id
+            )
+            .select();
+
+          console.log(
+            "SEEN UPDATE",
+            msg.id,
+            updatedSeenBy,
+            data,
+            error
+          );
+        }
+      } catch (err) {
+        console.log(
+          "MARK SEEN ERROR",
+          err
+        );
+      }
+    };
+
+  markMessagesSeen();
+}, [
+  messages,
+  roomId,
+  userId,
+]);
   /* ================= UPLOAD ================= */
 
   const uploadToServer =

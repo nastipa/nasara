@@ -47,6 +47,12 @@ type Message = {
   created_at: string;
   reply_to?: number | null;
   reply_text?: string | null;
+reply_audio_url?: string | null;
+reply_image_url?: string | null;
+  reply_status_id?: string | null;
+  reply_status_type?: string | null;
+  reply_status_text?: string | null;
+ reply_status_media?: string | null;
   audio_url?: string | null;
 audio_duration?: number | null;
 expires_at?: string | null;
@@ -55,7 +61,17 @@ secret_chat?: boolean;
 };
 
 export default function ChatRoom() {
-  const { id } = useLocalSearchParams();
+  const {
+  id,
+
+  reply_status_id,
+
+  reply_status_type,
+
+  reply_status_text,
+
+  reply_status_media,
+} = useLocalSearchParams();
   const roomId = typeof id === "string" ? id : "";
   const router = useRouter();
 
@@ -139,6 +155,22 @@ const [wallpaper, setWallpaper] =
   const [userVerifiedMap, setUserVerifiedMap] = useState<{
   [key: string]: boolean;
 }>({});
+const [
+  replyingStatus,
+  setReplyingStatus,
+] = useState<any>(
+  reply_status_id
+    ? {
+        id: reply_status_id,
+        type:
+          reply_status_type,
+        text:
+          reply_status_text,
+        media:
+          reply_status_media,
+      }
+    : null
+);
 /* ================= CHAT STATUS ================= */
 const [musicStatus, setMusicStatus] =
   useState("");
@@ -733,6 +765,10 @@ const handleSlashReply = (
       text: messageText,
       reply_to: replyTo?.id || null,
      reply_text: replyTo?.text || null,
+reply_audio_url:
+  replyTo?.audio_url || null,
+reply_image_url:
+  replyTo?.image_url || null,
       image_url: null,
       file_url: null,
       file_name: null,
@@ -749,29 +785,47 @@ setText("");
       const { data, error } = await (supabase as any)
         .from("messages")
         .insert({
-          room_id: roomId,
-          sender_id: userId,
-          receiver_id: receiverId,
-          text: messageText,
-           reply_to: replyTo?.id || null,
-          reply_text: replyTo?.text || null,
-          expires_at: secretMode
-  ? new Date(
-      Date.now() +
-        expireMinutes *
-          60 *
-          1000
-    ).toISOString()
-  : null,
+  room_id: roomId,
+  sender_id: userId,
+  receiver_id: receiverId,
+  text: messageText,
 
-secret_chat: secretMode,
-        })
+  reply_to: replyTo?.id || null,
+  reply_text: replyTo?.text || null,
+reply_audio_url:
+  replyTo?.audio_url || null,
+reply_image_url:
+  replyTo?.image_url || null,
+  reply_status_id:
+    replyingStatus?.id || null,
+
+  reply_status_type:
+    replyingStatus?.type || null,
+
+  reply_status_text:
+    replyingStatus?.text || null,
+
+  reply_status_media:
+    replyingStatus?.media || null,
+
+  expires_at: secretMode
+    ? new Date(
+        Date.now() +
+          expireMinutes *
+            60 *
+            1000
+      ).toISOString()
+    : null,
+
+  secret_chat: secretMode,
+})
         .select()
         .single();
 
       if (error) throw error;
 
       if (data) {
+        setReplyingStatus(null);
       
         setMessages((prev) =>
          prev.map((m) =>
@@ -827,7 +881,11 @@ secret_chat: secretMode,
           receiver_id: receiverId,
           image_url: uploadedUrl,
           reply_to: replyTo?.id || null,
-         reply_text: replyTo?.text || null,
+        reply_text: replyTo?.text || null,
+reply_audio_url:
+  replyTo?.audio_url || null,
+reply_image_url:
+  replyTo?.image_url || null,
          one_time_view:
   oneTimeView,
         })
@@ -887,7 +945,11 @@ secret_chat: secretMode,
           receiver_id: receiverId,
           image_url: uploadedUrl,
           reply_to: replyTo?.id || null,
-         reply_text: replyTo?.text || null,
+        reply_text: replyTo?.text || null,
+reply_audio_url:
+  replyTo?.audio_url || null,
+reply_image_url:
+  replyTo?.image_url || null,
         })
         .select()
         .single();
@@ -946,7 +1008,11 @@ secret_chat: secretMode,
           file_url: uploadedUrl,
           file_name: file.name,
           reply_to: replyTo?.id || null,
-         reply_text: replyTo?.text || null,
+        reply_text: replyTo?.text || null,
+reply_audio_url:
+  replyTo?.audio_url || null,
+reply_image_url:
+  replyTo?.image_url || null,
         })
         .select()
         .single();
@@ -1047,14 +1113,23 @@ const stopRecording =
       )
         .from("messages")
         .insert({
-          room_id: roomId,
-          sender_id:
-            userId,
-          receiver_id:
-            receiverId,
-          audio_url:
-            uploadedUrl,
-        })
+  room_id: roomId,
+  sender_id: userId,
+  receiver_id: receiverId,
+  audio_url: uploadedUrl,
+
+  reply_to:
+    replyTo?.id || null,
+
+  reply_text:
+    replyTo?.text || null,
+
+  reply_audio_url:
+    replyTo?.audio_url || null,
+
+  reply_image_url:
+    replyTo?.image_url || null,
+})
         .select()
         .single();
 
@@ -1541,6 +1616,53 @@ return (
             </TouchableOpacity>
           </View>
         )}
+        {/* STATUS REPLY BAR */}
+{replyingStatus && (
+  <View
+    style={{
+      backgroundColor: "#111827",
+      padding: 10,
+      borderLeftWidth: 4,
+      borderLeftColor: "#22c55e",
+      marginBottom: 8,
+    }}
+  >
+    <Text
+      style={{
+        color: "#22c55e",
+        fontWeight: "bold",
+      }}
+    >
+      Replying to Status
+    </Text>
+
+    <Text
+      style={{
+        color: "white",
+        marginTop: 4,
+      }}
+      numberOfLines={2}
+    >
+      {replyingStatus.text ||
+        replyingStatus.type}
+    </Text>
+
+    <TouchableOpacity
+      onPress={() =>
+        setReplyingStatus(null)
+      }
+    >
+      <Text
+        style={{
+          color: "red",
+          marginTop: 5,
+        }}
+      >
+        Cancel
+      </Text>
+    </TouchableOpacity>
+  </View>
+)}
 
         {/* MESSAGES */}
         <FlatList
@@ -1620,10 +1742,48 @@ return (
     </Text>
 
     <Text style={{ color: "white" }}>
-      {item.reply_text || "Message"}
-    </Text>
+  {item.reply_text ||
+    (item.reply_audio_url
+      ? "🎤 Voice Note"
+      : item.reply_image_url
+      ? "📷 Photo"
+      : "Message")}
+</Text>
   </TouchableOpacity>
 )} 
+{item.reply_status_id && (
+  <View
+    style={{
+      backgroundColor:
+        "#111827",
+      padding: 8,
+      borderRadius: 8,
+      marginBottom: 6,
+      borderLeftWidth: 3,
+      borderLeftColor:
+        "#22c55e",
+    }}
+  >
+    <Text
+      style={{
+        color: "#22c55e",
+        fontWeight: "bold",
+      }}
+    >
+      Status Reply
+    </Text>
+
+    <Text
+      style={{
+        color: "white",
+      }}
+      numberOfLines={2}
+    >
+      {item.reply_status_text ||
+        item.reply_status_type}
+    </Text>
+  </View>
+)}
 
                  
                 
