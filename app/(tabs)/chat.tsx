@@ -2276,11 +2276,8 @@ const uploadedUrl = await uploadFile(
 
       const uploadedUrl = await uploadFile(
   pendingMediaUri,
-  pendingMediaType === "audio"
-    ? "video"
-    : pendingMediaType
+  pendingMediaType
 );
-
       await (supabase as any)
         .from("statuses")
         .insert({

@@ -21,80 +21,68 @@ import {
 } from "../../lib/blockUser";
 
 import { supabase } from "../../lib/supabase";
-/* ================= CLOUDINARY ================= */
-async function uploadToCloudinary(
-  file: any
+/* ================= CLOUDFLARE UPLOAD ================= */
+async function uploadToServer(
+  uri: string
 ): Promise<string> {
-  const CLOUD_NAME = "ajars";
-
-  const PRESET = "ajars_avatars";
-
-  const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`;
-
   const formData = new FormData();
 
   if (Platform.OS === "web") {
-    formData.append("file", file);
+    const response =
+      await fetch(uri);
+
+    const blob =
+      await response.blob();
+
+    formData.append(
+      "file",
+      blob,
+      `avatar-${Date.now()}.jpg`
+    );
   } else {
     formData.append(
       "file",
       {
-        uri: file,
+        uri,
+        name: `avatar-${Date.now()}.jpg`,
         type: "image/jpeg",
-        name: "avatar.jpg",
       } as any
     );
   }
 
-  formData.append(
-    "upload_preset",
-    PRESET
+  const res = await fetch(
+    "https://nasara-upload-server.onrender.com/upload",
+    {
+      method: "POST",
+      body: formData,
+    }
   );
 
-  return new Promise(
-    (resolve, reject) => {
-      const xhr =
-        new XMLHttpRequest();
+  const result =
+    await res.json();
 
-      xhr.open("POST", url);
+  let url =
+    result?.url ||
+    result?.file ||
+    result?.path;
 
-      xhr.onload = () => {
-        try {
-          const data = JSON.parse(
-            xhr.response
-          );
+  if (!url) {
+    throw new Error(
+      "Upload failed"
+    );
+  }
 
-          if (!data.secure_url) {
-            reject(
-              new Error(
-                "Upload failed"
-              )
-            );
-          } else {
-            resolve(
-              data.secure_url +
-                "?t=" +
-                Date.now()
-            );
-          }
-        } catch {
-          reject(
-            new Error(
-              "Upload failed"
-            )
-          );
-        }
-      };
+  if (
+    !url.startsWith("http")
+  ) {
+    url =
+      `https://nasara-upload-server.onrender.com/${url}`;
+  }
 
-      xhr.onerror = () =>
-        reject(
-          new Error(
-            "Network error"
-          )
-        );
-
-      xhr.send(formData);
-    }
+  return (
+    url +
+    "?t=" +
+    Date.now()
   );
 }
 
@@ -580,10 +568,10 @@ const openExistingChat = async () => {
             "blob"
           ))
       ) {
-        avatar_url =
-          await uploadToCloudinary(
-            avatar
-          );
+       avatar_url =
+  await uploadToServer(
+    avatar
+  );
       }
 
       const { error } =
