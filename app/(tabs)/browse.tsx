@@ -1258,6 +1258,12 @@ const trackFeedAction = async (
 const handlePress = async (
   item: Item
 ) => {
+  console.log(
+    "CLICKED",
+    item.type,
+    item.url
+  );
+
   await trackFeedAction(
     item,
     "click"
@@ -1267,9 +1273,27 @@ const handlePress = async (
     item.type === "ad" ||
     item.type === "banner"
   ) {
+    console.log(
+      "OPENING URL:",
+      item.url
+    );
+
     if (item.url) {
-      Linking.openURL(item.url);
+      if (
+        typeof window !==
+        "undefined"
+      ) {
+        window.open(
+          item.url,
+          "_blank"
+        );
+      } else {
+        Linking.openURL(
+          item.url
+        );
+      }
     }
+
     return;
   }
 
@@ -1279,7 +1303,6 @@ const handlePress = async (
         item.id)
   );
 };
-  
   /* ================= UI ================= */
   return (
     <FlatList
