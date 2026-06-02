@@ -336,7 +336,7 @@ const loadUsers = async () => {
             image_url:
               imageUrl,
             owner_id:
-              userId,
+              currentUserId,
           })
           .select()
           .single();
@@ -351,7 +351,7 @@ const loadUsers = async () => {
               group_id:
                 data.id,
               user_id:
-                userId,
+                currentUserId,
               role:
                 "admin",
             },
