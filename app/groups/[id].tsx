@@ -4,7 +4,6 @@ import {
   useAudioPlayer,
   useAudioRecorder,
 } from "expo-audio";
-
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -30,6 +29,7 @@ import {
   Linking,
   Modal,
   Platform,
+  Share,
   Text,
   TextInput,
   TouchableOpacity,
@@ -60,6 +60,7 @@ type Message = {
   expires_at?: string | null;
   one_time_view?: boolean;
   secret_chat?: boolean;
+  pinned?: boolean;
 };
 
 export default function GroupRoom() {
@@ -118,6 +119,27 @@ const [wallpaperMenuVisible, setWallpaperMenuVisible] =
     useState<any>({});
   const [isAdmin, setIsAdmin] =
   useState(false);
+  
+  const [isOwner, setIsOwner] =
+  useState(false);
+
+const [announcementMode, setAnnouncementMode] =
+  useState(false);
+
+const [inviteLink, setInviteLink] =
+  useState("");
+
+const [pinnedMessage, setPinnedMessage] =
+  useState<any>(null);
+
+const [joinRequests, setJoinRequests] =
+  useState<any[]>([]);
+
+const [mutedUsers, setMutedUsers] =
+  useState<string[]>([]);
+
+const [bannedUsers, setBannedUsers] =
+  useState<string[]>([]);
 
 const [showAddMembers, setShowAddMembers] =
   useState(false);
@@ -303,6 +325,7 @@ const markGroupMessagesRead = async () => {
         .eq("id", roomId)
         .single();
 if (group) {
+  
   setGroupName(
     group.name || "Group"
   );
@@ -314,7 +337,20 @@ if (group) {
   setGroupWallpaper(
   group?.wallpaper_url || ""
 );
+setAnnouncementMode(
+  group.announcement_mode || false
+);
+
+setInviteLink(
+  group.invite_link || ""
+);
+
+setIsOwner(
+  String(group.owner_id) ===
+  String(userId)
+);
 }
+
       const {
   data: members,
   error,
@@ -938,6 +974,17 @@ useEffect(() => {
  const sendText = async () => {
   if (!text.trim() || !userId)
     return;
+  if (
+  announcementMode &&
+  !isAdmin &&
+  !isOwner
+) {
+  Alert.alert(
+    "Only admins can send messages"
+  );
+
+  return;
+}
 
   const messageText =
     text.trim();
@@ -1521,7 +1568,18 @@ const changeGroupImage =
           )
       );
     };
+   const pinMessage = async (
+  id: number
+) => {
+  await (supabase as any)
+    .from("group_messages")
+    .update({
+      pinned: true,
+    })
+    .eq("id", id);
 
+  fetchMessages();
+};
   /* ================= DELETE ================= */
 
   const deleteForMe =
@@ -1721,6 +1779,7 @@ const changeGroupImage =
               )
         )
       : messages;
+      /* ================= ADD MEMBER ================= */
   const addMember = async (
   targetUserId: string
 ) => {
@@ -1774,6 +1833,7 @@ const changeGroupImage =
     console.log(e);
   }
 };
+/* ================= MAKE ADMIN ================= */
 const makeAdmin = async (
   targetUserId: string
 ) => {
@@ -1813,6 +1873,211 @@ const makeAdmin = async (
     console.log(e);
   }
 };
+const doRemoveMember = async (
+  targetUserId: string
+) => {
+  const { error } =
+    await (supabase as any)
+      .from("group_members")
+      .delete()
+      .eq("group_id", roomId)
+      .eq(
+        "user_id",
+        targetUserId
+      );
+
+  console.log(
+    "REMOVE ERROR",
+    error
+  );
+
+  if (error) {
+    Alert.alert(
+      error.message
+    );
+
+    return;
+  }
+
+  await loadGroup();
+
+  Alert.alert(
+    "Member removed"
+  );
+};
+/* ================= REMOVE MEMBER ================= */
+const removeMember = async (
+  targetUserId: string
+) => {
+  if (!isAdmin && !isOwner)
+    return;
+
+  let confirmed = false;
+
+  if (Platform.OS === "web") {
+    confirmed =
+      window.confirm(
+        "Remove this member?"
+      );
+  } else {
+    Alert.alert(
+      "Remove Member",
+      "Remove this member?",
+      [
+        {
+          text: "Cancel",
+        },
+        {
+          text: "Remove",
+          onPress: async () => {
+            await doRemoveMember(
+              targetUserId
+            );
+          },
+        },
+      ]
+    );
+
+    return;
+  }
+
+  if (confirmed) {
+    await doRemoveMember(
+      targetUserId
+    );
+  }
+};
+/* ================= BAN MEMBER ================= */
+
+const banMember = async (
+  targetUserId: string
+) => {
+  const { error } =
+    await (supabase as any)
+      .from("group_bans")
+      .insert({
+        group_id: roomId,
+        user_id: targetUserId,
+      });
+
+  console.log(
+    "BAN ERROR",
+    error
+  );
+
+  if (error) {
+    Alert.alert(
+      error.message
+    );
+
+    return;
+  }
+
+  await doRemoveMember(
+    targetUserId
+  );
+
+  Alert.alert(
+    "Member banned"
+  );
+};
+/* ================= INVITE CODE ================= */
+
+const shareGroupLink = async () => {
+  try {
+    const { data, error } =
+      await (supabase as any)
+        .from("group_invites")
+        .insert({
+          group_id: roomId,
+          invited_by: userId,
+          status: "pending",
+        })
+        .select()
+        .single();
+
+    if (error) {
+      Alert.alert(error.message);
+      return;
+    }
+
+    const link =
+      `https://nasara1.vercel.app/join/${data.id}`;
+
+    await Share.share({
+      message:
+        `Join my Nasara group:\n${link}`,
+    });
+  } catch (e) {
+    console.log(e);
+    Alert.alert(
+      "Failed to create invite"
+    );
+  }
+};
+/* ================= JOIN REQUESTS ================= */
+  const joinGroup = async (
+  groupId: string
+) => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return;
+
+  const { data: existing } =
+    await (supabase as any)
+      .from("group_members")
+      .select("*")
+      .eq("group_id", groupId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+  if (existing) return;
+
+  await (supabase as any)
+    .from("group_members")
+    .insert({
+      group_id: groupId,
+      user_id: user.id,
+      role: "member",
+    });
+};
+  /* ================= TRANSFER OWNERSHIP ================= */
+  const transferOwnership =
+  async (
+    targetUserId: string
+  ) => {
+    await (supabase as any)
+      .from("groups")
+      .update({
+        owner_id:
+          targetUserId,
+      })
+      .eq("id", roomId);
+
+    await (supabase as any)
+      .from("group_members")
+      .update({
+        role: "owner",
+      })
+      .eq(
+        "group_id",
+        roomId
+      )
+      .eq(
+        "user_id",
+        targetUserId
+      );
+
+    setIsOwner(false);
+
+    loadGroup();
+
+    Alert.alert(
+      "Ownership transferred"
+    );
+  };
   /* ================= UI ================= */
 
   return (
@@ -2118,7 +2383,30 @@ const makeAdmin = async (
               </Text>
             </TouchableOpacity>
           </View>
-          {/* ================= REPLY BAR ================= */}
+          {/* ================= ANNOUNCEMENT ================= */}
+              {announcementMode && (
+  <View
+    style={{
+      backgroundColor:
+        "#f59e0b",
+      padding: 10,
+    }}
+  >
+    <Text
+      style={{
+        color: "white",
+        fontWeight: "bold",
+        textAlign: "center",
+      }}
+    >
+      📢 Announcement Mode
+      (Admins Only)
+    </Text>
+  </View>
+)}
+ 
+
+ {/* ================= REPLY BAR ================= */}
 
           {replyTo && (
             <View
@@ -2318,12 +2606,12 @@ const makeAdmin = async (
                             index !==
                             -1
                           ) {
-                            flatRef.current?.scrollToIndex(
-                              {
-                                index,
-                                animated: true,
-                              }
-                            );
+                            flatRef.current?.scrollToIndex({
+  index,
+  animated: true,
+  viewPosition: 0.5,
+});
+
                           }
                         }}
                         style={{
@@ -2373,6 +2661,22 @@ const makeAdmin = async (
                         >
                           {item.text}
                         </Text>
+                        {item.pinned && (
+  <View
+    style={{
+      marginBottom: 6,
+    }}
+  >
+    <Text
+      style={{
+        color: "#facc15",
+        fontWeight: "bold",
+      }}
+    >
+      📌 Pinned Message
+    </Text>
+  </View>
+)}
 
                         {/* ================= TRANSLATE ================= */}
 
@@ -2790,6 +3094,24 @@ const makeAdmin = async (
                         </Text>
                       </TouchableOpacity>
                     )}
+                    {/* ================= PIN ================= */}
+
+{isAdmin && (
+  <TouchableOpacity
+    onPress={() =>
+      pinMessage(item.id)
+    }
+  >
+    <Text
+      style={{
+        color: "#facc15",
+        marginTop: 6,
+      }}
+    >
+      📌 Pin
+    </Text>
+  </TouchableOpacity>
+)}
 
                     {/* ================= REACTIONS ================= */}
 
@@ -3480,145 +3802,7 @@ const makeAdmin = async (
     />
   </SafeAreaView>
 </Modal>
-<Modal
-  visible={showMembers}
-  animationType="slide"
->
-  <SafeAreaView
-    style={{
-      flex: 1,
-      backgroundColor: "#0f172a",
-      padding: 20,
-    }}
-  >
-    <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 20,
-      }}
-    >
-      <Text
-        style={{
-          color: "white",
-          fontSize: 22,
-          fontWeight: "bold",
-        }}
-      >
-        Group Members
-      </Text>
 
-      <TouchableOpacity
-        onPress={() =>
-          setShowMembers(false)
-        }
-      >
-        <Text
-          style={{
-            color: "#ef4444",
-            fontSize: 18,
-          }}
-        >
-          Close
-        </Text>
-      </TouchableOpacity>
-    </View>
-
-    <FlatList
-      data={membersList}
-      keyExtractor={(item) =>
-        item.user_id
-      }
-      renderItem={({ item }) => {
-        const profile =
-          memberMap[item.user_id];
-
-        return (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: "#1e293b",
-              padding: 12,
-              borderRadius: 14,
-              marginBottom: 12,
-            }}
-          >
-            <Image
-              source={{
-                uri:
-                  profile?.avatar_url ||
-                  "https://ui-avatars.com/api/?name=User",
-              }}
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                marginRight: 12,
-              }}
-            />
-
-            <View
-              style={{
-                flex: 1,
-              }}
-            >
-              <Text
-                style={{
-                  color: "white",
-                  fontWeight: "bold",
-                }}
-              >
-                {profile?.full_name ||
-                  "User"}
-              </Text>
-
-              <Text
-                style={{
-                  color: "#9ca3af",
-                  marginTop: 4,
-                }}
-              >
-                {item.role}
-              </Text>
-            </View>
-
-            {isAdmin &&
-              item.role !==
-                "owner" &&
-              item.role !==
-                "admin" && (
-                <TouchableOpacity
-                  onPress={() =>
-                    makeAdmin(
-                      item.user_id
-                    )
-                  }
-                  style={{
-                    backgroundColor:
-                      "#2563eb",
-                    paddingHorizontal: 14,
-                    paddingVertical: 8,
-                    borderRadius: 10,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: "white",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Make Admin
-                  </Text>
-                </TouchableOpacity>
-              )}
-          </View>
-        );
-      }}
-    />
-  </SafeAreaView>
-</Modal>
 <Modal
   visible={showMembersModal}
   animationType="slide"
@@ -3663,12 +3847,61 @@ const makeAdmin = async (
         </Text>
       </TouchableOpacity>
     </View>
+    {isAdmin && (
+  <TouchableOpacity
+    onPress={async () => {
+      const newValue =
+        !announcementMode;
+
+      const { error } =
+        await (supabase as any)
+          .from("groups")
+          .update({
+            announcement_mode:
+              newValue,
+          })
+          .eq("id", roomId);
+
+      if (!error) {
+        setAnnouncementMode(
+          newValue
+        );
+      }
+    }}
+    style={{
+      backgroundColor:
+        "#f59e0b",
+      padding: 12,
+      borderRadius: 10,
+      marginTop: 10,
+    }}
+  >
+    <Text
+      style={{
+        color: "white",
+        fontWeight: "bold",
+      }}
+    >
+      {announcementMode
+        ? "Disable Announcement Mode"
+        : "Enable Announcement Mode"}
+    </Text>
+  </TouchableOpacity>
+)}
 
     <FlatList
       data={groupMembers}
       keyExtractor={(item) =>
-  item.id.toString()
+  `${item.user_id}`
 }
+onScrollToIndexFailed={(info) => {
+  setTimeout(() => {
+    flatRef.current?.scrollToIndex({
+      index: info.index,
+      animated: true,
+    });
+  }, 500);
+}}
       renderItem={({ item }) => (
         <View
           style={{
@@ -3723,31 +3956,112 @@ const makeAdmin = async (
           </View>
 
           {isAdmin &&
-            item.role !== "admin" && (
-              <TouchableOpacity
-                onPress={() =>
-                  makeAdmin(
-                    item.user_id
-                  )
-                }
-                style={{
-                  backgroundColor:
-                    "#2563eb",
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 10,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "white",
-                    fontWeight: "bold",
-                  }}
-                >
-                  Make Admin
-                </Text>
-              </TouchableOpacity>
-            )}
+  item.user_id !== userId && (
+    <View>
+      {item.role !== "admin" && (
+        <TouchableOpacity
+          onPress={() =>
+            makeAdmin(
+              item.user_id
+            )
+          }
+          style={{
+            backgroundColor:
+              "#2563eb",
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            borderRadius: 10,
+            marginBottom: 6,
+          }}
+        >
+          <Text
+            style={{
+              color: "white",
+              fontWeight: "bold",
+            }}
+          >
+            Make Admin
+          </Text>
+        </TouchableOpacity>
+      )}
+       {isOwner &&
+  item.user_id !== userId && (
+    <TouchableOpacity
+      onPress={() =>
+        transferOwnership(
+          item.user_id
+        )
+      }
+      style={{
+        backgroundColor:
+          "#22c55e",
+        padding: 8,
+        borderRadius: 10,
+        marginBottom: 6,
+      }}
+    >
+      <Text
+        style={{
+          color: "black",
+          fontWeight: "bold",
+        }}
+      >
+        Transfer Ownership
+      </Text>
+    </TouchableOpacity>
+)}
+
+
+      <TouchableOpacity
+        onPress={() =>
+          removeMember(
+            item.user_id
+          )
+        }
+        style={{
+          backgroundColor:
+            "#f59e0b",
+          paddingHorizontal: 14,
+          paddingVertical: 8,
+          borderRadius: 10,
+          marginBottom: 6,
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            fontWeight: "bold",
+          }}
+        >
+          Remove
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() =>
+          banMember(
+            item.user_id
+          )
+        }
+        style={{
+          backgroundColor:
+            "#ef4444",
+          paddingHorizontal: 14,
+          paddingVertical: 8,
+          borderRadius: 10,
+        }}
+      >
+        <Text
+          style={{
+            color: "white",
+            fontWeight: "bold",
+          }}
+        >
+          Ban
+        </Text>
+      </TouchableOpacity>
+    </View>
+)}
         </View>
       )}
     />
@@ -3803,6 +4117,7 @@ const makeAdmin = async (
           👥 View Members
         </Text>
       </TouchableOpacity>
+      
 
       <TouchableOpacity
         onPress={() => {
@@ -3827,6 +4142,7 @@ const makeAdmin = async (
           🖼️ Change Group Image
         </Text>
       </TouchableOpacity>
+     
 
       <TouchableOpacity
         onPress={() =>
