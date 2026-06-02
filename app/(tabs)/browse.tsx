@@ -1270,33 +1270,25 @@ const handlePress = async (
   );
 
   if (
-    item.type === "ad" ||
-    item.type === "banner"
-  ) {
-    console.log(
-      "OPENING URL:",
-      item.url
-    );
-
-    if (item.url) {
-      if (
-        typeof window !==
-        "undefined"
-      ) {
-        window.open(
-          item.url,
-          "_blank"
-        );
-      } else {
-        Linking.openURL(
-          item.url
-        );
-      }
+  item.type === "ad" ||
+  item.type === "banner"
+) {
+  if (item.url) {
+    if (
+      typeof window !==
+      "undefined"
+    ) {
+      window.location.href =
+        item.url;
+    } else {
+      Linking.openURL(
+        item.url
+      );
     }
-
-    return;
   }
 
+  return;
+}
   router.push(
     "/itemdetail/" +
       (item.original_id ||
