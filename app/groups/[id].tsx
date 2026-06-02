@@ -79,6 +79,8 @@ export default function GroupRoom() {
   useState(false);
   const [updatingImage, setUpdatingImage] =
   useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+const [isBlocked, setIsBlocked] = useState(false);
 
 const [membersList, setMembersList] =
   useState<any[]>([]);
@@ -2043,6 +2045,35 @@ const shareGroupLink = async () => {
       role: "member",
     });
 };
+
+/* ================= EXIT GROUP ================= */
+const exitGroup = async () => {
+  try {
+    if (!userId) return;
+
+    await supabase
+      .from("group_members")
+      .delete()
+      .eq("group_id", roomId)
+      .eq("user_id", userId);
+
+    Alert.alert("You left the group");
+
+    router.replace("/(tabs)/chat"); // adjust if needed
+  } catch (e) {
+    console.log(e);
+  }
+};
+/* ================= MUTE GROUP ================= */
+const toggleMuteGroup = () => {
+  setIsMuted((prev) => !prev);
+
+  Alert.alert(
+    isMuted ? "Group unmuted" : "Group muted"
+  );
+};
+
+
   /* ================= TRANSFER OWNERSHIP ================= */
   const transferOwnership =
   async (
@@ -2128,6 +2159,7 @@ const shareGroupLink = async () => {
               : "height"
           }
         >
+          
           {/* ================= HEADER ================= */}
 
           <View
@@ -2207,6 +2239,28 @@ const shareGroupLink = async () => {
     </View>
   )}
 </TouchableOpacity>
+<TouchableOpacity
+  onPress={() => {
+    setGroupMenuVisible(false);
+    setTimeout(() => toggleMuteGroup(), 200);
+  }}
+  style={{ paddingVertical: 14 }}
+>
+  <Text style={{ color: "white", fontSize: 16 }}>
+    🔇 {isMuted ? "Unmute Group" : "Mute Group"}
+  </Text>
+</TouchableOpacity>
+<TouchableOpacity
+  onPress={() => {
+    setGroupMenuVisible(false);
+    setTimeout(() => exitGroup(), 200);
+  }}
+  style={{ paddingVertical: 14 }}
+>
+  <Text style={{ color: "#ef4444", fontSize: 16 }}>
+    🚪 Exit Group
+  </Text>
+</TouchableOpacity>
 
            <TouchableOpacity
   onPress={() =>
@@ -2254,6 +2308,7 @@ const shareGroupLink = async () => {
                 🔍
               </Text>
             </TouchableOpacity>
+            
           </View>
            
           {/* ================= SEARCH ================= */}
@@ -2352,6 +2407,7 @@ const shareGroupLink = async () => {
                 🖼️
               </Text>
             </TouchableOpacity>
+            
 
             <TouchableOpacity
               onPress={() =>
@@ -2382,6 +2438,8 @@ const shareGroupLink = async () => {
                   : "💬 Normal"}
               </Text>
             </TouchableOpacity>
+            
+            
           </View>
           {/* ================= ANNOUNCEMENT ================= */}
               {announcementMode && (
@@ -4319,6 +4377,7 @@ onScrollToIndexFailed={(info) => {
     👥 Everyone
   </Text>
 </TouchableOpacity>
+
 
       <TouchableOpacity
         onPress={() =>
