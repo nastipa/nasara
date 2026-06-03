@@ -63,34 +63,63 @@ export default function EditProfile() {
   };
 
   // UPLOAD IMAGE (WEB + MOBILE SAFE)
-  const uploadAvatar = async (uri: string) => {
-    if (!userId) return null;
+  const uploadAvatar = async (
+  uri: string
+): Promise<string> => {
+  const formData = new FormData();
 
-    const fileName = "avatar_" + userId + ".jpg";
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    const blob = await response.blob();
 
-    let fileBody: any;
+    formData.append(
+      "file",
+      blob,
+      `avatar-${Date.now()}.jpg`
+    );
+  } else {
+    formData.append(
+      "file",
+      {
+        uri,
+        name: `avatar-${Date.now()}.jpg`,
+        type: "image/jpeg",
+      } as any
+    );
+  }
 
-    if (Platform.OS === "web") {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      fileBody = blob;
-    } else {
-      const response = await fetch(uri);
-      const arrayBuffer = await response.arrayBuffer();
-      fileBody = arrayBuffer;
+  const res = await fetch(
+    "https://nasara-upload-server.onrender.com/upload",
+    {
+      method: "POST",
+      body: formData,
     }
+  );
 
-    await supabase.storage.from("avatars").upload(fileName, fileBody, {
-      contentType: "image/jpeg",
-      upsert: true,
-    });
+  const result = await res.json();
 
-    const { data } = supabase.storage.from("avatars").getPublicUrl(fileName);
+  let url =
+    result?.url ||
+    result?.file ||
+    result?.path;
 
-    // 🔥 cache bust so avatar refreshes
-    return data.publicUrl + "?t=" + Date.now();
-  };
+  if (!url) {
+    throw new Error(
+      "Upload failed"
+    );
+  }
 
+  if (!url.startsWith("http")) {
+    url =
+      `https://nasara-upload-server.onrender.com/${url}`;
+  }
+
+  return (
+    url +
+    "?t=" +
+    Date.now()
+  );
+};
   // SAVE PROFILE
   const saveProfile = async () => {
     if (!userId) return;
@@ -99,10 +128,18 @@ export default function EditProfile() {
 
     let avatar_url = avatar;
 
-    if (avatar && avatar.startsWith("file") || avatar?.startsWith("blob")) {
-      const uploaded = await uploadAvatar(avatar);
-      avatar_url = uploaded;
-    }
+   if (
+  avatar &&
+  (
+    avatar.startsWith("file") ||
+    avatar.startsWith("blob")
+  )
+) {
+  avatar_url =
+    await uploadAvatar(
+      avatar
+    );
+}
 
     const { error } = await (supabase as any).from("profiles").upsert({
       id: userId,
