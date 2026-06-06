@@ -222,10 +222,10 @@ export default function TabLayout() {
               "play-circle-outline";
               } else if (
             route.name ===
-            "delivery"
+            "farm"
           ) {
             iconName =
-              "bicycle-outline";
+              "leaf-outline";
           }
 
           return (
@@ -273,9 +273,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="delivery"
+        name="farm"
         options={{
-          title: "Delivery",
+          title: "Farm",
         }}
       />
     </Tabs>

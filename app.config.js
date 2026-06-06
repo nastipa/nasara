@@ -36,7 +36,7 @@ export default {
       "expo-asset",
       "expo-audio",
       "expo-font",
-
+      "@react-native-community/datetimepicker",
       [
         "expo-camera",
         {

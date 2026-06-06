@@ -1,12 +1,12 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "../lib/supabase";
 
 export default function DeliveryTab() {
   const router = useRouter();

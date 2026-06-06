@@ -406,6 +406,9 @@ router.replace("/browse");
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/mentor/request")}>
             <Text style={styles.quickText}>  🎓 Find a Mentor</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/delivery")}>
+            <Text style={styles.quickText}>  🚲 Delivery</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
