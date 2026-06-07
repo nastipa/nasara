@@ -30,6 +30,16 @@ const FARM_TYPES = [
   "Other",
 ];
 
+const SELLER_TYPES = [
+  "Farmer",
+  "Livestock Farmer",
+  "Poultry Farmer",
+  "Fertilizer Dealer",
+  "Seed Dealer",
+  "Implement Dealer",
+  "Veterinary Supplier",
+  "Farm Service Provider",
+];
 const uploadFile = async (
   uri: string,
   onProgress?: (p: number) => void
@@ -73,6 +83,8 @@ export default function CreateFarmScreen() {
 
   const [farmType, setFarmType] =
     useState("");
+    const [sellerType, setSellerType] =
+  useState("");
 
   const [region, setRegion] =
     useState("");
@@ -226,6 +238,8 @@ export default function CreateFarmScreen() {
 
             farm_type: farmType,
 
+            seller_type: sellerType,
+
             region,
 
             district,
@@ -375,8 +389,59 @@ export default function CreateFarmScreen() {
               {item}
             </Text>
           </TouchableOpacity>
+          
         ))}
+        
       </View>
+      <Text
+  style={{
+    fontWeight: "bold",
+    marginTop: 20,
+    marginBottom: 10,
+  }}
+>
+  Seller Type
+</Text>
+
+<View
+  style={{
+    flexDirection: "row",
+    flexWrap: "wrap",
+  }}
+>
+  {SELLER_TYPES.map((item) => (
+    <TouchableOpacity
+      key={item}
+      onPress={() =>
+        setSellerType(item)
+      }
+      style={{
+        backgroundColor:
+          sellerType === item
+            ? "#2563eb"
+            : "#eee",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 20,
+        marginRight: 8,
+        marginBottom: 8,
+      }}
+    >
+      <Text
+        style={{
+          color:
+            sellerType === item
+              ? "#fff"
+              : "#000",
+        }}
+      >
+        {item}
+      </Text>
+    </TouchableOpacity>
+  ))}
+</View>
+      
+      
 
       <Text
   style={{

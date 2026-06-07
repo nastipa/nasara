@@ -15,6 +15,28 @@ import {
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
+const categoryIcons: any = {
+  Crops: "🌾",
+  Livestock: "🐄",
+  Poultry: "🐔",
+  Eggs: "🥚",
+
+  Fertilizers: "🧪",
+  Seeds: "🌱",
+  "Agro Chemicals": "🧴",
+  "Animal Feed": "🌽",
+
+  "Farm Tools": "🛠️",
+  "Farm Implements": "🚜",
+  Tractors: "🚜",
+  "Irrigation Equipment": "💧",
+
+  "Veterinary Products": "💉",
+  "Fish Farming": "🐟",
+  "Bee Keeping": "🐝",
+
+  "Farm Services": "👨‍🌾",
+};
 
 export default function FarmProfileScreen() {
   const { id } = useLocalSearchParams();
@@ -438,6 +460,15 @@ useFocusEffect(
         >
           {farm.farm_name}
         </Text>
+        <Text
+  style={{
+    color: "#38bdf8",
+    fontWeight: "bold",
+    marginTop: 4,
+  }}
+>
+  {farm.seller_type}
+</Text>
 
         {farm.is_verified && (
           <Text
@@ -452,7 +483,16 @@ useFocusEffect(
             ✅ Verified Farm
           </Text>
         )}
-
+        {farm.is_supplier && (
+  <Text
+    style={{
+      color: "#facc15",
+      fontWeight: "bold",
+    }}
+  >
+    ⭐ Certified Supplier
+  </Text>
+)}
         <Text
           style={{
             color: "#cbd5e1",
@@ -651,6 +691,17 @@ useFocusEffect(
           marginBottom: 10,
         }}
       >
+        {item.listing_type === "service" && (
+  <Text
+    style={{
+      color: "#f59e0b",
+      fontWeight: "bold",
+      marginBottom: 4,
+    }}
+  >
+    🛠️ SERVICE
+  </Text>
+)}
         <Text
           style={{
             color: "#fff",
@@ -973,15 +1024,34 @@ useFocusEffect(
       }}
     >
       <Text
-        style={{
-          color: "#22c55e",
-          fontSize: 12,
-          fontWeight: "bold",
-          marginBottom: 4,
-        }}
-      >
-        {item.category}
-      </Text>
+  style={{
+    color: "#22c55e",
+    fontSize: 12,
+    fontWeight: "bold",
+    marginBottom: 4,
+  }}
+>
+  {categoryIcons[item.category] || "📦"} {item.category}
+</Text>
+{[
+  "Seeds",
+  "Fertilizer",
+  "Pesticides",
+  "Farm Tools",
+  "Farm Equipment",
+  "Animal Feed",
+  "Veterinary Products",
+].includes(item.category) && (
+  <Text
+    style={{
+      color: "#facc15",
+      fontWeight: "bold",
+      marginTop: 4,
+    }}
+  >
+    🏪 Farm Input Shop
+  </Text>
+)}
 
       <Text
         numberOfLines={1}

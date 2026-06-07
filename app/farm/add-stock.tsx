@@ -14,12 +14,41 @@ import {
 import { supabase } from "../../lib/supabase";
 
 const STOCK_CATEGORIES = [
-  "Poultry",
+   "Crops",
   "Livestock",
-  "Crops",
-  "Fish Farming",
-  "Mixed Farm",
+  "Poultry",
+  "Fish",
+  "Seeds",
+  "Fertilizer",
+  "Pesticides",
+  "Farm Tools",
+  "Farm Equipment",
+  "Animal Feed",
+  "Veterinary Products",
+
+  
+  "Fertilizers",
+  "Agro Chemicals",
+  "Farm Implements",
+  "Tractors",
+  "Irrigation Equipment",
+
+  "Veterinary Products",
+  "Bee Keeping",
+  "Farm Services",
 ];
+const serviceCategories = [
+  "Tractor Ploughing",
+  "Harvesting",
+  "Crop Spraying",
+  "Veterinary Service",
+  "Animal Vaccination",
+  "Artificial Insemination",
+  "Transportation",
+  "Farm Consultancy",
+  "Irrigation Installation",
+];
+
 
 const STOCK_PRODUCTS: any = {
   Poultry: [
@@ -44,14 +73,54 @@ const STOCK_PRODUCTS: any = {
     "Cocoa",
     "Vegetables",
   ],
-
-  "Fish Farming": [
-    "Fish Farming",
+   Fertilizer: [
+    "NPK",
+    "Urea",
+    "Organic Fertilizer",
   ],
 
-  "Mixed Farm": [
-    "Mixed Farm",
+  Pesticides: [
+    "Insecticide",
+    "Herbicide",
+    "Fungicide",
   ],
+
+  "Farm Tools": [
+    "Hoe",
+    "Cutlass",
+    "Shovel",
+    "Watering Can",
+  ],
+
+  "Farm Equipment": [
+    "Tractor",
+    "Plough",
+    "Harvester",
+  ],
+
+  "Animal Feed": [
+    "Broiler Feed",
+    "Layer Feed",
+    "Fish Feed",
+  ],
+
+  "Veterinary Products": [
+    "Vaccines",
+    "Dewormer",
+    "Supplements",
+  ],
+
+   Fish: [
+    "Tilapia",
+    "Catfish",
+  ],
+
+  Seeds: [
+    "Maize Seed",
+    "Rice Seed",
+    "Vegetable Seed",
+  ],
+  "Farm Services": serviceCategories,
 };
 
 const STOCK_UNITS = [
@@ -140,6 +209,10 @@ export default function AddStockScreen() {
 
   const [category, setCategory] =
     useState("");
+    const listingTypes = [
+  "product",
+  "service",
+];
 
   const [productName, setProductName] =
     useState("");

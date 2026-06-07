@@ -12,6 +12,38 @@ import {
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
+const sellerIcons: any = {
+  Farmer: "🌾",
+  "Livestock Farmer": "🐄",
+  "Poultry Farmer": "🐔",
+  "Fertilizer Dealer": "🧪",
+  "Seed Dealer": "🌱",
+  "Implement Dealer": "🚜",
+  "Veterinary Supplier": "💉",
+  "Farm Service Provider": "👨‍🌾",
+};
+const categoryIcons: any = {
+  Crops: "🌾",
+  Livestock: "🐄",
+  Poultry: "🐔",
+  Eggs: "🥚",
+
+  Fertilizers: "🧪",
+  Seeds: "🌱",
+  "Agro Chemicals": "🧴",
+  "Animal Feed": "🌽",
+
+  "Farm Tools": "🛠️",
+  "Farm Implements": "🚜",
+  Tractors: "🚜",
+  "Irrigation Equipment": "💧",
+
+  "Veterinary Products": "💉",
+  "Fish Farming": "🐟",
+  "Bee Keeping": "🐝",
+
+  "Farm Services": "👨‍🌾",
+};
 
 export default function FarmProductScreen() {
   const router = useRouter();
@@ -39,6 +71,11 @@ const [postingComment, setPostingComment] =
   useState(false);
 const [currentUser, setCurrentUser] =
   useState<any>(null);
+  const [saved, setSaved] =
+  useState(false);
+
+const [saveCount, setSaveCount] =
+  useState(0);
   
 
   const player = useVideoPlayer(
@@ -131,7 +168,48 @@ if (user) {
     !!likedData
   );
 }
+const {
+  count: favoriteCount,
+} =
+  await (supabase as any)
+    .from(
+      "farm_stock_favorites"
+    )
+    .select("*", {
+      count: "exact",
+      head: true,
+    })
+    .eq(
+      "stock_id",
+      data.id
+    );
 
+setSaveCount(
+  favoriteCount || 0
+);
+if (user) {
+  const {
+    data: favoriteData,
+  } =
+    await (supabase as any)
+      .from(
+        "farm_stock_favorites"
+      )
+      .select("id")
+      .eq(
+        "stock_id",
+        data.id
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .maybeSingle();
+
+  setSaved(
+    !!favoriteData
+  );
+}
 /* PRODUCT VIEW */
 await (supabase as any)
   .from("farm_stocks")
@@ -319,7 +397,59 @@ setCommentText("");
       );
     }
   };
- 
+ const toggleSave =
+  async () => {
+    if (
+      !currentUser ||
+      !product
+    ) {
+      return;
+    }
+
+    if (saved) {
+      await (supabase as any)
+        .from(
+          "farm_stock_favorites"
+        )
+        .delete()
+        .eq(
+          "stock_id",
+          product.id
+        )
+        .eq(
+          "user_id",
+          currentUser.id
+        );
+
+      setSaved(false);
+
+      setSaveCount(
+        (x) =>
+          Math.max(
+            0,
+            x - 1
+          )
+      );
+    } else {
+      await (supabase as any)
+        .from(
+          "farm_stock_favorites"
+        )
+        .insert({
+          stock_id:
+            product.id,
+          user_id:
+            currentUser.id,
+        });
+
+      setSaved(true);
+
+      setSaveCount(
+        (x) =>
+          x + 1
+      );
+    }
+  };
 
   if (loading) {
     return (
@@ -426,16 +556,38 @@ setCommentText("");
           padding: 16,
         }}
       >
+        {product.listing_type === "service" && (
+  <Text
+    style={{
+      color: "#f59e0b",
+      fontWeight: "bold",
+      marginBottom: 6,
+    }}
+  >
+    🛠️ Agricultural Service
+  </Text>
+)}
         <Text
-          style={{
-            color: "#22c55e",
-            fontSize: 14,
-            fontWeight:
-              "bold",
-          }}
-        >
-          {product.category}
-        </Text>
+  style={{
+    color: "#22c55e",
+    fontSize: 14,
+    fontWeight: "bold",
+  }}
+>
+  {categoryIcons[product.category] || "🌾"} {product.category}
+</Text>
+{product.seller_type && (
+  <Text
+    style={{
+      color: "#38bdf8",
+      marginTop: 4,
+      fontWeight: "bold",
+    }}
+  >
+    {sellerIcons[product.seller_type] || "🌾"}{" "}
+    {product.seller_type}
+  </Text>
+)}
 
         <Text
           style={{
@@ -464,6 +616,14 @@ setCommentText("");
 >
   ❤️ {likes} Likes
 </Text>
+<Text
+  style={{
+    color: "#94a3b8",
+    marginTop: 4,
+  }}
+>
+  ⭐ {saveCount} Saves
+</Text>
         {product.is_sold && (
   <Text
     style={{
@@ -476,19 +636,27 @@ setCommentText("");
     SOLD OUT
   </Text>
 )}
-
-        <Text
-          style={{
-            color: "#cbd5e1",
-            marginTop: 10,
-          }}
-        >
-          Quantity:
-          {" "}
-          {product.quantity}
-          {" "}
-          {product.unit}
-        </Text>
+{product.listing_type === "product" ? (
+  <Text
+    style={{
+      color: "#cbd5e1",
+      marginTop: 10,
+    }}
+  >
+    Quantity: {product.quantity} {product.unit}
+  </Text>
+) : (
+  <Text
+    style={{
+      color: "#f59e0b",
+      marginTop: 10,
+      fontWeight: "bold",
+    }}
+  >
+    🛠️ Service Available
+  </Text>
+)}
+        
 
         {product.price ? (
           <Text
@@ -533,6 +701,30 @@ setCommentText("");
     {liked
       ? "❤️ Liked"
       : "🤍 Like Product"}
+  </Text>
+</TouchableOpacity>
+<TouchableOpacity
+  onPress={toggleSave}
+  style={{
+    backgroundColor:
+      saved
+        ? "#f59e0b"
+        : "#475569",
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 10,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      textAlign: "center",
+      fontWeight: "bold",
+    }}
+  >
+    {saved
+      ? "⭐ Saved"
+      : "☆ Save Product"}
   </Text>
 </TouchableOpacity>
 

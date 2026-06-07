@@ -128,37 +128,67 @@ export default function FarmTab() {
           ✏️ Edit Farm
         </Text>
       </TouchableOpacity>
+      <TouchableOpacity
+  onPress={() =>
+    router.push(
+      "/farm/create-service"
+    )
+  }
+  style={{
+    backgroundColor: "#f59e0b",
+    padding: 18,
+    borderRadius: 14,
+    marginBottom: 15,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontSize: 18,
+      fontWeight: "bold",
+      textAlign: "center",
+    }}
+  >
+    🛠️ Create Farm Service
+  </Text>
+</TouchableOpacity>
 
-      <View
-        style={{
-          marginTop: 20,
-          backgroundColor: "#fff",
-          padding: 16,
-          borderRadius: 14,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 18,
-            fontWeight: "bold",
-            marginBottom: 10,
-          }}
-        >
-          Farm Stock Categories
-        </Text>
+     <View
+  style={{
+    marginTop: 20,
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 14,
+  }}
+>
+  <Text
+    style={{
+      fontSize: 18,
+      fontWeight: "bold",
+      marginBottom: 10,
+    }}
+  >
+    Farm Marketplace Categories
+  </Text>
 
-        <Text>🐔 Poultry</Text>
-        <Text>🐄 Livestock</Text>
-        <Text>🥬 Vegetables</Text>
-        <Text>🌽 Maize</Text>
-        <Text>🍚 Rice</Text>
-        <Text>🐟 Fish Farming</Text>
-        <Text>🌱 Cassava</Text>
-        <Text>🥔 Yam</Text>
-        <Text>🍫 Cocoa</Text>
-        <Text>🚜 Mixed Farm</Text>
-        <Text>📦 Other</Text>
-      </View>
+  <Text>🌽 Crops</Text>
+  <Text>🐄 Livestock</Text>
+  <Text>🐔 Poultry</Text>
+  <Text>🥚 Eggs</Text>
+  <Text>🐟 Fish</Text>
+
+  <Text>🌱 Seeds</Text>
+  <Text>🧪 Fertilizer</Text>
+  <Text>🛡️ Pesticides</Text>
+
+  <Text>🔨 Farm Tools</Text>
+  <Text>🚜 Farm Equipment</Text>
+
+  <Text>🌾 Animal Feed</Text>
+  <Text>💉 Veterinary Products</Text>
+
+  <Text>👨‍🌾 Farm Services</Text>
+</View>
     </ScrollView>
   );
 }
