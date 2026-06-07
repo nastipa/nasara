@@ -722,17 +722,7 @@ useFocusEffect(
           {item.unit ? ` ${item.unit}` : ""}
         </Text>
 
-        {item.price ? (
-          <Text
-            style={{
-              color: "#22c55e",
-              marginTop: 4,
-              fontWeight: "bold",
-            }}
-          >
-            GH₵ {item.price}
-          </Text>
-        ) : null}
+        
         {item.price ? (
   <Text
     style={{

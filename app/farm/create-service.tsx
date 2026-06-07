@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -48,6 +49,42 @@ const RENTAL_PERIODS = [
 const uploadFile = async (
   uri: string
 ): Promise<string> => {
+  if (Platform.OS === "web") {
+    const res = await fetch(uri);
+
+    const blob =
+      await res.blob();
+
+    const formData =
+      new FormData();
+
+    formData.append(
+      "file",
+      new File(
+        [blob],
+        "farm-stock.jpg",
+        {
+          type:
+            "image/jpeg",
+        }
+      )
+    );
+
+    const upload =
+      await fetch(
+        "https://nasara-upload-server.onrender.com/upload",
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+    const data =
+      await upload.json();
+
+    return data.url;
+  }
+
   const formData =
     new FormData();
 
@@ -55,8 +92,10 @@ const uploadFile = async (
     "file",
     {
       uri,
-      name: "service.jpg",
-      type: "image/jpeg",
+      name:
+        "farm-stock.jpg",
+      type:
+        "image/jpeg",
     } as any
   );
 
@@ -202,23 +241,21 @@ export default function CreateServiceScreen() {
 
         setSaving(true);
 
-        let uploadedVideo =
-          null;
+        let uploadedVideo = null;
 
-        if (videoUri) {
-          uploadedVideo =
-            await uploadFile(
-              videoUri
-            );
-        }
+if (videoUri) {
+  uploadedVideo =
+    await uploadFile(
+      videoUri
+    );
+}
 
-        const uploadedImages =
-          await Promise.all(
-            images.map(
-              (img) =>
-                uploadFile(img)
-            )
-          );
+const uploadedImages =
+  await Promise.all(
+    images.map((img) =>
+      uploadFile(img)
+    )
+  );
 
         const {
           error,
