@@ -289,7 +289,10 @@ const uploadedImages =
                   price || 0
                 ),
 
-    is_rental: true,
+   is_rental:
+  RENTAL_SERVICES.includes(
+    serviceCategory
+  ),
 
     rental_price: Number(price),
 
