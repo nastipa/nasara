@@ -675,6 +675,23 @@ setCommentText("");
             ).toLocaleString()}
           </Text>
         ) : null}
+        {product.price ? (
+  <Text>
+    GH₵ {product.price}
+  </Text>
+) : null}
+
+{product.is_rental && (
+  <Text
+    style={{
+      color: "#facc15",
+      fontWeight: "bold",
+      marginTop: 6,
+    }}
+  >
+    🚜 Rental Service • {product.rental_period}
+  </Text>
+)}
         <TouchableOpacity
   onPress={
     toggleLike

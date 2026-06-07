@@ -733,10 +733,35 @@ useFocusEffect(
             GH₵ {item.price}
           </Text>
         ) : null}
+        {item.price ? (
+  <Text
+    style={{
+      color: "#22c55e",
+      fontWeight: "bold",
+      marginTop: 6,
+    }}
+  >
+    GH₵ {Number(item.price).toLocaleString()}
+  </Text>
+) : null}
+
+{item.is_rental && (
+  <Text
+    style={{
+      color: "#facc15",
+      fontWeight: "bold",
+      marginTop: 4,
+    }}
+  >
+    🚜 Rental • {item.rental_period}
+  </Text>
+)}
       </View>
     ))
+    
   )}
 </View>
+
 
       {/* FARM OWNER */}
       {owner && (

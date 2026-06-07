@@ -1,13 +1,13 @@
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
 import {
-    Alert,
-    Image,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Image,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -29,6 +29,20 @@ const SERVICE_CATEGORIES = [
   "Transportation",
   "Farm Consultancy",
   "Irrigation Installation",
+];
+const RENTAL_SERVICES = [
+  "Tractor Rental",
+  "Harvester Rental",
+  "Sprayer Rental",
+  "Water Pump Rental",
+  "Plough Rental",
+  "Generator Rental",
+];
+const RENTAL_PERIODS = [
+  "Per Hour",
+  "Per Day",
+  "Per Week",
+  "Per Month",
 ];
 
 const uploadFile = async (
@@ -70,6 +84,9 @@ export default function CreateServiceScreen() {
 
   const [serviceName, setServiceName] =
     useState("");
+    const [rentalPeriod, setRentalPeriod] =
+  useState("Per Day");
+  
 
   const [
     serviceCategory,
@@ -235,6 +252,12 @@ export default function CreateServiceScreen() {
                   price || 0
                 ),
 
+    is_rental: true,
+
+    rental_price: Number(price),
+
+    rental_period: rentalPeriod, // Per Hour, Per Day, Per Week
+
               image_url:
                 uploadedImages[0] ||
                 null,
@@ -349,7 +372,68 @@ if (error) {
         )}
       </View>
 
-      <Text
+{RENTAL_SERVICES.includes(
+  serviceCategory
+) && (
+  <>
+    <Text
+      style={{
+        fontWeight: "bold",
+        fontSize: 16,
+        marginTop: 15,
+        marginBottom: 10,
+      }}
+    >
+      Rental Service
+    </Text>
+
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+      }}
+    >
+      {RENTAL_SERVICES.map(
+        (item) => (
+          <TouchableOpacity
+            key={item}
+            onPress={() =>
+              setServiceName(
+                item
+              )
+            }
+            style={{
+              backgroundColor:
+                serviceName ===
+                item
+                  ? "#16a34a"
+                  : "#e5e7eb",
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+              borderRadius: 20,
+              marginRight: 8,
+              marginBottom: 8,
+            }}
+          >
+            <Text
+              style={{
+                color:
+                  serviceName ===
+                  item
+                    ? "#fff"
+                    : "#000",
+              }}
+            >
+              {item}
+            </Text>
+          </TouchableOpacity>
+        )
+      )}
+    </View>
+  </>
+)}
+
+<Text
   style={{
     fontWeight: "bold",
     fontSize: 16,
@@ -424,6 +508,53 @@ if (error) {
           marginTop: 20,
         }}
       />
+      <Text
+  style={{
+    fontWeight: "bold",
+    marginTop: 15,
+    marginBottom: 10,
+  }}
+>
+  Rental Period
+</Text>
+
+<View
+  style={{
+    flexDirection: "row",
+    flexWrap: "wrap",
+  }}
+>
+  {RENTAL_PERIODS.map((item) => (
+    <TouchableOpacity
+      key={item}
+      onPress={() =>
+        setRentalPeriod(item)
+      }
+      style={{
+        backgroundColor:
+          rentalPeriod === item
+            ? "#16a34a"
+            : "#eee",
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 20,
+        marginRight: 8,
+        marginBottom: 8,
+      }}
+    >
+      <Text
+        style={{
+          color:
+            rentalPeriod === item
+              ? "#fff"
+              : "#000",
+        }}
+      >
+        {item}
+      </Text>
+    </TouchableOpacity>
+  ))}
+</View>
 
       <TouchableOpacity
         onPress={pickMedia}
