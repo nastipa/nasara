@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 
+
 import { supabase } from "../../lib/supabase";
 const categoryIcons: any = {
   Crops: "🌾",
@@ -92,8 +93,11 @@ useFocusEffect(
               "farm_profiles"
             )
             .select("*")
+            
             .eq("id", id)
+            
             .single();
+            
 
         if (!farmData) {
           Alert.alert(
@@ -450,16 +454,58 @@ useFocusEffect(
           contentFit="cover"
         />
 
-        <Text
-          style={{
-            color: "#fff",
-            fontSize: 24,
-            fontWeight: "bold",
-            marginTop: 10,
-          }}
-        >
-          {farm.farm_name}
-        </Text>
+        <View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+  }}
+>
+  
+  <Text
+    style={{
+      fontSize: 24,
+      fontWeight: "bold",
+    }}
+  >
+    {farm.farm_name}
+  </Text>
+
+  {(farm.is_verified ||
+    farm.verified_farm) && (
+    <Text
+      style={{
+        marginLeft: 6,
+        fontSize: 18,
+      }}
+    >
+      ✅
+    </Text>
+  )}
+</View>
+{farm.is_boosted && (
+  <View
+    style={{
+      backgroundColor:
+        "#f59e0b",
+      alignSelf:
+        "flex-start",
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 20,
+      marginTop: 5,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight:
+          "bold",
+      }}
+    >
+      🚀 Boosted Farm
+    </Text>
+  </View>
+)}
         <Text
   style={{
     color: "#38bdf8",
@@ -650,6 +696,67 @@ useFocusEffect(
           </Text>
         </TouchableOpacity>
       </View>
+      <View
+  style={{
+    flexDirection: "row",
+    marginTop: 15,
+  }}
+>
+  <TouchableOpacity
+    onPress={() =>
+      router.push(
+        "/farm/boost"
+      )
+    }
+    style={{
+      flex: 1,
+      backgroundColor:
+        "#f59e0b",
+      padding: 12,
+      borderRadius: 10,
+      marginRight: 8,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        textAlign:
+          "center",
+        fontWeight:
+          "bold",
+      }}
+    >
+      🚀 Boost Farm
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() =>
+      router.push(
+        "/farm/request-verification"
+      )
+    }
+    style={{
+      flex: 1,
+      backgroundColor:
+        "#2563eb",
+      padding: 12,
+      borderRadius: 10,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        textAlign:
+          "center",
+        fontWeight:
+          "bold",
+      }}
+    >
+      ✅ Get Verified
+    </Text>
+  </TouchableOpacity>
+</View>
 
       {/* FARM STOCK */}
 <View

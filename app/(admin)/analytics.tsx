@@ -47,8 +47,13 @@ export default function Analytics() {
       adsRevenue: 0,
       battleRevenue: 0,
       verificationRevenue: 0,
+      farms: 0,
+verifiedFarms: 0,
+boostedFarms: 0,
+deliveries: 0,
+deliveryRevenue: 0,
 
-      arpu: 0,
+  
 
       growth: [],
       labels: [],
@@ -125,7 +130,7 @@ export default function Analytics() {
               .split("T")[0]
           );
         }
-
+      
         /* ================= USERS ================= */
 
         const {
@@ -253,6 +258,53 @@ export default function Analytics() {
             count: "exact",
             head: true,
           });
+          /* ================= FARMS ================= */
+
+const {
+  count: farms,
+} = await supabase
+  .from("farm_profiles")
+  .select("*", {
+    count: "exact",
+    head: true,
+  });
+
+const {
+  count: verifiedFarms,
+} = await supabase
+  .from("farm_profiles")
+  .select("*", {
+    count: "exact",
+    head: true,
+  })
+  .eq("is_verified", true);
+
+const {
+  count: boostedFarms,
+} = await supabase
+  .from("farm_profiles")
+  .select("*", {
+    count: "exact",
+    head: true,
+  })
+  .eq("is_boosted", true);
+
+/* ================= DELIVERIES ================= */
+
+const {
+  count: deliveries,
+} = await supabase
+  .from("deliveries")
+  .select("*", {
+    count: "exact",
+    head: true,
+  });
+
+const {
+  data: deliveriesData,
+} = await supabase
+  .from("deliveries")
+  .select("amount");
 
         /* ================= LIVE STREAMS ================= */
 
@@ -363,31 +415,37 @@ export default function Analytics() {
             1 - fraudScore
           );
 
-        /* ================= REVENUE ================= */
+       /* ================= REVENUE ================= */
 
-        const boostRevenue =
-          (items || 0) * 50;
+const boostRevenue =
+  (boostedFarms || 0) * 50;
 
-        const adsRevenue =
-          users * 3;
+const adsRevenue =
+  users * 3;
 
-        const battleRevenue =
-          (battles || 0) * 20;
+const battleRevenue =
+  (battles || 0) * 20;
 
-        const verificationRevenue =
-          users * 5;
+const verificationRevenue =
+  (verifiedFarms || 0) * 100;
 
-        const revenue =
-          boostRevenue +
-          adsRevenue +
-          battleRevenue +
-          verificationRevenue;
+const deliveryRevenue =
+  deliveriesData?.reduce(
+    (
+      sum: number,
+      d: any
+    ) =>
+      sum +
+      Number(d.amount || 0),
+    0
+  ) || 0;
 
-        const arpu =
-          users > 0
-            ? revenue / users
-            : 0;
-
+const revenue =
+  boostRevenue +
+  adsRevenue +
+  battleRevenue +
+  verificationRevenue +
+  deliveryRevenue;
         /* ================= TOP USERS ================= */
 
         const topUsers =
@@ -417,48 +475,88 @@ export default function Analytics() {
 
         /* ================= VALUATION ================= */
 
-// base startup valuation model
-let valuationUSD = 2000000; // minimum $2M floor
+let valuationUSD =
+  2000000;
 
-// user growth value
-valuationUSD += users * 1200;
+/* USERS */
 
-// daily active value
-valuationUSD += dau * 3500;
+valuationUSD +=
+  users * 1200;
 
-// monthly active value
-valuationUSD += mau * 1800;
+/* ENGAGEMENT */
 
-// marketplace inventory
-valuationUSD += (items || 0) * 900;
+valuationUSD +=
+  dau * 3500;
 
-// live platform bonus
-valuationUSD += (liveStreams || 0) * 5000;
+valuationUSD +=
+  mau * 1800;
 
-// battle engagement bonus
-valuationUSD += (battles || 0) * 3000;
+/* MARKETPLACE */
 
-// revenue multiplier
-valuationUSD += revenue * 18;
+valuationUSD +=
+  (items || 0) * 900;
 
-// trust score multiplier
-valuationUSD += trustScore * 800000;
+/* FARMS */
 
-// cap realistic range
-if (valuationUSD > 8500000) {
-  valuationUSD = 8500000;
+valuationUSD +=
+  (farms || 0) * 5000;
+
+valuationUSD +=
+  (verifiedFarms || 0) *
+  15000;
+
+valuationUSD +=
+  (boostedFarms || 0) *
+  10000;
+
+/* DELIVERIES */
+
+valuationUSD +=
+  (deliveries || 0) *
+  3000;
+
+/* LIVE */
+
+valuationUSD +=
+  (liveStreams || 0) *
+  5000;
+
+/* BATTLES */
+
+valuationUSD +=
+  (battles || 0) *
+  3000;
+
+/* REVENUE */
+
+valuationUSD +=
+  revenue * 25;
+
+/* TRUST */
+
+valuationUSD +=
+  trustScore * 1000000;
+
+if (
+  valuationUSD >
+  25000000
+) {
+  valuationUSD =
+    25000000;
 }
 
 const usdToGhs = 15.5;
 
-const valuation = Math.round(
-  valuationUSD * usdToGhs
-);
+const valuation =
+  Math.round(
+    valuationUSD *
+      usdToGhs
+  );
 
-const valuationText = `$${Math.round(
-  valuationUSD
-).toLocaleString()} (~GH₵ ${valuation.toLocaleString()})`;
-
+const valuationText =
+  `$${Math.round(
+    valuationUSD
+  ).toLocaleString()} (~GH₵ ${valuation.toLocaleString()})`;
         /* ================= PITCH ================= */
 
         const pitch =
@@ -491,8 +589,12 @@ const valuationText = `$${Math.round(
           adsRevenue,
           battleRevenue,
           verificationRevenue,
-
-          arpu,
+          farms,
+verifiedFarms,
+boostedFarms,
+deliveries,
+deliveryRevenue,
+          
 
           growth,
 
@@ -701,7 +803,37 @@ const valuationText = `$${Math.round(
           }
         />
       </View>
+       <Text style={styles.section}>
+  Farm & Delivery
+</Text>
 
+<View style={styles.grid}>
+  <Card
+    title="Farms"
+    value={data.farms}
+  />
+
+  <Card
+    title="Verified Farms"
+    value={
+      data.verifiedFarms
+    }
+  />
+
+  <Card
+    title="Boosted Farms"
+    value={
+      data.boostedFarms
+    }
+  />
+
+  <Card
+    title="Deliveries"
+    value={
+      data.deliveries
+    }
+  />
+</View>
       {/* ================= CHART ================= */}
 
       <Text style={styles.section}>

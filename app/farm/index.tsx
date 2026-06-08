@@ -2,12 +2,12 @@ import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -29,10 +29,13 @@ export default function FarmIndex() {
 
       const { data } = await (supabase as any)
         .from("farm_profiles")
-        .select("*")
-        .order("created_at", {
-          ascending: false,
-        });
+.select("*")
+.order("is_boosted", {
+  ascending: false,
+})
+.order("created_at", {
+  ascending: false,
+});
 
       const enriched = await Promise.all(
         (data || []).map(async (farm: any) => {
@@ -121,7 +124,28 @@ export default function FarmIndex() {
             }}
             contentFit="cover"
           />
-
+          {item.is_boosted && (
+  <View
+    style={{
+      position: "absolute",
+      top: 10,
+      right: 10,
+      backgroundColor: "#f59e0b",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight: "bold",
+      }}
+    >
+      BOOSTED
+    </Text>
+  </View>
+)}
           <View style={{ flex: 1 }}>
             <Text
               style={{

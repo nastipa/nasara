@@ -135,7 +135,13 @@ export default function AdminLayout() {
             "Logistics",
         }}
       />
-
+      <Stack.Screen
+        name="farm"
+        options={{
+          title:
+            "Farm",
+        }}
+      />
       <Stack.Screen
         name="users"
         options={{

@@ -45,6 +45,11 @@ export default function AdminDashboard() {
       <Tile label="Match Mentor" route="/(admin)/mentor-matches" />
       <Tile label="Approve Mentor" route="/(admin)/approve-mentors" />
       
+      <Text style={styles.section}>Farm</Text>
+      <Tile label="Farm Boost" route="/(admin)/farm-boost" />
+      <Tile label="Farm Verification" route="/(admin)/farm-verification" />
+      
+      
 
 
       <Text style={styles.section}>Marketplace</Text>
