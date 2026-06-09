@@ -143,6 +143,13 @@ export default function AdminLayout() {
         }}
       />
       <Stack.Screen
+        name="friday market"
+        options={{
+          title:
+            "Friday Market",
+        }}
+      />
+      <Stack.Screen
         name="users"
         options={{
           title:

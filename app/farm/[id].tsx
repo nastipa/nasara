@@ -513,6 +513,47 @@ useFocusEffect(
     marginTop: 4,
   }}
 >
+  {farm.is_featured && (
+  <View
+    style={{
+      backgroundColor: "#eab308",
+      alignSelf: "flex-start",
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 20,
+      marginTop: 5,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight: "bold",
+      }}
+    >
+      ⭐ Featured Farm
+    </Text>
+  </View>
+)}
+{farm.is_advertised && (
+  <View
+    style={{
+      backgroundColor: "#dc2626",
+      padding: 8,
+      borderRadius: 20,
+      alignSelf: "flex-start",
+      marginTop: 8,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight: "bold",
+      }}
+    >
+      📢 Sponsored Farm
+    </Text>
+  </View>
+)}
   {farm.seller_type}
 </Text>
 
@@ -830,17 +871,64 @@ useFocusEffect(
         </Text>
 
         
-        {item.price ? (
+       {item.is_deal &&
+ item.deal_price ? (
+  <>
+    <Text
+      style={{
+        textDecorationLine:
+          "line-through",
+        color: "#6b7280",
+      }}
+    >
+      GH₵ {item.price}
+    </Text>
+
+    <Text
+      style={{
+        color: "#dc2626",
+        fontWeight: "bold",
+        fontSize: 18,
+      }}
+    >
+      GH₵ {item.deal_price}
+    </Text>
+  </>
+) : (
   <Text
     style={{
       color: "#22c55e",
       fontWeight: "bold",
-      marginTop: 6,
     }}
   >
-    GH₵ {Number(item.price).toLocaleString()}
+    GH₵ {item.price}
   </Text>
-) : null}
+)}
+{item.is_deal &&
+ item.deal_price &&
+ (!item.deal_expires_at ||
+  new Date(item.deal_expires_at) >
+    new Date()) && (
+  <View
+    style={{
+      backgroundColor: "#dc2626",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 20,
+      alignSelf: "flex-start",
+      marginBottom: 6,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight: "bold",
+      }}
+    >
+      🔥 DEAL
+    </Text>
+  </View>
+)}
 
 {item.is_rental && (
   <Text

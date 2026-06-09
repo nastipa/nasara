@@ -18,6 +18,7 @@ export default function FarmIndex() {
   const [loading, setLoading] = useState(true);
   const [farms, setFarms] = useState<any[]>([]);
   const [search, setSearch] = useState("");
+  const [ads, setAds] = useState<any[]>([]);
 
   useEffect(() => {
     loadFarms();
@@ -30,13 +31,26 @@ export default function FarmIndex() {
       const { data } = await (supabase as any)
         .from("farm_profiles")
 .select("*")
+.order("is_featured", {
+  ascending: false,
+})
 .order("is_boosted", {
   ascending: false,
 })
 .order("created_at", {
   ascending: false,
-});
+})
+const { data: adData } =
+  await (supabase as any)
+    .from("farm_ad_requests")
+    .select("*")
+    .eq("status", "approved")
+    .gt(
+      "expires_at",
+      new Date().toISOString()
+    );
 
+setAds(adData || []);
       const enriched = await Promise.all(
         (data || []).map(async (farm: any) => {
           const { count } = await (supabase as any)
@@ -146,6 +160,7 @@ export default function FarmIndex() {
     </Text>
   </View>
 )}
+
           <View style={{ flex: 1 }}>
             <Text
               style={{
@@ -186,6 +201,17 @@ export default function FarmIndex() {
               </Text>
             )}
           </View>
+          {item.is_advertised && (
+  <Text
+    style={{
+      color: "#dc2626",
+      fontWeight: "bold",
+      marginTop: 4,
+    }}
+  >
+    📢 Sponsored Farm
+  </Text>
+)}
         </View>
 
         {!!item.bio && (
@@ -266,6 +292,80 @@ export default function FarmIndex() {
           backgroundColor: "#fff",
         }}
       />
+      {ads.length > 0 && (
+  <FlatList
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    data={ads}
+    keyExtractor={(item) =>
+      `ad-${item.id}`
+    }
+    contentContainerStyle={{
+      paddingHorizontal: 16,
+      marginBottom: 15,
+    }}
+    renderItem={({ item }) => (
+      <TouchableOpacity
+        style={{
+          width: 320,
+          backgroundColor: "#fff",
+          borderRadius: 16,
+          overflow: "hidden",
+          marginRight: 12,
+          borderWidth: 1,
+          borderColor: "#e5e7eb",
+        }}
+      >
+        {!!item.banner_url && (
+          <Image
+            source={{
+              uri: item.banner_url,
+            }}
+            style={{
+              width: "100%",
+              height: 180,
+            }}
+            contentFit="cover"
+          />
+        )}
+
+        <View
+          style={{
+            padding: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: "#dc2626",
+              fontWeight: "bold",
+              marginBottom: 5,
+            }}
+          >
+            📢 Sponsored Farm
+          </Text>
+
+          <Text
+            style={{
+              fontSize: 18,
+              fontWeight: "bold",
+            }}
+          >
+            {item.title}
+          </Text>
+
+          <Text
+            style={{
+              marginTop: 5,
+              color: "#6b7280",
+            }}
+          >
+            {item.phone}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    )}
+  />
+)}
 
       <FlatList
         data={filtered}

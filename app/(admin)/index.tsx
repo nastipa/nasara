@@ -48,6 +48,12 @@ export default function AdminDashboard() {
       <Text style={styles.section}>Farm</Text>
       <Tile label="Farm Boost" route="/(admin)/farm-boost" />
       <Tile label="Farm Verification" route="/(admin)/farm-verification" />
+      <Tile label="Farm Featured" route="/(admin)/farm-featured" />
+      <Tile label="Farm Suppliers" route="/(admin)/farm-suppliers" />
+      <Tile label="Farm Ad" route="/(admin)/farm-ads" />
+      
+      <Text style={styles.section}> Friday Market</Text>
+      <Tile label="Delete Listings" route="/(admin)/friday-market-approvals.tsx" />
       
       
 

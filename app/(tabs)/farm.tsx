@@ -152,6 +152,76 @@ export default function FarmTab() {
     🛠️ Create Farm Service
   </Text>
 </TouchableOpacity>
+<TouchableOpacity
+  onPress={() =>
+    router.push("/farm/featured")
+  }
+  style={{
+    backgroundColor: "#eab308",
+    padding: 18,
+    borderRadius: 14,
+    marginBottom: 15,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontSize: 18,
+      fontWeight: "bold",
+      textAlign: "center",
+    }}
+  >
+    ⭐ Feature My Farm
+  </Text>
+</TouchableOpacity>
+<TouchableOpacity
+  onPress={() =>
+    router.push(
+      "/farm/request-supplier"
+    )
+  }
+  style={{
+    backgroundColor: "#f59e0b",
+    padding: 18,
+    borderRadius: 14,
+    marginBottom: 15,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontSize: 18,
+      fontWeight: "bold",
+      textAlign: "center",
+    }}
+  >
+    ⭐ Become Certified Supplier
+  </Text>
+</TouchableOpacity>
+<TouchableOpacity
+  onPress={() =>
+    router.push(
+      "/farm/advertise"
+    )
+  }
+  style={{
+    backgroundColor: "#dc2626",
+    padding: 18,
+    borderRadius: 14,
+    marginBottom: 15,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontSize: 18,
+      fontWeight: "bold",
+      textAlign: "center",
+    }}
+  >
+    📢 Advertise Farm
+  </Text>
+</TouchableOpacity>
 
      <View
   style={{
