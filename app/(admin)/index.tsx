@@ -52,8 +52,10 @@ export default function AdminDashboard() {
       <Tile label="Farm Suppliers" route="/(admin)/farm-suppliers" />
       <Tile label="Farm Ad" route="/(admin)/farm-ads" />
       
-      <Text style={styles.section}> Friday Market</Text>
-      <Tile label="Delete Listings" route="/(admin)/friday-market-approvals.tsx" />
+      <Text style={styles.section}> Add/Remove Admin</Text>
+      <Tile label="Add Admin" route="/(admin)/add-admin" />
+      <Tile label="Remove Admin" route="/(admin)/remove-admin" />
+
       
       
 
