@@ -30,6 +30,7 @@ const isCommercial =
 
 const isTransfer =
   serviceType === "transfer_meter";
+  const [phaseType, setPhaseType] = useState<"Single Phase" | "Three Phase">("Single Phase");
 
   const [loading, setLoading] = useState(false);
 
@@ -187,37 +188,84 @@ const showMessage = (
 </View>
       {/* FORM INPUTS */}
       
+<Text
+  style={{
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+    marginTop: 4,
+  }}
+>
+  👤 Full Name
+</Text>
 <TextInput
-  placeholder="👤 Full Name"
+  placeholder="Enter your full name"
   value={name}
   onChangeText={setName}
   style={inputStyle}
 />
-
+<Text
+  style={{
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+  }}
+>
+  📞 Phone Number
+</Text>
 <TextInput
-  placeholder="📞 Phone Number"
+  placeholder="Enter phone number"
   keyboardType="phone-pad"
   value={phone}
   onChangeText={setPhone}
   style={inputStyle}
 />
-
+<Text
+  style={{
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+  }}
+>
+  📍 Area
+</Text>
 <TextInput
-  placeholder="📍 Area"
+  placeholder="Enter area"
   value={area}
   onChangeText={setArea}
   style={inputStyle}
 />
-
+<Text
+  style={{
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+  }}
+>
+  🏢 Station
+</Text>
 <TextInput
-  placeholder="🏢 Station"
+  placeholder="Enter station"
   value={station}
   onChangeText={setStation}
   style={inputStyle}
 />
-
+<Text
+  style={{
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#111827",
+    marginBottom: 8,
+  }}
+>
+  🏠 Full Address
+</Text>
 <TextInput
-  placeholder="🏠 Full Address"
+  placeholder="Enter full address"
   value={address}
   onChangeText={setAddress}
   style={[
@@ -229,6 +277,67 @@ const showMessage = (
   ]}
   multiline
 />
+<Text
+  style={{
+    fontWeight: "700",
+    fontSize: 16,
+    marginBottom: 10,
+  }}
+>
+  Phase Type
+</Text>
+
+<View
+  style={{
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  }}
+>
+  <TouchableOpacity
+    onPress={() => setPhaseType("Single Phase")}
+    style={{
+      flex: 1,
+      padding: 14,
+      borderRadius: 12,
+      backgroundColor:
+        phaseType === "Single Phase" ? "#2563eb" : "#e5e7eb",
+    }}
+  >
+    <Text
+      style={{
+        textAlign: "center",
+        color:
+          phaseType === "Single Phase" ? "#fff" : "#111",
+        fontWeight: "700",
+      }}
+    >
+      Single Phase
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() => setPhaseType("Three Phase")}
+    style={{
+      flex: 1,
+      padding: 14,
+      borderRadius: 12,
+      backgroundColor:
+        phaseType === "Three Phase" ? "#2563eb" : "#e5e7eb",
+    }}
+  >
+    <Text
+      style={{
+        textAlign: "center",
+        color:
+          phaseType === "Three Phase" ? "#fff" : "#111",
+        fontWeight: "700",
+      }}
+    >
+      Three Phase
+    </Text>
+  </TouchableOpacity>
+</View>
       
    {/* ---------------- DOMESTIC / SEPARATE METER ---------------- */}
 {isDomestic && (
@@ -246,7 +355,7 @@ const showMessage = (
     )}
 
     {uploadCard(
-      "Upload Current Bill",
+      "Upload Statement of Bill",
       () => pickImage(setCurrentBill),
       !!currentBill
     )}
@@ -268,11 +377,7 @@ const showMessage = (
       !!energyCommission
     )}
 
-    {uploadCard(
-      "Upload Current Bill",
-      () => pickImage(setCurrentBill),
-      !!currentBill
-    )}
+    
   </>
 )}
 
@@ -297,11 +402,7 @@ const showMessage = (
       !!sitePlan
     )}
 
-    {uploadCard(
-      "Upload Application Letter",
-      () => pickImage(setApplicationLetter),
-      !!applicationLetter
-    )}
+   
   </>
 )}
 
@@ -377,7 +478,7 @@ elevation: 4,
       marginTop: 10,
     }}
   >
-    Pay GH₵5 to Nasara and upload
+    Pay GH₵20 to Nasara and upload
     your NEDCo receipt before
     submitting.
   </Text>
@@ -524,6 +625,7 @@ if (nasaraPaymentProof) {
                     nasaraPaymentProofUrl,
                     application_letter_url:
                     applicationLetterUrl,
+                    phase_type: phaseType,
                   status: "Pending",
                 });
 
