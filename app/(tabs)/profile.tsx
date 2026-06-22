@@ -85,6 +85,7 @@ const [adminPassword, setAdminPassword] =
 
 const [checkingAdmin, setCheckingAdmin] =
   useState(false);
+  
   /* ================= ADMIN SECURITY ================= */
 
 const adminSecurity = async () => {
@@ -175,6 +176,7 @@ const verifyAdminPassword = async () => {
   }
 };
 
+
   /* ===== MOMO ===== */
   const [momoName, setMomoName] = useState("");
   const [momoNumber, setMomoNumber] = useState("");
@@ -194,6 +196,8 @@ const verifyAdminPassword = async () => {
   const [showActionsModal, setShowActionsModal] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isUtilityAdmin, setIsUtilityAdmin] =
+  useState(false);
   const [liveSessionId, setLiveSessionId] = useState<number | null>(null);
 
   /* 🔴 VIDEO LIVE STREAM ID */
@@ -216,6 +220,7 @@ const [earnings, setEarnings] = useState(0);
 
     loadProfile(profileId);
     checkAdmin(profileId);
+    checkUtilityAdmin(profileId);
     loadLiveSession(profileId);
     loadLiveStream(profileId);
     loadStats(profileId);
@@ -356,6 +361,22 @@ if (error) {
   setIsAdmin(false);
 }
 };
+/* ================= UTILITY ADMIN CHECK ================= */
+const checkUtilityAdmin = async (
+  userId: string
+) => {
+  const { data, error } = await supabase
+    .from("utility_admins")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  console.log("USER ID:", userId);
+  console.log("UTILITY ADMIN:", data);
+  console.log("UTILITY ERROR:", error);
+
+  setIsUtilityAdmin(!!data);
+};
   /* ================= LIVE SESSION ================= */
   const loadLiveSession = async (userId: string) => {
     const { data } = await (supabase as any)
@@ -490,6 +511,7 @@ const loadFollowStats = async (userId: string) => {
 
       loadProfile(profileId);
       checkAdmin(profileId);
+      checkUtilityAdmin(profileId);
       loadLiveSession(profileId);
       loadLiveStream(profileId);
       loadStats(profileId);
@@ -1067,6 +1089,27 @@ onPress={followUser}
           </View>
         </>
       )}
+      {isUtilityAdmin && (
+  <>
+    <Text style={styles.sectionTitle}>
+      ⚡ Utilities
+    </Text>
+
+    <View style={{ flexDirection: "row" }}>
+      <ActionTile
+        label="Utilities Admin"
+        bg="#0f172a"
+        onPress={() => {
+          setShowActionsModal(false);
+
+          router.push(
+            "/(utilities-admin)"
+          );
+        }}
+      />
+    </View>
+  </>
+)}
 
       <View style={{ marginTop: 12 }} />
       <Button
@@ -1150,32 +1193,7 @@ onPress={followUser}
   </View>
 </Modal>
 
-      {/* ===== WHATSAPP MODAL ===== */}
-      <Modal visible={showWhatsappModal} transparent animationType="slide">
-        <View style={styles.modalWrap}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>WhatsApp Number</Text>
-
-            <TextInput
-              placeholder="WhatsApp Number"
-              keyboardType="phone-pad"
-              value={whatsappNumber}
-              onChangeText={setWhatsappNumber}
-              style={styles.input}
-            />
-
-            <Button title="Save" onPress={saveWhatsappNumber} />
-
-            <View style={{ height: 8 }} />
-
-            <Button
-              title="Cancel"
-              color="#6b7280"
-              onPress={() => setShowWhatsappModal(false)}
-            />
-          </View>
-        </View>
-      </Modal>
+     
 
       {/* ===== MOMO MODAL ===== */}
       <Modal visible={showMomoModal} transparent animationType="slide">

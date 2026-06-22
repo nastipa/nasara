@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
@@ -369,142 +370,535 @@ router.replace("/browse");
       )}
 
       {/* QUICK ACTIONS */}
-      <View style={{ marginBottom: 20 }}>
-        <Text style={styles.sectionTitle}>Quick Actions</Text>
-
-        <View style={styles.quickWrap}>
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/create-reel")}>
-            <Text style={styles.quickText}>🎬 Create Reel</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/create-battle")}>
-            <Text style={styles.quickText}>⚔️ Create Election/Battle</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/ads/create")}>
-            <Text style={styles.quickText}>💵 Create Ad (Paid)</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/banner/create")}>
-            <Text style={styles.quickText}>📢Create Banner (Paid)</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/go-auction")}>
-            <Text style={styles.quickText}>🏆 Start Auction</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/golive")}>
-            <Text style={styles.quickText}>🎥 Start Live Video</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/go-live")}>
-            <Text style={styles.quickText}>🔴 Go Normal Live</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/mentor/apply")}>
-            <Text style={styles.quickText}>  🎓 Become a Mentor</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/mentor/request")}>
-            <Text style={styles.quickText}>  🎓 Find a Mentor</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push("/delivery")}>
-            <Text style={styles.quickText}>  🚲 Delivery</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <Text style={styles.header}>Sell Item</Text>
-
-      {/* LABEL + INPUT */}
-      <Text style={styles.label}>Title *</Text>
-      <TextInput style={styles.input} value={title} onChangeText={setTitle} />
-
-      <Text style={styles.label}>Description</Text>
-      <TextInput style={styles.input} value={description} onChangeText={setDescription} multiline />
-
-      <Text style={styles.label}>Price (optional)</Text>
-      <TextInput style={styles.input} value={price} onChangeText={setPrice} keyboardType="numeric" />
-
-      <Text style={styles.label}>Location</Text>
-      <TextInput style={styles.input} value={location} onChangeText={setLocation} />
-
-      
-
-      {/* CATEGORY */}
-      <Text style={styles.label}>Category</Text>
-      <View style={styles.categoryWrap}>
-        {categories.map((cat) => (
-          <TouchableOpacity
-            key={cat}
-            onPress={() => setCategory(cat)}
-            style={[
-              styles.categoryBtn,
-              { backgroundColor: category === cat ? "green" : "#eee" },
-            ]}
-          >
-            <Text style={{ color: category === cat ? "#fff" : "#000" }}>
-              {cat}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* NEGOTIABLE */}
-      <View style={styles.switchRow}>
-        <Switch value={isNegotiable} onValueChange={setIsNegotiable} />
-        <Text style={{ marginLeft: 10 }}>
-          Allow buyers to make offers (negotiable)
-        </Text>
-      </View>
-
-      {/* MEDIA */}
-      <TouchableOpacity style={styles.imageBtn} onPress={pickImage}>
-        <Text>Select Image</Text>
-      </TouchableOpacity>
-
-      <View
+<View
   style={{
     flexDirection: "row",
     flexWrap: "wrap",
-    marginTop: 10,
+    justifyContent: "space-between",
   }}
 >
+  <QuickCard
+    icon="videocam"
+    title="Create Reel"
+    color="#FF4D6D"
+    onPress={() => router.push("/create-reel")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="shield"
+    title="Election"
+    color="#5B5FEF"
+    onPress={() => router.push("/create-battle")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="cash"
+    title="Create Ad"
+    color="#16A34A"
+    onPress={() => router.push("/ads/create")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="images"
+    title="Banner"
+    color="#F59E0B"
+    onPress={() => router.push("/banner/create")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="trophy"
+    title="Auction"
+    color="#7C3AED"
+    onPress={() => router.push("/go-auction")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="radio"
+    title="Go Live"
+    color="#EF4444"
+    onPress={() => router.push("/golive")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="flash"
+    title="Utilities"
+    color="#25c3eb"
+    onPress={() => router.push("/services")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="radio-outline"
+    title="Normal Live"
+    color="#dc4726"
+    onPress={() => router.push("/go-live")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="school"
+    title="Mentor"
+    color="#99e90e"
+    onPress={() => router.push("/mentor/apply")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="people"
+    title="Find Mentor"
+    color="#5cd5f6"
+    onPress={() => router.push("/mentor/request")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+
+  <QuickCard
+    icon="bicycle"
+    title="Delivery"
+    color="#F97316"
+    onPress={() => router.push("/delivery")}
+    style={{ width: "23%", marginBottom: 12 }}
+  />
+</View>
+      {/* ================= SELL ITEM ================= */}
+
+<View
+  style={{
+    backgroundColor: "#ffffff",
+    borderRadius: 24,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    marginBottom: 20,
+  }}
+>
+  <Text
+    style={{
+      fontSize: 28,
+      fontWeight: "800",
+      color: "#111827",
+      marginBottom: 5,
+    }}
+  >
+    Sell Item
+  </Text>
+
+  <Text
+    style={{
+      color: "#6b7280",
+      fontSize: 15,
+      marginBottom: 20,
+    }}
+  >
+    Fill in your product information below.
+  </Text>
+
+  {/* TITLE */}
+  <Text style={styles.label}>Title *</Text>
+
+  <TextInput
+    placeholder="e.g. iPhone 15 Pro Max"
+    placeholderTextColor="#9ca3af"
+    style={[
+      styles.input,
+      {
+        borderRadius: 16,
+        borderColor: "#e5e7eb",
+        paddingVertical: 15,
+      },
+    ]}
+    value={title}
+    onChangeText={setTitle}
+  />
+
+  {/* DESCRIPTION */}
+  <Text style={styles.label}>Description</Text>
+
+  <TextInput
+    placeholder="Describe your item..."
+    placeholderTextColor="#9ca3af"
+    multiline
+    textAlignVertical="top"
+    style={[
+      styles.input,
+      {
+        height: 120,
+        borderRadius: 16,
+        borderColor: "#e5e7eb",
+        paddingVertical: 15,
+      },
+    ]}
+    value={description}
+    onChangeText={setDescription}
+  />
+
+  {/* PRICE */}
+  <Text style={styles.label}>Price (optional)</Text>
+
+  <TextInput
+    placeholder="GH₵ 0.00"
+    placeholderTextColor="#9ca3af"
+    keyboardType="numeric"
+    style={[
+      styles.input,
+      {
+        borderRadius: 16,
+        borderColor: "#e5e7eb",
+        paddingVertical: 15,
+      },
+    ]}
+    value={price}
+    onChangeText={setPrice}
+  />
+
+  {/* LOCATION */}
+  <Text style={styles.label}>Location</Text>
+
+  <TextInput
+    placeholder="Tamale, Accra, Kumasi..."
+    placeholderTextColor="#9ca3af"
+    style={[
+      styles.input,
+      {
+        borderRadius: 16,
+        borderColor: "#e5e7eb",
+        paddingVertical: 15,
+      },
+    ]}
+    value={location}
+    onChangeText={setLocation}
+  />
+
+  {/* CATEGORY */}
+  <Text style={styles.label}>Category</Text>
+
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    style={{ marginBottom: 15 }}
+  >
+    {categories.map((cat) => (
+      <TouchableOpacity
+        key={cat}
+        onPress={() => setCategory(cat)}
+        style={{
+          backgroundColor:
+            category === cat ? "#2563EB" : "#F3F4F6",
+          paddingHorizontal: 18,
+          paddingVertical: 12,
+          borderRadius: 25,
+          marginRight: 10,
+          borderWidth: 1,
+          borderColor:
+            category === cat
+              ? "#2563EB"
+              : "#E5E7EB",
+        }}
+      >
+        <Text
+          style={{
+            color:
+              category === cat
+                ? "#fff"
+                : "#374151",
+            fontWeight: "700",
+            textTransform: "capitalize",
+          }}
+        >
+          {cat}
+        </Text>
+      </TouchableOpacity>
+    ))}
+  </ScrollView>
+
+  {/* NEGOTIABLE */}
+
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: "#f8fafc",
+      padding: 15,
+      borderRadius: 16,
+      marginBottom: 20,
+    }}
+  >
+    <View style={{ flex: 1 }}>
+      <Text
+        style={{
+          fontWeight: "700",
+          fontSize: 16,
+        }}
+      >
+        Negotiable
+      </Text>
+
+      <Text
+        style={{
+          color: "#6b7280",
+          marginTop: 3,
+        }}
+      >
+        Allow buyers to make offers
+      </Text>
+    </View>
+
+    <Switch
+      value={isNegotiable}
+      onValueChange={setIsNegotiable}
+    />
+  </View>
+
+  {/* IMAGES */}
+
+  <TouchableOpacity
+    onPress={pickImage}
+    style={{
+      backgroundColor: "#EEF4FF",
+      borderWidth: 2,
+      borderStyle: "dashed",
+      borderColor: "#2563EB",
+      padding: 20,
+      borderRadius: 18,
+      alignItems: "center",
+    }}
+  >
+    <Ionicons
+      name="images"
+      size={34}
+      color="#2563EB"
+    />
+
+    <Text
+      style={{
+        marginTop: 10,
+        fontWeight: "700",
+        color: "#2563EB",
+      }}
+    >
+      Select Images
+    </Text>
+  </TouchableOpacity>
+
   {imageUris.length > 0 && (
-  <ScrollView horizontal>
-    {imageUris.map(
-      (uri, index) => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginTop: 15 }}
+    >
+      {imageUris.map((uri, index) => (
         <Image
           key={index}
           source={{ uri }}
           style={{
             width: 140,
             height: 140,
-            marginRight: 10,
-            borderRadius: 10,
+            borderRadius: 18,
+            marginRight: 12,
           }}
         />
-      )
-    )}
-  </ScrollView>
-)}
+      ))}
+    </ScrollView>
+  )}
+
+  {/* VIDEO */}
+
+  <TouchableOpacity
+    onPress={pickVideo}
+    style={{
+      backgroundColor: "#FEF3C7",
+      borderWidth: 2,
+      borderStyle: "dashed",
+      borderColor: "#F59E0B",
+      padding: 20,
+      borderRadius: 18,
+      alignItems: "center",
+      marginTop: 18,
+    }}
+  >
+    <Ionicons
+      name="videocam"
+      size={34}
+      color="#D97706"
+    />
+
+    <Text
+      style={{
+        marginTop: 10,
+        fontWeight: "700",
+        color: "#D97706",
+      }}
+    >
+      Select Video
+    </Text>
+  </TouchableOpacity>
+
+  {videoUri && (
+    <View
+      style={{
+        marginTop: 12,
+        backgroundColor: "#DCFCE7",
+        padding: 14,
+        borderRadius: 12,
+      }}
+    >
+      <Text
+        style={{
+          color: "#15803D",
+          fontWeight: "700",
+        }}
+      >
+        ✓ Video selected successfully
+      </Text>
+    </View>
+  )}
 </View>
-
-      <TouchableOpacity style={styles.imageBtn} onPress={pickVideo}>
-        <Text>Select Video</Text>
-      </TouchableOpacity>
-
-      {videoUri && <Text style={{ color: "green" }}>Video selected</Text>}
-
       {/* POST */}
-      <TouchableOpacity style={styles.postBtn} onPress={postItem}>
-        <Text style={styles.postText}>
-          {loading ? "Posting..." : "Post Item"}
-        </Text>
-      </TouchableOpacity>
+      <TouchableOpacity
+  activeOpacity={0.9}
+  onPress={postItem}
+  disabled={loading}
+  style={{
+    marginTop: 28,
+    borderRadius: 22,
+    overflow: "hidden",
+    elevation: 8,
+    shadowColor: "#25ebb0",
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 6,
+    },
+    backgroundColor: "#25eb7e",
+  }}
+>
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 18,
+      paddingHorizontal: 20,
+    }}
+  >
+    <View
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: "rgba(255,255,255,0.18)",
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 12,
+      }}
+    >
+      <Ionicons
+        name={loading ? "cloud-upload-outline" : "rocket-outline"}
+        size={24}
+        color="#fff"
+      />
+    </View>
+
+    <View>
+      <Text
+        style={{
+          color: "#fff",
+          fontSize: 17,
+          fontWeight: "800",
+        }}
+      >
+        {loading ? "Posting..." : "Post Item"}
+      </Text>
+
+      <Text
+        style={{
+          color: "rgba(255,255,255,0.85)",
+          fontSize: 12,
+          marginTop: 2,
+        }}
+      >
+        Publish to the Nasara Marketplace
+      </Text>
+    </View>
+  </View>
+</TouchableOpacity>
 
     </ScrollView>
   );
 }
+const QuickCard = ({
+  icon,
+  title,
+  color,
+  onPress,
+}: any) => (
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={onPress}
+    style={{
+      width: 110,
+      marginRight: 14,
+    }}
+  >
+    <View
+      style={{
+        backgroundColor: color,
+        borderRadius: 24,
+        paddingVertical: 22,
+        paddingHorizontal: 12,
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOpacity: 0.18,
+        shadowRadius: 10,
+        shadowOffset: {
+          width: 0,
+          height: 5,
+        },
+        elevation: 6,
+      }}
+    >
+      <View
+        style={{
+          width: 58,
+          height: 58,
+          borderRadius: 29,
+          backgroundColor: "rgba(255,255,255,0.22)",
+          justifyContent: "center",
+          alignItems: "center",
+          marginBottom: 12,
+        }}
+      >
+        <Ionicons
+          name={icon}
+          size={30}
+          color="#fff"
+        />
+      </View>
 
+      <Text
+        style={{
+          color: "#fff",
+          fontWeight: "700",
+          fontSize: 14,
+          textAlign: "center",
+        }}
+        numberOfLines={2}
+      >
+        {title}
+      </Text>
+    </View>
+  </TouchableOpacity>
+);
 /* ================= STYLES ================= */
 const styles = StyleSheet.create({
   container: { padding: 16, backgroundColor: "#f9fafb" },
