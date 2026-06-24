@@ -354,6 +354,14 @@ const progressItem = (
   </View>
 
   <View style={divider} />
+  <View style={row}>
+  <Text style={label}>Phase Type</Text>
+  <Text style={value}>
+    {app.phase_type || "Not Selected"}
+  </Text>
+</View>
+
+<View style={divider} />
 
   <View style={row}>
     <Text style={label}>Address</Text>
@@ -371,6 +379,7 @@ const progressItem = (
     </Text>
   </View>
 </View>
+
 
       <View
   style={{

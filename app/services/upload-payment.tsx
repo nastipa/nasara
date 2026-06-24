@@ -35,71 +35,95 @@ export default function UploadPayment() {
 };
 
   const pickReceipt = async () => {
-    try {
-      const result =
-        await DocumentPicker.getDocumentAsync({
-          type: [
-            "application/pdf",
-            "image/*",
-          ],
-          copyToCacheDirectory: true,
-        });
+  try {
+    const result =
+      await DocumentPicker.getDocumentAsync({
+        type: [
+          "application/pdf",
+          "image/*",
+        ],
+        copyToCacheDirectory: true,
+      });
 
-      if (result.canceled) return;
+    if (result.canceled) return;
 
-      setReceiptFile(result.assets[0]);
-    } catch {
-      Alert.alert(
-        "Error",
-        "Unable to select receipt."
-      );
+    console.log(
+      "Selected file:",
+      result.assets[0]
+    );
+
+    setReceiptFile(
+      result.assets[0]
+    );
+  } catch (e: any) {
+    showMessage(
+      "Picker Error",
+      e?.message ||
+        JSON.stringify(e)
+    );
+  }
+};
+const uploadToCloudflare = async () => {
+  if (!receiptFile) {
+    throw new Error(
+      "Please select receipt."
+    );
+  }
+
+  const formData = new FormData();
+
+  if (Platform.OS === "web") {
+    const file =
+      receiptFile.file ||
+      receiptFile;
+
+    formData.append(
+      "file",
+      file
+    );
+  } else {
+    formData.append("file", {
+      uri: receiptFile.uri,
+      name:
+        receiptFile.name ||
+        "payment-receipt",
+      type:
+        receiptFile.mimeType ||
+        "application/octet-stream",
+    } as any);
+  }
+
+  const response = await fetch(
+    "https://nasara-upload-server.onrender.com/upload",
+    {
+      method: "POST",
+      body: formData,
     }
-  };
+  );
 
-  const uploadToCloudflare =
-    async () => {
-      if (!receiptFile) {
-        throw new Error(
-          "Please select receipt."
-        );
-      }
+  const text =
+    await response.text();
 
-      const formData = new FormData();
+  let result: any = {};
 
-      formData.append("file", {
-        uri: receiptFile.uri,
-        name:
-          receiptFile.name ||
-          "payment-receipt",
-        type:
-          receiptFile.mimeType ||
-          "application/octet-stream",
-      } as any);
+  try {
+    result = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Server Response: ${text}`
+    );
+  }
 
-      const response =
-        await fetch(
-          "https://nasara-upload-server.onrender.com/upload",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
+  if (!response.ok) {
+    throw new Error(
+      result.error ||
+      result.message ||
+      "Upload failed."
+    );
+  }
 
-      const result =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !result.success
-      ) {
-        throw new Error(
-          result.error ||
-            "Upload failed."
-        );
-      }
-
-      return result.url;
-    };
+  return result.url;
+};
 
   const submitReceipt =
     async () => {
@@ -142,10 +166,12 @@ export default function UploadPayment() {
           "/services/my-applications"
         );
       } catch (e: any) {
-        Alert.alert(
-          "Error",
-          e.message
-        );
+  showMessage(
+    "Upload Error",
+    e?.message ||
+      JSON.stringify(e)
+  );
+
       } finally {
         setLoading(false);
       }

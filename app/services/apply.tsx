@@ -19,14 +19,17 @@ export default function Apply() {
   const serviceType = String(service || "");
 
 // Service checks
-const isDomestic =
-  serviceType === "separate_domestic";
+const isDomesticSeparate =
+  serviceType === "domestic_separate_meter";
 
-const isNewService =
-  serviceType === "new_service";
+const isDomesticNew =
+  serviceType === "domestic_new_service";
 
-const isCommercial =
-  serviceType === "commercial_meter";
+const isCommercialSeparate =
+  serviceType === "commercial_separate_meter";
+
+const isCommercialNew =
+  serviceType === "commercial_new_service";
 
 const isTransfer =
   serviceType === "transfer_meter";
@@ -82,31 +85,45 @@ const showMessage = (
 
   // Upload function (Cloudflare backend)
   const uploadFile = async (uri: string) => {
-    const formData = new FormData();
+  const formData = new FormData();
 
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    formData.append(
+      "file",
+      blob,
+      "document.jpg"
+    );
+  } else {
     formData.append("file", {
-      uri: uri.startsWith("file://") ? uri : `file://${uri}`,
+      uri: uri.startsWith("file://")
+        ? uri
+        : `file://${uri}`,
       name: "document.jpg",
       type: "image/jpeg",
     } as any);
+  }
 
-    const res = await fetch(
-      "https://nasara-upload-server.onrender.com/upload",
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || "Upload failed");
+  const res = await fetch(
+    "https://nasara-upload-server.onrender.com/upload",
+    {
+      method: "POST",
+      body: formData,
     }
+  );
 
-    return data.url;
-  };
+  const data = await res.json();
 
+  if (!res.ok) {
+    throw new Error(
+      data.error || "Upload failed"
+    );
+  }
+
+  return data.url;
+};
   // Pick image
   const pickImage = async (setter: any) => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -339,8 +356,52 @@ const showMessage = (
   </TouchableOpacity>
 </View>
       
-   {/* ---------------- DOMESTIC / SEPARATE METER ---------------- */}
-{isDomestic && (
+   {/* ---------------- DOMESTIC (SEPARATE METER) ---------------- */}
+{isDomesticSeparate && (
+  <>
+    {uploadCard(
+      "Upload Ghana Card",
+      () => pickImage(setGhanaCard),
+      !!ghanaCard
+    )}
+
+    {uploadCard(
+      "Upload Energy Commission",
+      () => pickImage(setEnergyCommission),
+      !!energyCommission
+    )}
+
+    {uploadCard(
+      "Upload Statement of Bill",
+      () => pickImage(setCurrentBill),
+      !!currentBill
+    )}
+  </>
+)}
+{/* ----------------DOMESTIC ( NEW SERVICE) ---------------- */}
+{isDomesticNew && (
+  <>
+    {uploadCard(
+      "Upload Ghana Card",
+      () => pickImage(setGhanaCard),
+      !!ghanaCard
+    )}
+
+    {uploadCard(
+      "Upload Energy Commission",
+      () => pickImage(setEnergyCommission),
+      !!energyCommission
+    )}
+
+    {uploadCard(
+      "Upload Site Plan",
+      () => pickImage(setSitePlan),
+      !!sitePlan
+    )}
+</>
+)}
+{/* ---------------- COMMERCIAL (SEPARATE METER) ---------------- */}
+{isCommercialSeparate && (
   <>
     {uploadCard(
       "Upload Ghana Card",
@@ -362,27 +423,9 @@ const showMessage = (
   </>
 )}
 
-{/* ---------------- COMMERCIAL METER ---------------- */}
-{isCommercial && (
-  <>
-    {uploadCard(
-      "Upload Ghana Card",
-      () => pickImage(setGhanaCard),
-      !!ghanaCard
-    )}
+{/* ---------------- COMMERCIAL( NEW METER) ---------------- */}
 
-    {uploadCard(
-      "Upload Energy Commission",
-      () => pickImage(setEnergyCommission),
-      !!energyCommission
-    )}
-
-    
-  </>
-)}
-
-{/* ---------------- NEW SERVICE ---------------- */}
-{isNewService && (
+{isCommercialNew && (
   <>
     {uploadCard(
       "Upload Ghana Card",
@@ -564,17 +607,26 @@ if (energyCommission) {
   energyCommissionUrl = await uploadFile(energyCommission);
 }
 
-if ((isDomestic || isCommercial) && currentBill) {
+if (
+  (
+    isDomesticSeparate ||
+    isCommercialSeparate
+  ) &&
+  currentBill
+) {
   currentBillUrl = await uploadFile(currentBill);
 }
 
-if (isNewService && sitePlan) {
+if (
+  (
+    isDomesticNew ||
+    isCommercialNew
+  ) &&
+  sitePlan
+) {
   sitePlanUrl = await uploadFile(sitePlan);
 }
 
-if (isNewService && applicationLetter) {
-  applicationLetterUrl = await uploadFile(applicationLetter);
-}
 
 if (isTransfer && transferLetter) {
   transferLetterUrl = await uploadFile(transferLetter);

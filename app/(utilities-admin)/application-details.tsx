@@ -197,7 +197,12 @@ export default function ApplicationDetails() {
           </Text>{" "}
           {app.station}
         </Text>
-
+        <Text>
+          <Text style={{ fontWeight: "bold" }}>
+            Phase Type:
+          </Text>{" "}
+          {app.phase_type}
+        </Text>
         <Text>
           <Text style={{ fontWeight: "bold" }}>
             Address:

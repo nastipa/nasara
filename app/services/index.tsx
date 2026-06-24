@@ -88,21 +88,25 @@ const checkUser = async () => {
       </Text>
 
       <ServiceBtn
-  title="Separate Meter (Domestic)"
-  service="separate_domestic"
+  title="Domestic (Separate Meter)"
+  service="domestic_separate_meter"
+  color="#a31693"
+/>
+ <ServiceBtn
+  title="Domestic (New Services)"
+  service="domestic_new_service"
+  color="#a36b16"
+/>
+<ServiceBtn
+  title="Commercial (Separate Meter)"
+  service="commercial_separate_meter"
   color="#16a34a"
 />
 
 <ServiceBtn
-  title="New Service Meter"
-  service="new_service"
-  color="#2563eb"
-/>
-
-<ServiceBtn
-  title="Commercial Meter"
-  service="commercial_meter"
-  color="#7c3aed"
+  title="Commercial (New Services)"
+  service="commercial_new_service"
+  color="#163ca3"
 />
 
 <ServiceBtn

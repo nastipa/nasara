@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Platform,
   ScrollView,
   Text,
   TextInput,
@@ -22,6 +23,22 @@ export default function QuotationPreview() {
 
   const [pdfFile, setPdfFile] =
     useState<any>(null);
+    
+
+const showMessage = (
+  title: string,
+  message?: string
+) => {
+  if (Platform.OS === "web") {
+    window.alert(
+      message
+        ? `${title}\n\n${message}`
+        : title
+    );
+  } else {
+    Alert.alert(title, message);
+  }
+};
 
   useEffect(() => {
     load();
@@ -44,78 +61,79 @@ export default function QuotationPreview() {
   };
 
   const pickPdf = async () => {
-    try {
-      const result =
-        await DocumentPicker.getDocumentAsync({
-          type: "application/pdf",
-          copyToCacheDirectory: true,
-        });
+  const result =
+    await DocumentPicker.getDocumentAsync({
+      type: "application/pdf",
+      copyToCacheDirectory: true,
+    });
 
-      if (result.canceled) return;
+  if (result.canceled) return;
 
-      setPdfFile(result.assets[0]);
-    } catch (err) {
-      Alert.alert(
-        "Error",
-        "Unable to select PDF."
-      );
+  console.log(
+    "PDF PICKED:",
+    result.assets[0]
+  );
+
+  setPdfFile(result.assets[0]);
+};
+console.log(pdfFile);
+
+  const uploadPdfToCloudflare = async () => {
+  if (!pdfFile) {
+    throw new Error(
+      "Please select a quotation PDF."
+    );
+  }
+
+  const formData = new FormData();
+
+  if (typeof window !== "undefined") {
+    // WEB
+    formData.append(
+      "file",
+      pdfFile.file || pdfFile
+    );
+  } else {
+    // MOBILE
+    formData.append("file", {
+      uri: pdfFile.uri,
+      name:
+        pdfFile.name ||
+        `quotation-${id}.pdf`,
+      type: "application/pdf",
+    } as any);
+  }
+
+  const response = await fetch(
+    "https://nasara-upload-server.onrender.com/upload",
+    {
+      method: "POST",
+      body: formData,
     }
-  };
+  );
 
-  const uploadPdfToCloudflare =
-    async () => {
-      if (!pdfFile) {
-        throw new Error(
-          "Please select a quotation PDF."
-        );
-      }
+  const result =
+    await response.json();
 
-      const formData = new FormData();
+  if (!response.ok) {
+    throw new Error(
+      result.error || "Upload failed"
+    );
+  }
 
-      formData.append("file", {
-        uri: pdfFile.uri,
-        name:
-          pdfFile.name ||
-          `quotation-${id}.pdf`,
-        type: "application/pdf",
-      } as any);
-
-      const response =
-        await fetch(
-          "https://nasara-upload-server.onrender.com/upload",
-          {
-            method: "POST",
-            body: formData,
-          }
-        );
-
-      const result =
-        await response.json();
-
-      if (
-        !response.ok ||
-        !result.success
-      ) {
-        throw new Error(
-          result.error ||
-            "Upload failed."
-        );
-      }
-
-      return result.url;
-    };
-
+  return result.url;
+};
   const saveQuotation =
     async () => {
       if (!amount) {
-        Alert.alert(
+        showMessage(
           "Enter quotation amount."
         );
         return;
       }
 
       if (!pdfFile) {
-        Alert.alert(
+        showMessage(
           "Please upload the official NEDCo quotation PDF."
         );
         return;
@@ -161,25 +179,23 @@ export default function QuotationPreview() {
           throw updateError;
         }
 
-        Alert.alert(
-          "Success",
-          "Official quotation uploaded successfully.",
-          [
-            {
-              text: "OK",
-              onPress: () =>
-                router.replace(
-                  "/(utilities-admin)/applications"
-                ),
-            },
-          ]
-        );
-      } catch (err: any) {
-        Alert.alert(
-          "Error",
-          err.message
-        );
-      } finally {
+      showMessage(
+  "Success",
+  "Official quotation uploaded successfully."
+);
+
+router.replace(
+  "/(utilities-admin)/applications"
+);
+      }catch (err: any) {
+  console.log(err);
+
+  showMessage(
+    "Upload Error",
+    err?.message ||
+      JSON.stringify(err)
+  );
+}finally {
         setLoading(false);
       }
     };
