@@ -463,6 +463,11 @@ const showMessage = (
       () => pickImage(setEnergyCommission),
       !!energyCommission
     )}
+    {uploadCard(
+      "Upload Statement of Bill",
+      () => pickImage(setCurrentBill),
+      !!currentBill
+    )}
 
     {uploadCard(
       "Upload Transfer Letter",
