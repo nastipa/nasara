@@ -131,6 +131,8 @@ export default function Sell() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [location, setLocation] = useState("");
+  const [isDeal, setIsDeal] = useState(false);
+const [dealPrice, setDealPrice] = useState("");
 
 
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -281,12 +283,38 @@ if (videoUri) {
       setProgress
     );
 }
+const now = new Date();
+
+const start = new Date(now);
+const day = start.getDay();
+
+// Friday = 5
+const daysUntilFriday =
+  day <= 5 ? 5 - day : 12 - day;
+
+start.setDate(start.getDate() + daysUntilFriday);
+start.setHours(0, 0, 0, 0);
+
+const end = new Date(start);
+end.setHours(23, 59, 59, 999);
       const { data: newItem, error } = await (supabase as any)
         .from("items_live")
         .insert({
           title,
           description,
           price: price ? Number(price) : null,
+          is_deal: isDeal,
+deal_price: isDeal
+  ? Number(dealPrice)
+  : null,
+
+deal_start: isDeal
+  ? start.toISOString()
+  : null,
+
+deal_end: isDeal
+  ? end.toISOString()
+  : null,
           location,
           latitude,
           longitude,
@@ -657,6 +685,50 @@ router.replace("/browse");
       onValueChange={setIsNegotiable}
     />
   </View>
+   {/* FRIDAY DEAL*/}
+  <View
+  style={{
+    backgroundColor: "#FEF3C7",
+    padding: 15,
+    borderRadius: 16,
+    marginBottom: 20,
+  }}
+>
+  <View
+    style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    }}
+  >
+    <Text
+      style={{
+        fontWeight: "700",
+        fontSize: 16,
+      }}
+    >
+      🔥 Friday Deal
+    </Text>
+
+    <Switch
+      value={isDeal}
+      onValueChange={setIsDeal}
+    />
+  </View>
+
+  {isDeal && (
+    <TextInput
+      placeholder="Friday Deal Price"
+      keyboardType="numeric"
+      value={dealPrice}
+      onChangeText={setDealPrice}
+      style={[
+        styles.input,
+        { marginTop: 12 }
+      ]}
+    />
+  )}
+</View>
 
   {/* IMAGES */}
 

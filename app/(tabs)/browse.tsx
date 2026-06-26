@@ -41,6 +41,12 @@ type Item = {
   id: string;
   title?: string;
   price?: number;
+    is_deal?: boolean;
+  deal_price?: number;
+
+  deal_start?: string;
+  deal_end?: string;
+
   image_url?: string | null;
   image_urls?: string[];
   video_url?: string | null;
@@ -95,6 +101,7 @@ export default function BrowseScreen() {
   const [banners, setBanners] = useState<Item[]>([]);
   const [promoted, setPromoted] = useState<Item[]>([]);
   const [boosted, setBoosted] = useState<Item[]>([]);
+  const [countdown, setCountdown] =useState("");
 
   const [searchText, setSearchText] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -121,18 +128,19 @@ const [recentViews, setRecentViews] = useState<string[]>([]);
   const lastRefreshRef = useRef(0);
 
   /* ================= CATEGORY LIST ================= */
-  const categories = [
-    "All",
-    "education",
-    "electronics",
-    "fashion",
-    "vehicles",
-    "real estate",
-    "food & grocery",
-    "home & living",
-    "jobs",
-    "services",
-  ];
+ const categories = [
+  "All",
+  "🔥 Friday Deals",
+  "education",
+  "electronics",
+  "fashion",
+  "vehicles",
+  "real estate",
+  "food & grocery",
+  "home & living",
+  "jobs",
+  "services",
+];
 
   /* ================= GRID ================= */
   const screenWidth = Dimensions.get("window").width;
@@ -536,8 +544,8 @@ loadBanners();
   };
   
 
-  /* ================= LOAD ITEMS (CURSOR PAGINATION) ================= */
-  const loadItems = async (reset = false) => {
+ /* ================= LOAD ITEMS (CURSOR PAGINATION) ================= */
+const loadItems = async (reset = false) => {
   if (loadingMore) return;
 
   setLoadingMore(true);
@@ -548,6 +556,10 @@ loadBanners();
       id,
       title,
       price,
+      deal_price,
+      is_deal,
+      deal_start,
+      deal_end,
       image_url,
        image_urls,
       video_url,
@@ -567,16 +579,23 @@ loadBanners();
     query = query.lt("created_at", lastCursor.current);
   }
 
-  // ✅ CATEGORY
-  if (selectedCategory !== "All") {
+  // ✅ CATEGORY (FIXED SAFE VERSION)
+  // 🚫 DO NOT block all items when Friday Deals is selected
+  if (
+    selectedCategory !== "All" &&
+    selectedCategory !== "🔥 Friday Deals"
+  ) {
     query = query.eq("category", selectedCategory);
   }
 
+  // ❌ DO NOT filter is_deal in Supabase query
+  // We handle it AFTER fetch
+
   if (debouncedSearch) {
-  query = query.or(
-    `title.ilike.%${debouncedSearch}%,location.ilike.%${debouncedSearch}%`
-  );
-}
+    query = query.or(
+      `title.ilike.%${debouncedSearch}%,location.ilike.%${debouncedSearch}%`
+    );
+  }
 
   const { data, error } = await query;
 
@@ -586,112 +605,130 @@ loadBanners();
   }
 
   const mapped: Item[] = data.flatMap(
-  (i: any) => {
-    const images =
-      i.image_urls &&
-      i.image_urls.length > 0
-        ? i.image_urls
-        : i.image_url
-        ? [i.image_url]
-        : [];
+    (i: any) => {
+      const images =
+        i.image_urls &&
+        i.image_urls.length > 0
+          ? i.image_urls
+          : i.image_url
+          ? [i.image_url]
+          : [];
 
-    /* VIDEO POST */
-    if (i.video_url) {
-      return [
-        {
-          id: String(i.id),
+      /* VIDEO POST */
+      if (i.video_url) {
+        return [
+          {
+            id: String(i.id),
+            title: i.title,
+            price: i.price,
+            is_deal: i.is_deal,
+            deal_price: i.deal_price,
+            deal_start: i.deal_start,
+            deal_end: i.deal_end,
+            image_url: null,
+            video_url: i.video_url,
+            location: i.location,
+            category: i.category,
+            negotiable: Boolean(i.is_negotiable),
+            seller_phone: i.seller_phone,
+            user_id: i.user_id,
+            created_at: i.created_at,
+            type: "item",
+          },
+        ];
+      }
+
+      /* MULTIPLE IMAGES */
+      return images.map(
+        (img: string, index: number) => ({
+          id: String(i.id) + "-" + index,
+
+          original_id: i.id,
+
           title: i.title,
+
           price: i.price,
-          image_url: null,
-          video_url: i.video_url,
+          is_deal: i.is_deal,
+          deal_price: i.deal_price,
+          deal_start: i.deal_start,
+          deal_end: i.deal_end,
+
+          image_url: img,
+
+          video_url: null,
+
           location: i.location,
+
           category: i.category,
-          negotiable: Boolean(
-            i.is_negotiable
-          ),
-          seller_phone:
-            i.seller_phone,
+
+          negotiable: Boolean(i.is_negotiable),
+
+          seller_phone: i.seller_phone,
+
           user_id: i.user_id,
-          created_at:
-            i.created_at,
+
+          created_at: i.created_at,
+
           type: "item",
-        },
-      ];
+        })
+      );
     }
+  );
 
-    /* MULTIPLE IMAGES */
-    return images.map(
-      (
-        img: string,
-        index: number
-      ) => ({
-        id:
-          String(i.id) +
-          "-" +
-          index,
+  // ✅ LOAD VERIFIED USERS
+  setTimeout(() => {
+    loadVerifiedUsers(mapped);
+  }, 200);
 
-        original_id:
-          i.id,
-
-        title: i.title,
-
-        price: i.price,
-
-        image_url: img,
-
-        video_url: null,
-
-        location: i.location,
-
-        category: i.category,
-
-        negotiable: Boolean(
-          i.is_negotiable
-        ),
-
-        seller_phone:
-          i.seller_phone,
-
-        user_id: i.user_id,
-
-        created_at:
-          i.created_at,
-
-        type: "item",
-      })
-    );
-  }
-);
-   // ✅ LOAD VERIFIED USERS
-setTimeout(() => {
-  loadVerifiedUsers(mapped);
-}, 200)
   if (mapped.length > 0) {
-    lastCursor.current = mapped[mapped.length - 1].created_at || null;
+    lastCursor.current =
+      mapped[mapped.length - 1].created_at || null;
   }
 
   if (mapped.length < PAGE_SIZE) {
     setHasMore(false);
   }
 
-  if (reset) {
-    setItems(mapped);
-  } else {
-    setItems(prev => {
-      const merged = [...prev, ...mapped];
-      return Array.from(new Map(merged.map(i => [i.id, i])).values()).slice(0, 300);
+  // ================= FRIDAY DEAL FILTER (SAFE) =================
+  const now = new Date();
+
+  let finalItems = mapped;
+
+  if (selectedCategory === "🔥 Friday Deals") {
+    finalItems = mapped.filter((item: any) => {
+      if (!item.is_deal) return false;
+
+      if (!item.deal_start || !item.deal_end) return true;
+
+      return (
+        new Date(item.deal_start) <= now &&
+        new Date(item.deal_end) >= now
+      );
     });
   }
-try {
-  const mergedCache = reset
-    ? mapped
-    : [...items, ...mapped];
 
-  await AsyncStorage.setItem(
-    CACHE_KEY,
-    JSON.stringify(mergedCache.slice(0, MAX_FEED_ITEMS))
-  );
-} catch {}
+  if (reset) {
+    setItems(finalItems);
+  } else {
+    setItems(prev => {
+      const merged = [...prev, ...finalItems];
+      return Array.from(
+        new Map(merged.map(i => [i.id, i])).values()
+      ).slice(0, 300);
+    });
+  }
+
+  try {
+    const mergedCache = reset
+      ? finalItems
+      : [...items, ...finalItems];
+
+    await AsyncStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify(mergedCache.slice(0, MAX_FEED_ITEMS))
+    );
+  } catch {}
+
   setLoadingMore(false);
 };
 /* ================= VERIFIED USERS ================= */
@@ -1097,6 +1134,60 @@ useEffect(() => {
 
   refreshAll();
 }, [selectedCategory, debouncedSearch]);
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    const now = new Date();
+
+    const friday = new Date();
+
+    const day = friday.getDay();
+
+    const days =
+      day <= 5 ? 5 - day : 12 - day;
+
+    friday.setDate(
+      friday.getDate() + days
+    );
+
+    friday.setHours(0,0,0,0);
+
+    const diff =
+      friday.getTime() - now.getTime();
+
+    if (diff <= 0) {
+      setCountdown("🔥 Friday Deals are LIVE!");
+      return;
+    }
+
+    const d =
+      Math.floor(diff / 86400000);
+
+    const h =
+      Math.floor((diff % 86400000) / 3600000);
+
+    const m =
+      Math.floor((diff % 3600000) / 60000);
+
+    setCountdown(
+      `${d}d ${h}h ${m}m`
+    );
+
+  },1000);
+
+  return () =>
+    clearInterval(timer);
+
+},[]);
+const [, forceUpdate] = useState(0);
+
+useEffect(() => {
+  const timer = setInterval(() => {
+    forceUpdate((x) => x + 1);
+  }, 60000); // update every 1 min
+
+  return () => clearInterval(timer);
+}, []);
   /* ================= CLEAN ITEMS ================= */
   const cleanItems =
     useMemo(() => {
@@ -1295,6 +1386,19 @@ const handlePress = async (
         item.id)
   );
 };
+const getDealTimeLeft = (dealEnd?: string) => {
+  if (!dealEnd) return null;
+
+  const diff = new Date(dealEnd).getTime() - Date.now();
+
+  if (diff <= 0) return "Expired";
+
+  const d = Math.floor(diff / 86400000);
+  const h = Math.floor((diff % 86400000) / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+
+  return `${d}d ${h}h ${m}m left`;
+};
   /* ================= UI ================= */
   return (
     <FlatList
@@ -1489,7 +1593,28 @@ style={{ backgroundColor: "#0f172a" }}
   </TouchableOpacity>
 )}
 </LinearGradient>
-        
+<View
+  style={{
+    backgroundColor:"#fad415",
+    padding:15,
+    borderRadius:14,
+    marginBottom:15
+  }}
+>
+
+<Text
+style={{
+fontSize:20,
+fontWeight:"bold"
+}}
+>
+🔥 Nasara Friday Market
+</Text>
+
+<Text style={{ marginTop: 6, fontWeight: "bold", fontSize: 16 }}>
+  ⏳ Starts in: {countdown}
+</Text>
+</View>
 
          {/* CATEGORY BAR */}
 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -1588,6 +1713,24 @@ style={{ backgroundColor: "#0f172a" }}
           {item.type === "banner" && <Badge label="🎯 BANNER" />}
           {item.type === "promoted" && <Badge label="⭐ PROMOTED" />}
           {item.type === "boosted" && <Badge label="🚀 BOOSTED" />}
+          {item.is_deal && ( <Badge label="🔥 DEAL" />)}
+          {item.is_deal && item.deal_end && (
+  <View
+    style={{
+      position: "absolute",
+      top: 35,
+      left: 8,
+      backgroundColor: "rgba(0,0,0,0.7)",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+    }}
+  >
+    <Text style={{ color: "white", fontSize: 11, fontWeight: "bold" }}>
+      ⏳ {getDealTimeLeft(item.deal_end)}
+    </Text>
+  </View>
+)}
 
           {/* NEGOTIABLE */}
           {item.type === "item" && item.negotiable && (
@@ -1650,9 +1793,49 @@ style={{ backgroundColor: "#0f172a" }}
   )}
 </View>
 
-            {item.price && (
-              <Text style={{ fontWeight: "bold", color: "#22c55e" }}>GH₵ {item.price}</Text>
-            )}
+           {item.is_deal && item.deal_price ? (
+  <View>
+    <Text
+      style={{
+        textDecorationLine: "line-through",
+        color: "#9ca3af",
+        fontSize: 12,
+      }}
+    >
+      GH₵ {item.price}
+    </Text>
+
+    <Text
+      style={{
+        fontWeight: "bold",
+        color: "#ef4444",
+        fontSize: 18,
+      }}
+    >
+      🔥 GH₵ {item.deal_price}
+    </Text>
+
+    <Text
+      style={{
+        color: "#22c55e",
+        fontSize: 12,
+      }}
+    >
+      Save GH₵ {(item.price || 0) - item.deal_price}
+    </Text>
+  </View>
+) : (
+  item.price && (
+    <Text
+      style={{
+        fontWeight: "bold",
+        color: "#22c55e",
+      }}
+    >
+      GH₵ {item.price}
+    </Text>
+  )
+)}
 
             <Text style={{ fontSize: 12, color: "#9ca3af" }}>
               {item.location}
