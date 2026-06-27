@@ -1,5 +1,4 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -204,12 +203,57 @@ export default function ApplicationDetails() {
           {app.phase_type}
         </Text>
         <Text>
-          <Text style={{ fontWeight: "bold" }}>
-            Address:
-          </Text>{" "}
-          {app.address}
-        </Text>
+  <Text style={{ fontWeight: "bold" }}>
+    Address:
+  </Text>{" "}
+  {app.address}
+</Text>
+
+<Text style={{ marginTop: 8 }}>
+  <Text style={{ fontWeight: "bold" }}>
+    Latitude:
+  </Text>{" "}
+  {app?.latitude ?? "Not captured"}
+</Text>
+
+<Text>
+  <Text style={{ fontWeight: "bold" }}>
+    Longitude:
+  </Text>{" "}
+  {app?.longitude ?? "Not captured"}
+</Text>
+
+<Text>
+  <Text style={{ fontWeight: "bold" }}>
+    GPS Accuracy:
+  </Text>{" "}
+  {typeof app?.location_accuracy === "number" && !isNaN(app.location_accuracy)
+    ? `${Math.round(app.location_accuracy)} m`
+    : app?.location_accuracy
+    ? `${Math.round(Number(app.location_accuracy))} m`
+    : "Not captured"}
+</Text>
+<Text
+  style={{
+    marginTop: 16,
+    color: "#2563eb",
+    fontWeight: "bold",
+  }}
+  onPress={() => {
+    if (app.latitude != null && app.longitude != null) {
+      Linking.openURL(
+        `https://www.google.com/maps?q=${app.latitude},${app.longitude}`
+      );
+    }
+  }}
+>
+  📍 Open Exact Location
+</Text>
+         
+
       </View>
+      
+     
 
       <Text
         style={{

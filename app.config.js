@@ -19,7 +19,7 @@ export default {
     },
 
     /* ===================================================== */
-    /* ✅ WEB (PWA SUPPORT ADDED 🔥) */
+    /* ✅ WEB (PWA SUPPORT) */
     /* ===================================================== */
     web: {
       bundler: "metro",
@@ -37,6 +37,7 @@ export default {
       "expo-audio",
       "expo-font",
       "@react-native-community/datetimepicker",
+
       [
         "expo-camera",
         {
@@ -47,10 +48,18 @@ export default {
             "Allow Nasara to record audio with videos",
         },
       ],
+
+      [
+        "expo-location",
+        {
+          locationWhenInUsePermission:
+            "Allow Nasara to access your location to help locate your service address.",
+        },
+      ],
     ],
 
     /* ===================================================== */
-    /* ✅ ANDROID PERMISSIONS */
+    /* ✅ ANDROID */
     /* ===================================================== */
     android: {
       package: "com.nastipa.nasara",
@@ -61,6 +70,9 @@ export default {
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
+
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
       ],
 
       adaptiveIcon: {
@@ -72,7 +84,7 @@ export default {
     },
 
     /* ===================================================== */
-    /* ✅ IOS PERMISSIONS */
+    /* ✅ IOS */
     /* ===================================================== */
     ios: {
       bundleIdentifier:
@@ -93,6 +105,9 @@ export default {
         NSPhotoLibraryAddUsageDescription:
           "Nasara needs permission to save media.",
 
+        NSLocationWhenInUseUsageDescription:
+          "Nasara needs your location to help locate your property for utility services.",
+
         UIBackgroundModes: [
           "audio",
         ],
@@ -104,12 +119,10 @@ export default {
     /* ===================================================== */
     extra: {
       supabaseUrl:
-        process.env
-          .EXPO_PUBLIC_SUPABASE_URL,
+        process.env.EXPO_PUBLIC_SUPABASE_URL,
 
       supabaseAnonKey:
-        process.env
-          .EXPO_PUBLIC_SUPABASE_ANON_KEY,
+        process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,
 
       eas: {
         projectId:

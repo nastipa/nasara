@@ -1,4 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -17,6 +18,9 @@ export default function Apply() {
   const { service } = useLocalSearchParams();
 
   const serviceType = String(service || "");
+  const [latitude, setLatitude] = useState<number | null>(null);
+const [longitude, setLongitude] = useState<number | null>(null);
+const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
 
 // Service checks
 const isDomesticSeparate =
@@ -155,6 +159,28 @@ const showMessage = (
       </Text>
     </TouchableOpacity>
   );
+  const getCurrentLocation = async () => {
+  try {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+
+    if (status !== "granted") {
+      showMessage("Permission denied");
+      return;
+    }
+
+    const location = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Highest,
+    });
+
+    setLatitude(location.coords.latitude);
+    setLongitude(location.coords.longitude);
+    setLocationAccuracy(location.coords.accuracy ?? null);
+
+    showMessage("Location captured");
+  } catch (e) {
+    console.log("Location Error:", e);
+  }
+};
 
   return (
     <ScrollView
@@ -294,6 +320,49 @@ const showMessage = (
   ]}
   multiline
 />
+<Text
+  style={{
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 8,
+  }}
+>
+  📍 GPS Location (Recommended)
+</Text>
+
+<TouchableOpacity
+  onPress={getCurrentLocation}
+  style={{
+    backgroundColor: "#2563eb",
+    padding: 15,
+    borderRadius: 14,
+    marginBottom: 16,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      textAlign: "center",
+      fontWeight: "700",
+    }}
+  >
+    Use My Current Location
+  </Text>
+</TouchableOpacity>
+
+{latitude && longitude && (
+  <View
+    style={{
+      backgroundColor: "#ecfdf5",
+      padding: 12,
+      borderRadius: 12,
+      marginBottom: 20,
+    }}
+  >
+    <Text>Latitude: {latitude}</Text>
+    <Text>Longitude: {longitude}</Text>
+  </View>
+)}
 <Text
   style={{
     fontWeight: "700",
@@ -649,7 +718,8 @@ if (nasaraPaymentProof) {
 
              const applicationNo =
               `UTL-${Date.now()}`;
-
+            console.log("Latitude:", latitude);
+console.log("Longitude:", longitude);
             const { error } =
               await (supabase as any)
                 .from(
@@ -664,6 +734,9 @@ if (nasaraPaymentProof) {
                   area,
                   station,
                   address,
+                  latitude: latitude,
+                  longitude: longitude,
+                  location_accuracy: locationAccuracy,
                   service_type:
                     serviceType,
                   ghana_card_url:
