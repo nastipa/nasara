@@ -420,7 +420,7 @@ const progressItem = (
         },
       ]}
     >
-      GH₵5.00
+      GH₵20.00
     </Text>
   </View>
 
