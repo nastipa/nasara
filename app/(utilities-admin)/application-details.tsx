@@ -4,10 +4,12 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -19,6 +21,21 @@ export default function ApplicationDetails() {
   const [updating, setUpdating] = useState(false);
   const [app, setApp] = useState<any>(null);
   const [quotation, setQuotation] = useState<any>(null);
+  const [adminMessage, setAdminMessage] = useState("");
+  const showMessage = (
+      title: string,
+      message?: string
+    ) => {
+      if (Platform.OS === "web") {
+        window.alert(
+          message
+            ? `${title}\n\n${message}`
+            : title
+        );
+      } else {
+        Alert.alert(title, message);
+      }
+    };
 
   useEffect(() => {
     load();
@@ -29,7 +46,7 @@ export default function ApplicationDetails() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("utility_applications")
         .select("*")
         .eq("id", id)
@@ -37,7 +54,8 @@ export default function ApplicationDetails() {
 
       if (error) throw error;
 
-      setApp(data);
+     setApp(data);
+setAdminMessage(data.admin_message || "");
     } catch (e: any) {
       Alert.alert(
         "Error",
@@ -71,14 +89,14 @@ export default function ApplicationDetails() {
 
       if (error) throw error;
 
-      Alert.alert(
+      showMessage(
         "Success",
         `Application ${status}.`
       );
 
       load();
     } catch (e: any) {
-      Alert.alert(
+      showMessage(
         "Error",
         e.message || "Failed to update."
       );
@@ -86,7 +104,40 @@ export default function ApplicationDetails() {
       setUpdating(false);
     }
   };
+const sendAdminMessage = async () => {
+  if (!adminMessage.trim()) {
+    Alert.alert(
+      "Message Required",
+      "Please enter a message."
+    );
+    return;
+  }
 
+  try {
+    const { error } = await (supabase as any)
+  .from("utility_applications")
+  .update({
+    admin_message: adminMessage,
+    requires_resubmission: true,
+    status: "Resubmission Required",
+  })
+  .eq("id", app.id);
+
+    if (error) throw error;
+
+    showMessage(
+      "Success",
+      "Message sent to applicant."
+    );
+
+    load();
+  } catch (e: any) {
+    showMessage(
+      "Error",
+      e.message || "Failed to send message."
+    );
+  }
+};
   const openFile = (url: string) => {
     if (!url) return;
 
@@ -447,7 +498,90 @@ export default function ApplicationDetails() {
             : "⏳ Meter Assigned"}
         </Text>
       </View>
+      <View
+  style={{
+    backgroundColor: "#fff",
+    marginTop: 25,
+    padding: 16,
+    borderRadius: 12,
+  }}
+>
+  <Text
+    style={{
+      fontSize: 18,
+      fontWeight: "bold",
+      marginBottom: 15,
+    }}
+  >
+    💬 Communication
+  </Text>
 
+  <Text
+    style={{
+      fontWeight: "700",
+      marginBottom: 6,
+    }}
+  >
+    Applicant Reply
+  </Text>
+
+  <View
+    style={{
+      backgroundColor: "#f8fafc",
+      padding: 12,
+      borderRadius: 10,
+      marginBottom: 18,
+    }}
+  >
+    <Text>
+      {app.applicant_reply || "No reply yet."}
+    </Text>
+  </View>
+
+  <Text
+    style={{
+      fontWeight: "700",
+      marginBottom: 6,
+    }}
+  >
+    Message to Applicant
+  </Text>
+
+  <TextInput
+    value={adminMessage}
+    onChangeText={setAdminMessage}
+    multiline
+    placeholder="Ask applicant for clarification..."
+    style={{
+      borderWidth: 1,
+      borderColor: "#d1d5db",
+      borderRadius: 10,
+      padding: 12,
+      minHeight: 110,
+      textAlignVertical: "top",
+    }}
+  />
+
+  <TouchableOpacity
+    onPress={sendAdminMessage}
+    style={{
+      backgroundColor: "#2563eb",
+      padding: 14,
+      borderRadius: 10,
+      marginTop: 14,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        textAlign: "center",
+        fontWeight: "bold",
+      }}
+    >
+      Send Message
+    </Text>
+  </TouchableOpacity>
+</View>
       {/* ADMIN ACTIONS */}
 
 <View style={{ marginTop: 25 }}>

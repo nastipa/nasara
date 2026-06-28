@@ -2,11 +2,14 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
+  Platform,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
@@ -18,6 +21,22 @@ export default function ApplicationDetails() {
   const [app, setApp] = useState<any>(null);
   const [quotation, setQuotation] =
     useState<any>(null);
+    const [message, setMessage] = useState("");
+const [sending, setSending] = useState(false);
+    const showMessage = (
+      title: string,
+      message?: string
+    ) => {
+      if (Platform.OS === "web") {
+        window.alert(
+          message
+            ? `${title}\n\n${message}`
+            : title
+        );
+      } else {
+        Alert.alert(title, message);
+      }
+    };
 
   useEffect(() => {
     load();
@@ -28,13 +47,14 @@ export default function ApplicationDetails() {
     try {
       setLoading(true);
 
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from("utility_applications")
         .select("*")
         .eq("id", id)
         .single();
 
       setApp(data);
+      setMessage(data.applicant_reply || "");
     } finally {
       setLoading(false);
     }
@@ -83,6 +103,39 @@ export default function ApplicationDetails() {
       </View>
     );
   }
+  const sendReply = async () => {
+  if (!message.trim()) {
+    Alert.alert("Reply Required", "Please enter your reply.");
+    return;
+  }
+
+  try {
+    setSending(true);
+
+    const { error } = await (supabase as any)
+      .from("utility_applications")
+      .update({
+        applicant_reply: message,
+      })
+      .eq("id", id);
+
+    if (error) throw error;
+
+    showMessage(
+      "Success",
+      "Reply sent successfully."
+    );
+
+    load();
+  } catch (e: any) {
+    showMessage(
+      "Error",
+      e.message || "Failed to send reply."
+    );
+  } finally {
+    setSending(false);
+  }
+};
   const documentCard = (
   title: string,
   icon: string,
@@ -291,6 +344,34 @@ const progressItem = (
     </Text>
   </View>
 </View>
+{app.requires_resubmission && (
+  <View
+    style={{
+      backgroundColor: "#fef3c7",
+      padding: 16,
+      borderRadius: 14,
+      marginBottom: 20,
+    }}
+  >
+    <Text
+      style={{
+        fontWeight: "700",
+        color: "#92400e",
+        marginBottom: 8,
+      }}
+    >
+      ⚠️ Additional Documents Required
+    </Text>
+
+    <Text
+      style={{
+        color: "#92400e",
+      }}
+    >
+      {app.admin_message}
+    </Text>
+  </View>
+)}
 
       <View
   style={{
@@ -597,6 +678,119 @@ const progressItem = (
     </TouchableOpacity>
   </>
 )}
+<View
+  style={{
+    marginTop: 28,
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 20,
+    elevation: 3,
+  }}
+>
+  <TouchableOpacity
+  onPress={() =>
+    router.push({
+      pathname: "/services/resubmit-documents",
+      params: {
+        id: app.id,
+      },
+    })
+  }
+  style={{
+    backgroundColor: "#2563eb",
+    padding: 15,
+    borderRadius: 12,
+    marginTop: 16,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      textAlign: "center",
+      fontWeight: "700",
+    }}
+  >
+    Resubmit Documents
+  </Text>
+</TouchableOpacity>
+  <Text
+    style={{
+      fontSize: 20,
+      fontWeight: "800",
+      marginBottom: 18,
+    }}
+  >
+    💬 Messages
+  </Text>
+
+  {app.admin_message ? (
+    <View
+      style={{
+        backgroundColor: "#eff6ff",
+        padding: 14,
+        borderRadius: 14,
+        marginBottom: 18,
+      }}
+    >
+      <Text
+        style={{
+          fontWeight: "700",
+          color: "#1d4ed8",
+          marginBottom: 6,
+        }}
+      >
+        Admin
+      </Text>
+
+      <Text>{app.admin_message}</Text>
+    </View>
+  ) : (
+    <Text
+      style={{
+        color: "#6b7280",
+        marginBottom: 18,
+      }}
+    >
+      No messages from admin.
+    </Text>
+  )}
+
+  <TextInput
+    value={message}
+    onChangeText={setMessage}
+    multiline
+    placeholder="Reply to the admin..."
+    style={{
+      borderWidth: 1,
+      borderColor: "#d1d5db",
+      borderRadius: 12,
+      padding: 14,
+      minHeight: 110,
+      textAlignVertical: "top",
+    }}
+  />
+
+  <TouchableOpacity
+    onPress={sendReply}
+    disabled={sending}
+    style={{
+      marginTop: 15,
+      backgroundColor: "#2563eb",
+      padding: 15,
+      borderRadius: 12,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        textAlign: "center",
+        fontWeight: "700",
+      }}
+    >
+      {sending ? "Sending..." : "Send Reply"}
+    </Text>
+  </TouchableOpacity>
+</View>
       <Text
   style={{
     marginTop: 30,
