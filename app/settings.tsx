@@ -3,14 +3,13 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 
 import {
-  ActivityIndicator,
   Alert,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import { supabase } from "../lib/supabase";
@@ -144,26 +143,32 @@ export default function SettingsScreen() {
           true
         );
 
-        const {
-          error,
-        } =
-          await supabase.rpc(
-            "delete_my_account"
-          );
+       const {
+  data: { session },
+} = await supabase.auth.getSession();
 
-        if (error) {
+const response = await fetch(
+  "https://nasara-upload-server.onrender.com/delete-account",
+  {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${session?.access_token}`,
+      "Content-Type": "application/json",
+    },
+  }
+);
 
-          Alert.alert(
-            "Delete Error",
-            error.message
-          );
+const result = await response.json();
 
-          setDeleting(
-            false
-          );
+if (!response.ok) {
+  Alert.alert(
+    "Delete Error",
+    result.error || "Unable to delete account."
+  );
 
-          return;
-        }
+  setDeleting(false);
+  return;
+}
 
         await supabase.auth.signOut();
 
@@ -306,59 +311,22 @@ export default function SettingsScreen() {
 
       {loggedIn ? (
 
-        <View>
+  <View>
 
-          <TouchableOpacity
-            style={
-              styles.deleteBtn
-            }
+    {/* Delete Account temporarily disabled while feature is under development */}
 
-            onPress={
-              confirmDelete
-            }
+    <TouchableOpacity
+      onPress={logoutUser}
+      style={styles.logoutBtn}
+    >
+      <Text style={styles.logoutText}>
+        Logout
+      </Text>
+    </TouchableOpacity>
 
-            disabled={
-              deleting
-            }
-          >
-            {deleting ? (
+  </View>
 
-              <ActivityIndicator color="#fff" />
-
-            ) : (
-
-              <Text
-                style={
-                  styles.deleteText
-                }
-              >
-                🗑️ Delete Account
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={
-              logoutUser
-            }
-
-            style={
-              styles.logoutBtn
-            }
-          >
-            <Text
-              style={
-                styles.logoutText
-              }
-            >
-              Logout
-            </Text>
-          </TouchableOpacity>
-
-        </View>
-
-      ) : null}
-
+) : null}
     </ScrollView>
   );
 }
