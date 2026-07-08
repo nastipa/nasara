@@ -198,6 +198,8 @@ const verifyAdminPassword = async () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isUtilityAdmin, setIsUtilityAdmin] =
   useState(false);
+  const [isHospitalAdmin, setIsHospitalAdmin] =
+  useState(false);
   const [liveSessionId, setLiveSessionId] = useState<number | null>(null);
 
   /* 🔴 VIDEO LIVE STREAM ID */
@@ -221,6 +223,7 @@ const [earnings, setEarnings] = useState(0);
     loadProfile(profileId);
     checkAdmin(profileId);
     checkUtilityAdmin(profileId);
+    checkHospitalAdmin(profileId);
     loadLiveSession(profileId);
     loadLiveStream(profileId);
     loadStats(profileId);
@@ -377,6 +380,21 @@ const checkUtilityAdmin = async (
 
   setIsUtilityAdmin(!!data);
 };
+/* ================= HOSPITAL ADMIN CHECK ================= */
+const checkHospitalAdmin = async (
+  userId: string
+) => {
+  const { data, error } = await supabase
+    .from("hospital_admins")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  console.log("HOSPITAL ADMIN:", data);
+  console.log("HOSPITAL ERROR:", error);
+
+  setIsHospitalAdmin(!!data);
+};
   /* ================= LIVE SESSION ================= */
   const loadLiveSession = async (userId: string) => {
     const { data } = await (supabase as any)
@@ -512,6 +530,7 @@ const loadFollowStats = async (userId: string) => {
       loadProfile(profileId);
       checkAdmin(profileId);
       checkUtilityAdmin(profileId);
+      checkHospitalAdmin(profileId);
       loadLiveSession(profileId);
       loadLiveStream(profileId);
       loadStats(profileId);
@@ -1104,6 +1123,27 @@ onPress={followUser}
 
           router.push(
             "/(utilities-admin)"
+          );
+        }}
+      />
+    </View>
+  </>
+)}
+{isHospitalAdmin && (
+  <>
+    <Text style={styles.sectionTitle}>
+      🏥 Hospital
+    </Text>
+
+    <View style={{ flexDirection: "row" }}>
+      <ActionTile
+        label="Hospital Admin"
+        bg="#0b6e4f"
+        onPress={() => {
+          setShowActionsModal(false);
+
+          router.push(
+            "/(hospital-admin)/dashboard"
           );
         }}
       />
