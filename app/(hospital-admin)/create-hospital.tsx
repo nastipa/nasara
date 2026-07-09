@@ -1,13 +1,14 @@
+import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    Alert,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -41,6 +42,11 @@ export default function CreateHospital() {
 
   const [email, setEmail] =
     useState("");
+    const [latitude, setLatitude] =
+  useState<number | null>(null);
+
+const [longitude, setLongitude] =
+  useState<number | null>(null);
     const showMessage = (
       title: string,
       message?: string
@@ -55,7 +61,44 @@ export default function CreateHospital() {
         Alert.alert(title, message);
       }
     };
+   const captureLocation = async () => {
+  try {
+    const permission =
+      await Location.requestForegroundPermissionsAsync();
 
+    if (permission.status !== "granted") {
+      showMessage(
+        "Permission Required",
+        "Location permission is needed."
+      );
+      return;
+    }
+
+    const location =
+      await Location.getCurrentPositionAsync({});
+
+    setLatitude(
+      location.coords.latitude
+    );
+
+    setLongitude(
+      location.coords.longitude
+    );
+
+    showMessage(
+      "Location Captured",
+      `Latitude: ${location.coords.latitude}\nLongitude: ${location.coords.longitude}`
+    );
+
+  } catch (error: any) {
+
+    showMessage(
+      "Location Error",
+      error.message
+    );
+
+  }
+};
   const saveHospital = async () => {
     try {
       if (!hospitalName.trim()) {
@@ -66,6 +109,47 @@ export default function CreateHospital() {
       }
 
       setLoading(true);
+      const captureLocation = async () => {
+  try {
+
+    const permission =
+      await Location.requestForegroundPermissionsAsync();
+
+    if (permission.status !== "granted") {
+
+      showMessage(
+        "Permission Required",
+        "Location permission is needed."
+      );
+
+      return;
+    }
+
+    const location =
+      await Location.getCurrentPositionAsync({});
+
+    setLatitude(
+      location.coords.latitude
+    );
+
+    setLongitude(
+      location.coords.longitude
+    );
+
+    showMessage(
+      "Location Captured",
+      `Lat: ${location.coords.latitude}\nLng: ${location.coords.longitude}`
+    );
+
+  } catch (error: any) {
+
+    showMessage(
+      "Location Error",
+      error.message
+    );
+
+  }
+};
 
       const {
         data: { user },
@@ -86,8 +170,12 @@ export default function CreateHospital() {
           address: address.trim(),
           phone: phone.trim(),
           email: email.trim() || null,
-          status: "active",
-          created_by: user.id,
+
+latitude,
+longitude,
+
+status: "active",
+created_by: user.id,
         });
 
       if (error) {
@@ -187,7 +275,24 @@ export default function CreateHospital() {
       value={email}
       onChangeText={setEmail}
     />
-
+     <TouchableOpacity
+  style={[
+    styles.saveButton,
+    {
+      backgroundColor:
+        latitude && longitude
+          ? "#16A34A"
+          : "#F59E0B",
+    },
+  ]}
+  onPress={captureLocation}
+>
+  <Text style={styles.saveButtonText}>
+    {latitude && longitude
+      ? "📍 Location Captured"
+      : "📍 Capture Location"}
+  </Text>
+</TouchableOpacity>
     <TouchableOpacity
       style={styles.saveButton}
       disabled={loading}

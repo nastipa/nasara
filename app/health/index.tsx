@@ -58,6 +58,15 @@ export default function HealthHome() {
         onPress={() => router.push("/health/hospitals")}
       />
       <Card
+  icon="medkit"
+  color="#dc2626"
+  title="Emergency Hospitals"
+  subtitle="Find the nearest emergency hospitals using GPS."
+  onPress={() =>
+    router.push("/health/emergency-hospitals")
+  }
+/>
+      <Card
   icon="stats-chart"
   color="#10b981"
   title="Live Queue Board"

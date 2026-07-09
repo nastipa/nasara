@@ -257,6 +257,11 @@ export default function HospitalDashboard() {
       "/(hospital-admin)/settings"
     );
   };
+  const goToAnalytics = () => {
+  router.push(
+    "/(hospital-admin)/analytics"
+  );
+};
   const goToCreateHospitalAdmin = () => {
   router.push(
     "/(hospital-admin)/create-hospital-admin"
@@ -377,12 +382,13 @@ const goToHospitalSettings = () => {
           onPress={goToCheckIn}
         />
 
+        
         <QuickAction
-          title="Settings"
-          icon="settings"
-          color="#6B7280"
-          onPress={goToSettings}
-        />
+  title="Analytics"
+  icon="bar-chart"
+  color="#7C3AED"
+  onPress={goToAnalytics}
+/>
       </View>
       {isSuperAdmin && (
   <>
