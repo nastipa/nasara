@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -7,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
@@ -54,8 +56,11 @@ hospitals: {
 };
 
 export default function MyQueueScreen() {
+  const router = useRouter();
   const [booking, setBooking] =
     useState<Booking | null>(null);
+    const [progress, setProgress] =
+  useState<any>(null);
 
   const [loading, setLoading] =
     useState(true);
@@ -102,6 +107,7 @@ export default function MyQueueScreen() {
         }
 
         setBooking(json.booking ?? null);
+        await loadQueueProgress();
       } catch (err: any) {
         showMessage(
           "Error",
@@ -114,6 +120,33 @@ export default function MyQueueScreen() {
     },
     []
   );
+  async function loadQueueProgress() {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) return;
+
+    const response = await fetch(
+      `${API_URL}/hospital/queue-progress`,
+      {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      }
+    );
+
+    const json = await response.json();
+
+    if (response.ok) {
+      setProgress(json.progress);
+    }
+
+  } catch (e) {
+    console.log(e);
+  }
+}
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -205,6 +238,64 @@ return (
             <Text style={styles.waitMinutes}>
               {booking.estimated_wait_minutes} min
             </Text>
+            {progress && (
+  <>
+    <View
+      style={{
+        marginTop: 25,
+      }}
+    >
+      <Text
+        style={{
+          fontWeight: "700",
+          fontSize: 17,
+        }}
+      >
+        Live Queue Progress
+      </Text>
+
+      <Text
+        style={{
+          marginTop: 10,
+        }}
+      >
+        Current Serving:
+        {" "}
+        {progress.current_serving ?? "-"}
+      </Text>
+
+      <Text>
+        People Ahead:
+        {" "}
+        {progress.people_ahead}
+      </Text>
+
+      <Text>
+        Progress:
+        {" "}
+        {progress.progress_percent}%
+      </Text>
+
+      <View
+        style={{
+          height: 12,
+          backgroundColor: "#ddd",
+          borderRadius: 8,
+          marginTop: 10,
+        }}
+      >
+        <View
+          style={{
+            height: 12,
+            width: `${progress.progress_percent}%`,
+            backgroundColor: "#22c55e",
+            borderRadius: 8,
+          }}
+        />
+      </View>
+    </View>
+  </>
+)}
           </View>
 
           <View style={styles.card}>
@@ -277,7 +368,18 @@ return (
             )}
           </View>
         </>
+        
       )}
+      <TouchableOpacity
+  style={styles.liveButton}
+  onPress={() =>
+    router.push("/health/live-queue")
+  }
+>
+  <Text style={styles.liveButtonText}>
+    📈 Live Queue Board
+  </Text>
+</TouchableOpacity>
     </ScrollView>
   );
 }
@@ -447,4 +549,17 @@ const styles = StyleSheet.create({
     color: "#555",
     lineHeight: 24,
   },
+  liveButton: {
+  backgroundColor: "#2563eb",
+  padding: 18,
+  borderRadius: 14,
+  alignItems: "center",
+  marginTop: 20,
+},
+
+liveButtonText: {
+  color: "#fff",
+  fontSize: 18,
+  fontWeight: "700",
+},
 });

@@ -57,22 +57,14 @@ export default function HealthHome() {
         subtitle="Book a queue before leaving home."
         onPress={() => router.push("/health/hospitals")}
       />
-
       <Card
-        icon="chatbubbles"
-        color="#10b981"
-        title="AI Health Assistant"
-        subtitle="Describe your symptoms and receive health guidance."
-        onPress={() => router.push("/health/ai-health")}
-      />
+  icon="stats-chart"
+  color="#10b981"
+  title="Live Queue Board"
+  subtitle="See the current queue progress for every hospital."
+  onPress={() => router.push("/health/live-queue")}
+/>
 
-      <Card
-        icon="female"
-        color="#ec4899"
-        title="Maternal Health"
-        subtitle="Pregnancy care, reminders and baby tracking."
-        onPress={() => router.push("/health/maternal-health")}
-      />
 
       <Card
         icon="time"
@@ -81,6 +73,13 @@ export default function HealthHome() {
         subtitle="View your queue number and QR check-in."
         onPress={() => router.push("/health/my-queue")}
       />
+      <Card
+  icon="document-text"
+  color="#7c3aed"
+  title="Visit History"
+  subtitle="View all your previous hospital visits."
+  onPress={() => router.push("/health/visit-history")}
+/>
     </ScrollView>
   );
 }

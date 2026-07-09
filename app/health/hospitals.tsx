@@ -1,18 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Platform,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
-
 import { supabase } from "../../lib/supabase";
 
 export default function Hospitals() {
@@ -22,6 +22,11 @@ export default function Hospitals() {
   const [search, setSearch] = useState("");
   const [hospitals, setHospitals] = useState<any[]>([]);
   const [filtered, setFiltered] = useState<any[]>([]);
+  const [location, setLocation] =
+  useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   /* ================= MESSAGE ================= */
 
@@ -43,8 +48,8 @@ export default function Hospitals() {
   /* ================= LOAD ================= */
 
   useEffect(() => {
-    loadHospitals();
-  }, []);
+  getLocationAndLoad();
+}, []);
 
   useEffect(() => {
     if (!search.trim()) {
@@ -64,15 +69,50 @@ export default function Hospitals() {
       )
     );
   }, [search, hospitals]);
+  async function getLocationAndLoad() {
+  try {
 
-  async function loadHospitals() {
+    const { status } =
+      await Location.requestForegroundPermissionsAsync();
+
+    if (status !== "granted") {
+      loadHospitals();
+      return;
+    }
+
+    const current =
+      await Location.getCurrentPositionAsync({});
+
+    setLocation({
+      latitude: current.coords.latitude,
+      longitude: current.coords.longitude,
+    });
+
+    loadHospitals(
+      current.coords.latitude,
+      current.coords.longitude
+    );
+
+  } catch (e) {
+
+    loadHospitals();
+
+  }
+}
+
+  async function loadHospitals(
+  latitude?: number,
+  longitude?: number
+) {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("hospitals")
-      .select("*")
-      .eq("is_active", true)
-      .order("name");
+    let query = supabase
+  .from("hospitals")
+  .select("*")
+  .eq("is_active", true);
+
+const { data, error } =
+  await query;
 
     setLoading(false);
 
@@ -81,8 +121,82 @@ export default function Hospitals() {
       return;
     }
 
-    setHospitals(data || []);
-    setFiltered(data || []);
+   let hospitals: any[] = (data as any[]) || [];
+
+if (
+  latitude != null &&
+  longitude != null
+) {
+
+  const toRadians = (v: number) =>
+    v * Math.PI / 180;
+
+  hospitals = hospitals
+    .map((hospital) => {
+
+      if (
+        hospital.latitude == null ||
+        hospital.longitude == null
+      ) {
+        return hospital;
+      }
+
+      const R = 6371;
+
+      const dLat =
+        toRadians(
+          hospital.latitude - latitude
+        );
+
+      const dLng =
+        toRadians(
+          hospital.longitude - longitude
+        );
+
+      const a =
+        Math.sin(dLat / 2) *
+          Math.sin(dLat / 2) +
+        Math.cos(
+          toRadians(latitude)
+        ) *
+          Math.cos(
+            toRadians(
+              hospital.latitude
+            )
+          ) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+
+      const c =
+        2 *
+        Math.atan2(
+          Math.sqrt(a),
+          Math.sqrt(1 - a)
+        );
+
+      return {
+        ...(hospital as any),
+        distance:
+          Number((R * c).toFixed(2)),
+      };
+
+    })
+    .sort((a, b) => {
+
+      if (a.distance == null)
+        return 1;
+
+      if (b.distance == null)
+        return -1;
+
+      return a.distance - b.distance;
+
+    });
+
+}
+
+setHospitals(hospitals);
+setFiltered(hospitals);
   }
 
   /* ================= CARD ================= */
@@ -116,6 +230,17 @@ export default function Hospitals() {
           {item.town}
           {item.region ? ` • ${item.region}` : ""}
         </Text>
+        {item.distance != null && (
+  <Text
+    style={{
+      color: "#2563eb",
+      fontWeight: "600",
+      marginTop: 4,
+    }}
+  >
+    📍 {item.distance} km away
+  </Text>
+)}
 
         {item.phone ? (
           <Text style={styles.phone}>
