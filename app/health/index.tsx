@@ -49,6 +49,13 @@ export default function HealthHome() {
         Access healthcare services, join hospital queues,
         receive AI health guidance and maternal care support.
       </Text>
+      <Card
+        icon="medical"
+        color="#25eb71"
+        title="Notifications"
+        subtitle="Book a queue before leaving home."
+        onPress={() => router.push("/health/notifications")}
+      />
 
       <Card
         icon="medical"

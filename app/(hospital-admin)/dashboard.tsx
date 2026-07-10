@@ -117,7 +117,6 @@ export default function HospitalDashboard() {
 
   const interval = setInterval(() => {
     loadDashboard();
-    checkSuperAdmin();
   }, 15000);
 
   return () => clearInterval(interval);
@@ -262,6 +261,9 @@ export default function HospitalDashboard() {
     "/(hospital-admin)/analytics"
   );
 };
+const goToNotifications = () => {
+  router.push("/(hospital-admin)/notifications");
+};
   const goToCreateHospitalAdmin = () => {
   router.push(
     "/(hospital-admin)/create-hospital-admin"
@@ -381,7 +383,12 @@ const goToHospitalSettings = () => {
           color="#EA580C"
           onPress={goToCheckIn}
         />
-
+       <QuickAction
+  title="Notifications"
+  icon="notifications"
+  color="#DC2626"
+  onPress={goToNotifications}
+/>
         
         <QuickAction
   title="Analytics"
@@ -389,6 +396,7 @@ const goToHospitalSettings = () => {
   color="#7C3AED"
   onPress={goToAnalytics}
 />
+
       </View>
       {isSuperAdmin && (
   <>
