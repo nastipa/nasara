@@ -28,7 +28,43 @@ const showMessage = (
     Alert.alert(title, message);
   }
 };
+const showConfirm = (
+  title:string,
+  message:string,
+  onConfirm:()=>void
+) => {
 
+  if (Platform.OS === "web") {
+
+    const confirmed =
+      window.confirm(
+        `${title}\n\n${message}`
+      );
+
+    if (confirmed) {
+      onConfirm();
+    }
+
+  } else {
+
+    Alert.alert(
+      title,
+      message,
+      [
+        {
+          text:"Cancel",
+          style:"cancel",
+        },
+        {
+          text:"Call",
+          onPress:onConfirm,
+        },
+      ]
+    );
+
+  }
+
+};
 type Booking = {
   id: string;
   queue_number: string;
@@ -612,24 +648,15 @@ Normal
     }
 
 
-    Alert.alert(
-      "Call Patient",
-      `Call ${item.queue_number}?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Call",
-          onPress: () =>
-            updateStatus(
-              item.id,
-              "called"
-            ),
-        },
-      ]
-    );
+    showConfirm(
+  "Call Patient",
+  `Call ${item.queue_number}?`,
+  () =>
+    updateStatus(
+      item.id,
+      "called"
+    )
+);
 
   }}
 >

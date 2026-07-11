@@ -249,7 +249,11 @@ export default function HospitalDashboard() {
       "/(hospital-admin)/checkin"
     );
   };
-  
+  const goToPatientRegistration = () => {
+  router.push(
+    "/(hospital-admin)/patient-registration"
+  );
+};
 
   const goToSettings = () => {
     router.push(
@@ -383,6 +387,12 @@ const goToHospitalSettings = () => {
           color="#EA580C"
           onPress={goToCheckIn}
         />
+        <QuickAction
+  title="Patient Registration"
+  icon="person-add"
+  color="#0891B2"
+  onPress={goToPatientRegistration}
+/>
        <QuickAction
   title="Notifications"
   icon="notifications"

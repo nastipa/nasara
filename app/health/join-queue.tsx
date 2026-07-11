@@ -13,7 +13,8 @@ import {
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
-
+const API_URL =
+  "https://nasara-upload-server.onrender.com";
 export default function JoinQueue() {
   const router = useRouter();
 
@@ -38,7 +39,25 @@ console.log("QUEUE PARAMS:", {
   const [condition, setCondition] = useState("");
   const [nhia, setNhia] = useState("");
   const [loading, setLoading] = useState(false);
+  const [searchType, setSearchType] =
+useState<"ghana_card" | "nhia" | "phone">("ghana_card");
 
+const [searchValue, setSearchValue] =
+useState("");
+
+const [patientRecord, setPatientRecord] =
+useState<any>(null);
+const [form, setForm] = useState({
+  full_name:"",
+  phone:"",
+  ghana_card_number:"",
+  nhis_number:"",
+  gender:"",
+  date_of_birth:"",
+  address:"",
+});
+const [showRegistration, setShowRegistration] =
+useState(false);
   const showMessage = (
     title: string,
     message?: string
@@ -53,7 +72,206 @@ console.log("QUEUE PARAMS:", {
       Alert.alert(title, message);
     }
   };
+const searchPatient = async () => {
 
+ if(!searchValue.trim()){
+   showMessage(
+    "Required",
+    "Enter Ghana Card, NHIA or Phone number"
+   );
+   return;
+ }
+
+
+ try {
+
+ const {
+  data:{
+    session
+  }
+ } =
+ await supabase.auth.getSession();
+
+
+ const body:any={};
+
+
+ if(searchType==="ghana_card"){
+   body.ghana_card_number =
+    searchValue;
+ }
+
+
+ if(searchType==="nhia"){
+   body.nhis_number =
+    searchValue;
+ }
+
+
+ if(searchType==="phone"){
+   body.phone =
+    searchValue;
+ }
+
+
+ const response =
+ await fetch(
+ `${API_URL}/hospital/search-patient`,
+ {
+ method:"POST",
+
+ headers:{
+ "Content-Type":"application/json",
+ Authorization:
+ `Bearer ${session?.access_token}`
+ },
+
+ body:
+ JSON.stringify(body)
+
+ });
+
+
+ const json =
+ await response.json();
+
+
+ if(json.exists){
+
+   setPatientRecord(
+     json.patient
+   );
+
+   showMessage(
+    "Patient Found",
+    "You can join queue"
+   );
+
+ }else{
+
+   setPatientRecord(null);
+
+   setShowRegistration(true);
+
+   showMessage(
+    "Not Found",
+    "Please complete registration"
+   );
+
+ }
+
+
+ }catch(err:any){
+
+ showMessage(
+ "Error",
+ err.message
+ );
+
+ }
+
+};
+const registerPatient = async () => {
+
+if(!form.full_name.trim()){
+
+showMessage(
+"Required",
+"Patient name is required"
+);
+
+return;
+
+}
+
+
+try{
+
+setLoading(true);
+
+
+const {
+data:{
+session
+}
+}
+=
+await supabase.auth.getSession();
+
+
+
+const response =
+await fetch(
+`${API_URL}/hospital/register-patient`,
+{
+
+method:"POST",
+
+headers:{
+"Content-Type":"application/json",
+
+Authorization:
+`Bearer ${session?.access_token}`
+},
+
+
+body:
+JSON.stringify(form)
+
+}
+
+);
+
+
+
+const json =
+await response.json();
+
+
+
+if(!response.ok){
+
+throw new Error(
+json.error ||
+"Registration failed"
+);
+
+}
+
+
+// Patient is now available
+
+setPatientRecord(
+json.patient
+);
+
+
+setShowRegistration(false);
+
+
+showMessage(
+"Success",
+"Patient registered successfully"
+);
+
+
+
+}catch(err:any){
+
+showMessage(
+"Error",
+err.message
+);
+
+
+}finally{
+
+setLoading(false);
+
+}
+
+
+};
   async function joinQueue() {
     if (!condition.trim()) {
       showMessage(
@@ -104,7 +322,10 @@ console.log("QUEUE PARAMS:", {
   Date.now().toString().slice(-8),
   
           status: "waiting",
-          patient_id: user.id,
+         patient_id:
+patientRecord?.user_id || user.id,
+patient_record_id:
+patientRecord?.id || null,
           booking_date: new Date().toISOString().split("T")[0],
           created_at: new Date().toISOString(),
         })
@@ -152,10 +373,352 @@ console.log("QUEUE PARAMS:", {
           {department_name}
         </Text>
       </View>
+      <View style={styles.card}>
 
-      <Text style={styles.label}>
-        Describe your condition
-      </Text>
+<Text style={styles.label}>
+Search Patient First
+</Text>
+
+
+<View style={{
+flexDirection:"row",
+justifyContent:"space-between",
+marginBottom:15
+}}>
+
+
+<TouchableOpacity
+style={{
+padding:10,
+backgroundColor:
+searchType==="ghana_card"
+?"#bfdbfe":"#fff",
+borderRadius:10
+}}
+onPress={()=>
+setSearchType("ghana_card")
+}
+>
+
+<Text>
+Ghana Card
+</Text>
+
+</TouchableOpacity>
+
+
+
+<TouchableOpacity
+style={{
+padding:10,
+backgroundColor:
+searchType==="nhia"
+?"#bfdbfe":"#fff",
+borderRadius:10
+}}
+onPress={()=>
+setSearchType("nhia")
+}
+>
+
+<Text>
+NHIA
+</Text>
+
+</TouchableOpacity>
+
+
+
+<TouchableOpacity
+style={{
+padding:10,
+backgroundColor:
+searchType==="phone"
+?"#bfdbfe":"#fff",
+borderRadius:10
+}}
+onPress={()=>
+setSearchType("phone")
+}
+>
+
+<Text>
+Phone
+</Text>
+
+</TouchableOpacity>
+
+
+</View>
+
+
+
+<TextInput
+style={styles.input}
+placeholder={
+searchType==="ghana_card"
+?
+"Enter Ghana Card Number"
+:
+searchType==="nhia"
+?
+"Enter NHIA Number"
+:
+"Enter Phone Number"
+}
+value={searchValue}
+onChangeText={setSearchValue}
+/>
+
+
+
+<TouchableOpacity
+style={styles.button}
+onPress={searchPatient}
+>
+
+<Text style={styles.buttonText}>
+Search Patient
+</Text>
+
+</TouchableOpacity>
+
+
+</View>
+{
+patientRecord && (
+
+<View style={styles.card}>
+
+<Text style={styles.header}>
+Patient Details
+</Text>
+
+
+<Text style={styles.label}>
+Full Name
+</Text>
+
+<Text style={styles.value}>
+{patientRecord.full_name}
+</Text>
+
+
+
+<Text style={styles.label}>
+Phone Number
+</Text>
+
+<Text>
+{patientRecord.phone || "-"}
+</Text>
+
+
+
+<Text style={styles.label}>
+Ghana Card Number
+</Text>
+
+<Text>
+{patientRecord.ghana_card_number || "-"}
+</Text>
+
+
+
+<Text style={styles.label}>
+NHIA Number
+</Text>
+
+<Text>
+{patientRecord.nhis_number || "-"}
+</Text>
+
+
+
+<Text style={styles.label}>
+Gender
+</Text>
+
+<Text>
+{patientRecord.gender || "-"}
+</Text>
+
+
+
+<Text style={styles.label}>
+Date of Birth
+</Text>
+
+<Text>
+{patientRecord.date_of_birth || "-"}
+</Text>
+
+
+</View>
+
+)
+}
+{
+showRegistration && (
+
+<View style={styles.card}>
+
+<Text style={styles.header}>
+Register New Patient
+</Text>
+
+
+<Text style={styles.label}>
+Full Name
+</Text>
+
+<TextInput
+style={styles.input}
+placeholder="Enter full name"
+value={form.full_name}
+onChangeText={(text)=>
+setForm({
+...form,
+full_name:text
+})
+}
+/>
+
+
+
+<Text style={styles.label}>
+Phone Number
+</Text>
+
+<TextInput
+style={styles.input}
+placeholder="Enter phone number"
+keyboardType="phone-pad"
+value={form.phone}
+onChangeText={(text)=>
+setForm({
+...form,
+phone:text
+})
+}
+/>
+
+
+
+<Text style={styles.label}>
+Ghana Card Number
+</Text>
+
+<TextInput
+style={styles.input}
+placeholder="Enter Ghana Card number"
+value={form.ghana_card_number}
+onChangeText={(text)=>
+setForm({
+...form,
+ghana_card_number:text
+})
+}
+/>
+
+
+
+<Text style={styles.label}>
+NHIA Number
+</Text>
+
+<TextInput
+style={styles.input}
+placeholder="Enter NHIA number"
+value={form.nhis_number}
+onChangeText={(text)=>
+setForm({
+...form,
+nhis_number:text
+})
+}
+/>
+
+
+
+<Text style={styles.label}>
+Gender
+</Text>
+
+<TextInput
+style={styles.input}
+placeholder="Enter gender"
+value={form.gender}
+onChangeText={(text)=>
+setForm({
+...form,
+gender:text
+})
+}
+/>
+
+
+
+<Text style={styles.label}>
+Date of Birth
+</Text>
+
+<TextInput
+style={styles.input}
+placeholder="Example: 1995-05-20"
+value={form.date_of_birth}
+onChangeText={(text)=>
+setForm({
+...form,
+date_of_birth:text
+})
+}
+/>
+
+
+
+<Text style={styles.label}>
+Address
+</Text>
+
+<TextInput
+style={styles.input}
+placeholder="Enter address"
+value={form.address}
+onChangeText={(text)=>
+setForm({
+...form,
+address:text
+})
+}
+/>
+
+
+
+<TouchableOpacity
+style={styles.button}
+onPress={registerPatient}
+>
+
+<Text style={styles.buttonText}>
+Register Patient
+</Text>
+
+</TouchableOpacity>
+
+
+</View>
+
+)
+}
+
+      {
+patientRecord && (
+
+<>
+<Text style={styles.label}>
+Describe your symptoms
+</Text>
 
       <TextInput
         multiline
@@ -166,22 +729,27 @@ console.log("QUEUE PARAMS:", {
         style={styles.textArea}
       />
 
-      <Text style={styles.label}>
-        NHIA Card Number (Optional)
-      </Text>
-
-      <TextInput
-        placeholder="Enter NHIA Number"
-        value={nhia}
-        onChangeText={setNhia}
-        style={styles.input}
-      />
+      
 
       <TouchableOpacity
-        style={styles.button}
-        onPress={joinQueue}
-        disabled={loading}
-      >
+style={styles.button}
+onPress={()=>{
+if(!patientRecord){
+
+showMessage(
+"Search Required",
+"Please search patient before joining queue."
+);
+
+return;
+
+}
+
+joinQueue();
+
+}}
+disabled={loading}
+>
         <Text style={styles.buttonText}>
           {loading
             ? "Joining..."
@@ -194,6 +762,10 @@ console.log("QUEUE PARAMS:", {
           style={{ marginTop: 20 }}
         />
       )}
+      </>
+
+)
+}
     </ScrollView>
   );
 }
