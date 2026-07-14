@@ -48,7 +48,7 @@ const [queueReceipt,setQueueReceipt] =
 useState<any>(null);
   const [loading, setLoading] =
     useState(false);
-
+const [priorityCase, setPriorityCase] = useState("Normal");
 
   const [patient, setPatient] =
     useState<any>(null);
@@ -227,8 +227,10 @@ const registerPatient = async () => {
               `Bearer ${session?.access_token}`,
           },
 
-          body:
-            JSON.stringify(form),
+          body: JSON.stringify({
+  ...form,
+  priority_case: priorityCase,
+}),
         }
       );
 
@@ -315,16 +317,15 @@ const joinOPDQueueAfterRegistration = async (
               `Bearer ${session?.access_token}`,
           },
 
+body: JSON.stringify({
 
-          body:JSON.stringify({
+  patient_record_id: patientId,
 
-            patient_record_id:
-              patientId,
+  condition:"OPD consultation",
 
-            condition:
-              "OPD consultation"
+  priority_case: priorityCase
 
-          })
+})
         }
       );
 
@@ -401,8 +402,8 @@ const joinOPDQueue = async () => {
    
   patient_record_id: patient.id,
 
-  condition: "OPD consultation"
-
+  condition: "OPD consultation",
+priority_case: priorityCase
 }),    }
       );
 
@@ -421,12 +422,14 @@ const joinOPDQueue = async () => {
     }
 
 
-    showMessage(
+   setQueueReceipt(json.booking);
+
+showMessage(
   "Queue Created",
   `Queue Number: ${json.booking.queue_number}
-  
+
 Booking Code: ${json.booking.booking_code}
-  
+
 Estimated Wait: ${json.booking.estimated_wait_minutes} minutes`
 );
 
@@ -503,6 +506,7 @@ const loadDepartments = async () => {
       "Load departments:",
       err
     );
+    
 
   }
 
@@ -837,7 +841,47 @@ Register New Patient
   }
 />
 
+<Text style={styles.label}>
+Priority Case
+</Text>
 
+<View style={styles.priorityContainer}>
+
+  {[
+  "Normal",
+  "Emergency",
+  "Elderly",
+  "Disability",
+  "Pregnant",
+  "Infant",
+  "Referral",
+].map((item) => (
+
+    <TouchableOpacity
+      key={item}
+      style={[
+        styles.priorityButton,
+        priorityCase === item &&
+          styles.prioritySelected,
+      ]}
+      onPress={() =>
+        setPriorityCase(item)
+      }
+    >
+
+      <Text
+        style={{
+          fontWeight: "600",
+        }}
+      >
+        {item}
+      </Text>
+
+    </TouchableOpacity>
+
+  ))}
+
+</View>
 
 <TouchableOpacity
 style={styles.button}
@@ -862,32 +906,53 @@ queueReceipt && (
 <View style={styles.card}>
 
 <Text style={styles.cardTitle}>
-Queue Receipt
+✅ Queue Receipt
 </Text>
 
 
-<Text>
-Patient:
+<Text style={styles.receiptText}>
+Patient Name:
 {" "}
-{queueReceipt.patient_record_id}
+{patient?.full_name}
 </Text>
 
 
-<Text>
+<Text style={styles.receiptText}>
+Phone:
+{" "}
+{patient?.phone || "-"}
+</Text>
+
+
+<Text style={styles.receiptText}>
+Department:
+{" "}
+{selectedDepartment?.name || "OPD"}
+</Text>
+
+
+<Text style={styles.receiptText}>
 Queue Number:
 {" "}
 {queueReceipt.queue_number}
 </Text>
 
 
-<Text>
+<Text style={styles.receiptText}>
 Booking Code:
 {" "}
 {queueReceipt.booking_code}
 </Text>
 
 
-<Text>
+<Text style={styles.receiptText}>
+Priority:
+{" "}
+{queueReceipt.priority?.toUpperCase() || priorityCase.toUpperCase()}
+</Text>
+
+
+<Text style={styles.receiptText}>
 Estimated Wait:
 {" "}
 {queueReceipt.estimated_wait_minutes}
@@ -898,12 +963,12 @@ minutes
 <TouchableOpacity
 style={styles.button}
 onPress={()=>{
-// print function will come here
+// print function later
 }}
 >
 
 <Text style={styles.buttonText}>
-Print Receipt
+🖨️ Print Receipt
 </Text>
 
 </TouchableOpacity>
@@ -913,6 +978,7 @@ Print Receipt
 
 )
 }
+
    </ScrollView>
 
   );
@@ -963,7 +1029,11 @@ activeTab:{
  backgroundColor:"#BFDBFE",
 },
 
-
+receiptText:{
+  fontSize:16,
+  marginBottom:8,
+  color:"#374151",
+},
 input:{
  backgroundColor:"#fff",
  borderRadius:12,
@@ -993,7 +1063,27 @@ card:{
  padding:20,
  borderRadius:15,
 },
+priorityContainer:{
+  flexDirection:"row",
+  flexWrap:"wrap",
+  marginBottom:20,
+},
 
+priorityButton:{
+  backgroundColor:"#fff",
+  borderWidth:1,
+  borderColor:"#d1d5db",
+  borderRadius:10,
+  paddingVertical:10,
+  paddingHorizontal:14,
+  marginRight:10,
+  marginBottom:10,
+},
+
+prioritySelected:{
+  backgroundColor:"#BFDBFE",
+  borderColor:"#0A7CFF",
+},
 
 cardTitle:{
  fontSize:18,

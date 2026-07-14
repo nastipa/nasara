@@ -717,7 +717,7 @@ patientRecord && (
 
 <>
 <Text style={styles.label}>
-Describe your symptoms
+Reason for Visit
 </Text>
 
       <TextInput

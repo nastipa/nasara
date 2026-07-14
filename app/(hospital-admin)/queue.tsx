@@ -73,7 +73,17 @@ type Booking = {
   condition: string;
   checked_in: boolean;
 
-  priority: string;
+  priority:
+    | "emergency"
+    | "urgent"
+    | "normal"
+    | "low"
+    | "infant"
+    | "elderly"
+    | "disabled"
+    | "pregnant"
+    | "referral";
+
   priority_level: number;
   triage_note?: string | null;
 
@@ -386,7 +396,7 @@ const getPrioritySuggestion = async (
 
           headers:{
             Authorization:
-              ` ${session.access_token}`,
+              `Bearer ${session.access_token}`,
 
             "Content-Type":
               "application/json",
@@ -499,6 +509,9 @@ const getPrioritySuggestion = async (
         {item.condition}
       </Text>
     )}
+    <Text style={styles.cardTitle}>
+Triage Assessment
+</Text>
     <TouchableOpacity
   style={styles.suggestButton}
   onPress={() =>
@@ -545,15 +558,35 @@ Apply Suggestion
 </View>
 
 )}
+
 <View
   style={[
     styles.priorityBadge,
+
     item.priority === "emergency"
       ? styles.emergency
+
       : item.priority === "urgent"
       ? styles.urgent
+
+      : item.priority === "infant"
+      ? styles.infant
+
+      : item.priority === "elderly"
+      ? styles.elderly
+
+      : item.priority === "disabled"
+      ? styles.disabled
+
+      : item.priority === "pregnant"
+      ? styles.pregnant
+
+      : item.priority === "referral"
+      ? styles.referral
+
       : item.priority === "low"
       ? styles.low
+
       : styles.normal
   ]}
 >
@@ -611,7 +644,77 @@ Urgent
 Normal
 </Text>
 </TouchableOpacity>
+<TouchableOpacity
+  style={styles.elderlyButton}
+  onPress={() =>
+    updatePriority(
+      item.id,
+      "elderly"
+    )
+  }
+>
+<Text style={styles.buttonText}>
+👴 Elderly
+</Text>
+</TouchableOpacity>
+<TouchableOpacity
+  style={styles.infantButton}
+  onPress={() =>
+    updatePriority(
+      item.id,
+      "infant"
+    )
+  }
+>
+<Text style={styles.buttonText}>
+👶 Infant
+</Text>
+</TouchableOpacity>
 
+
+<TouchableOpacity
+  style={styles.disabledButton}
+  onPress={() =>
+    updatePriority(
+      item.id,
+      "disabled"
+    )
+  }
+>
+<Text style={styles.buttonText}>
+♿ Disabled
+</Text>
+</TouchableOpacity>
+
+
+<TouchableOpacity
+  style={styles.pregnantButton}
+  onPress={() =>
+    updatePriority(
+      item.id,
+      "pregnant"
+    )
+  }
+>
+<Text style={styles.buttonText}>
+🤰 Pregnant
+</Text>
+</TouchableOpacity>
+
+
+<TouchableOpacity
+  style={styles.referralButton}
+  onPress={() =>
+    updatePriority(
+      item.id,
+      "referral"
+    )
+  }
+>
+<Text style={styles.buttonText}>
+🏥 Referral
+</Text>
+</TouchableOpacity>
 </View>
     <View style={styles.actions}>
       {item.status === "waiting" && (
@@ -868,6 +971,12 @@ return (
     },
     elevation: 3,
   },
+  cardTitle: {
+  fontSize: 18,
+  fontWeight: "700",
+  color: "#111827",
+  marginBottom: 10,
+},
 
   cardHeader: {
     flexDirection: "row",
@@ -881,7 +990,12 @@ return (
     fontWeight: "700",
     color: "#0A7CFF",
   },
-
+infantButton:{
+  backgroundColor:"#EC4899",
+  borderRadius:10,
+  paddingHorizontal:10,
+  paddingVertical:8,
+},
   statusBadge: {
     borderRadius: 20,
     paddingHorizontal: 12,
@@ -1041,6 +1155,36 @@ urgentLabel:{
   fontWeight:"800",
   marginTop:4,
 },
+elderlyButton:{
+  backgroundColor:"#92400E",
+  borderRadius:10,
+  paddingHorizontal:10,
+  paddingVertical:8,
+},
+
+
+disabledButton:{
+  backgroundColor:"#0891B2",
+  borderRadius:10,
+  paddingHorizontal:10,
+  paddingVertical:8,
+},
+
+
+pregnantButton:{
+  backgroundColor:"#DB2777",
+  borderRadius:10,
+  paddingHorizontal:10,
+  paddingVertical:8,
+},
+
+
+referralButton:{
+  backgroundColor:"#7C3AED",
+  borderRadius:10,
+  paddingHorizontal:10,
+  paddingVertical:8,
+},
 
 emergency:{
   backgroundColor:"#DC2626",
@@ -1053,7 +1197,25 @@ urgent:{
 normal:{
   backgroundColor:"#2563EB",
 },
+infant:{
+  backgroundColor:"#EC4899",
+},
 
+elderly:{
+  backgroundColor:"#92400E",
+},
+
+disabled:{
+  backgroundColor:"#0891B2",
+},
+
+pregnant:{
+  backgroundColor:"#DB2777",
+},
+
+referral:{
+  backgroundColor:"#7C3AED",
+},
 low:{
   backgroundColor:"#6B7280",
 },
