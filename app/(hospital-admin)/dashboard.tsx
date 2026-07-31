@@ -711,18 +711,6 @@ const goToCreateDepartmentStaff = () => {
 
 
 
-const goToCheckIn = () => {
-
-  router.push(
-    "/(hospital-admin)/checkin"
-  );
-
-};
-
-
-
-
-
 
 const goToPatientRegistration = () => {
 

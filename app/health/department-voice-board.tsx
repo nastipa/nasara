@@ -597,47 +597,87 @@ const playVoice = async () => {
       */
 
       if (
-        voice.audio_type === "template" &&
-        voice.audio_url
-      ) {
+  voice.audio_type === "template" &&
+  voice.audio_url
+) {
 
 
-        await new Promise<void>((resolve)=>{
+await new Promise<void>((resolve)=>{
 
 
-          player.replace({
-
-            uri: voice.audio_url
-
-          });
+if(Platform.OS === "web") {
 
 
-          player.play();
+const audio =
+new Audio(
+  voice.audio_url
+);
 
 
-          const check =
-          setInterval(()=>{
+audio.volume = 1;
 
 
-            if(!player.playing){
-
-              clearInterval(check);
-
-              resolve();
-
-            }
+audio.onended = () => {
+  resolve();
+};
 
 
-          },500);
+audio.onerror = () => {
+  resolve();
+};
+
+
+audio.play()
+.catch((error)=>{
+
+console.log(
+"WEB AUDIO BLOCKED",
+error
+);
+
+resolve();
+
+});
+
+
+}
+else {
+
+
+player.replace({
+
+uri: voice.audio_url
+
+});
+
+
+player.play();
+
+
+const check =
+setInterval(()=>{
+
+
+if(!player.playing){
+
+clearInterval(check);
+
+resolve();
+
+}
+
+
+},500);
+
+
+}
 
 
 
-        });
+});
 
 
-      }
-
-
+}
       /*
       ==========================
       ENGLISH TTS FALLBACK
