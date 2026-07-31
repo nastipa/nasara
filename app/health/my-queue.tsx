@@ -37,8 +37,19 @@ type Booking = {
   queue_number: string;
   booking_code: string;
   estimated_wait_minutes: number;
-  status: string;
+  status:
+ | "waiting"
+ | "called"
+ | "consultation"
+ | "admitted"
+ | "discharged"
+ | "transferred"
+ | "referred"
+ | "cancelled"
+ | "no_show";
   condition: string;
+  priority: string;
+priority_level: number;
   created_at: string;
 hospitals: {
   id: string;
@@ -57,6 +68,7 @@ hospitals: {
 
 export default function MyQueueScreen() {
   const router = useRouter();
+  
   const [booking, setBooking] =
     useState<Booking | null>(null);
     const [progress, setProgress] =
@@ -88,16 +100,17 @@ export default function MyQueueScreen() {
           return;
         }
 
-        const response = await fetch(
-          `${API_URL}/hospital/my-queue`,
-          {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
-          }
-        );
+        const url =
+`${API_URL}/hospital/my-queue`;
+
+const response = await fetch(url, {
+  headers: {
+    Authorization: `Bearer ${session.access_token}`,
+  },
+});
 
         const json = await response.json();
+        console.log("MY QUEUE RESPONSE:", json);
 
         if (!response.ok) {
           throw new Error(
@@ -138,7 +151,7 @@ export default function MyQueueScreen() {
     );
 
     const json = await response.json();
-
+console.log("MY QUEUE RESPONSE:", json);
     if (response.ok) {
       setProgress(json.progress);
     }
@@ -158,7 +171,7 @@ export default function MyQueueScreen() {
 
     const interval = setInterval(() => {
       loadQueue(false);
-    }, 15000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [loadQueue]);
@@ -221,7 +234,30 @@ return (
               </View>
             </View>
           </View>
-
+          <View
+  style={{
+    marginTop: 10,
+    alignSelf: "flex-start",
+    backgroundColor:
+  booking.priority === "critical"
+    ? "#DC2626"
+    : booking.priority === "urgent"
+    ? "#F59E0B"
+    : "#16A34A",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  }}
+>
+  <Text
+    style={{
+      color: "#fff",
+      fontWeight: "700",
+    }}
+  >
+    {booking.priority.toUpperCase()}
+  </Text>
+</View>
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>
               Queue Number
@@ -275,7 +311,15 @@ return (
         {" "}
         {progress.progress_percent}%
       </Text>
+      <Text>
+Your Queue Number: {progress.your_number}
+</Text>
 
+<Text>
+Estimated Wait:
+{" "}
+{progress.estimated_wait_minutes} min
+</Text>
       <View
         style={{
           height: 12,
@@ -295,6 +339,38 @@ return (
       </View>
     </View>
   </>
+)}
+             {progress?.status === "called" && (
+  <View
+    style={{
+      backgroundColor:"#16A34A",
+      padding:18,
+      borderRadius:12,
+      marginTop:20,
+    }}
+  >
+
+    <Text
+      style={{
+        color:"#fff",
+        fontWeight:"800",
+        fontSize:18,
+      }}
+    >
+      🎉 Your turn has arrived
+    </Text>
+
+
+    <Text
+      style={{
+        color:"#fff",
+        marginTop:8,
+      }}
+    >
+      Please proceed to the consultation department.
+    </Text>
+
+  </View>
 )}
           </View>
 
@@ -321,9 +397,8 @@ return (
 </View>
 
             <Text style={styles.scanText}>
-              Present this QR code at the
-              hospital reception for quick
-              check-in.
+             Present this QR code when you arrive
+             for your consultation.
             </Text>
           </View>
 
@@ -356,7 +431,7 @@ return (
                 <Text
                   style={styles.conditionLabel}
                 >
-                  Condition
+                  Reason for Consultation
                 </Text>
 
                 <Text
@@ -370,6 +445,7 @@ return (
         </>
         
       )}
+      
       <TouchableOpacity
   style={styles.liveButton}
   onPress={() =>
@@ -377,7 +453,7 @@ return (
   }
 >
   <Text style={styles.liveButtonText}>
-    📈 Live Queue Board
+    📈 Live Consultation Queue 
   </Text>
 </TouchableOpacity>
     </ScrollView>

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Platform,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -33,14 +33,21 @@ const showMessage = (
 type LiveQueue = {
   hospital: string;
   department: string;
-  current_serving: number | null;
-  next_numbers: number[];
-  total_waiting: number;
-  your_number: number | null;
-  people_ahead: number;
-  estimated_wait_minutes: number;
-};
 
+  current_serving: string | null;
+
+  next_numbers: string[];
+
+  your_number: string | null;
+
+  people_ahead: number;
+
+  estimated_wait_minutes: number;
+
+  total_waiting: number;
+
+  progress_percent?: number;
+};
 export default function LiveQueueScreen() {
   const [loading, setLoading] =
     useState(true);
@@ -201,9 +208,28 @@ export default function LiveQueueScreen() {
               Currently Serving
             </Text>
 
-            <Text style={styles.currentNumber}>
-              {queue.current_serving ?? "--"}
-            </Text>
+            {queue.current_serving === queue.your_number && (
+<Text
+style={{
+textAlign:"center",
+marginTop:10,
+fontWeight:"700",
+color:"#16A34A",
+}}
+>
+Your consultation turn is ready.
+</Text>
+)}
+            <Text
+  style={{
+    textAlign: "center",
+    marginTop: 10,
+    color: "#666",
+    fontSize: 16,
+  }}
+>
+  Please wait until your queue number is called for consultation.
+</Text>
           </View>
 
           <View style={styles.card}>
@@ -226,6 +252,63 @@ export default function LiveQueueScreen() {
             <Text style={styles.waitMinutes}>
               {queue.estimated_wait_minutes} min
             </Text>
+            <View
+  style={{
+    height: 12,
+    backgroundColor: "#ddd",
+    borderRadius: 8,
+    marginTop: 18,
+  }}
+>
+  <View
+    style={{
+      height: 12,
+      width: `${queue.progress_percent || 0}%`,
+      backgroundColor: "#22c55e",
+      borderRadius: 8,
+    }}
+  />
+</View>
+
+<Text
+  style={{
+    textAlign: "center",
+    marginTop: 8,
+    fontWeight: "700",
+  }}
+>
+  {queue.progress_percent || 0}% Complete
+</Text>
+ {queue.people_ahead === 0 &&
+queue.current_serving === queue.your_number && (
+  <View
+    style={{
+      backgroundColor: "#16A34A",
+      padding: 18,
+      borderRadius: 12,
+      marginTop: 20,
+    }}
+  >
+    <Text
+      style={{
+        color: "#fff",
+        fontWeight: "700",
+        fontSize: 18,
+      }}
+    >
+      🎉 It is now your turn.
+    </Text>
+
+    <Text
+      style={{
+        color: "#fff",
+        marginTop: 6,
+      }}
+    >
+      Please proceed to the consultation department.
+    </Text>
+  </View>
+)}
           </View>
 
           <View style={styles.card}>
@@ -234,8 +317,8 @@ export default function LiveQueueScreen() {
             </Text>
 
             <View style={styles.nextContainer}>
-              {queue.next_numbers.length > 0 ? (
-                queue.next_numbers.map(
+              {queue.next_numbers?.length ? (
+                queue.next_numbers?.map(
                   (num, index) => (
                     <View
                       key={index}

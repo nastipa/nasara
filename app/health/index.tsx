@@ -1,9 +1,65 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-
+import { supabase } from "../../lib/supabase";
 export default function HealthHome() {
-  const router = useRouter();
+
+const router = useRouter();
+
+const [isStaff,setIsStaff] = useState(false);
+
+
+useEffect(()=>{
+
+checkStaff();
+
+},[]);
+
+
+const checkStaff = async()=>{
+
+try{
+
+const {
+ data:{user}
+}=await supabase.auth.getUser();
+
+
+if(!user){
+ setIsStaff(false);
+ return;
+}
+
+
+const {data,error}=await supabase
+.from("hospital_department_staff")
+.select("id")
+.eq("user_id",user.id)
+.eq("active",true)
+.maybeSingle();
+
+
+if(error){
+
+console.log(error);
+setIsStaff(false);
+return;
+
+}
+
+
+setIsStaff(!!data);
+
+
+}catch(err){
+
+console.log(err);
+setIsStaff(false);
+
+}
+
+};
 
   const Card = ({
     icon,
@@ -89,6 +145,21 @@ export default function HealthHome() {
         subtitle="View your queue number and QR check-in."
         onPress={() => router.push("/health/my-queue")}
       />
+      {
+isStaff && (
+
+<Card
+  icon="time"
+  color="#f59e0b"
+  title="Staff Dashboard"
+  subtitle="Manage department queue and patients."
+  onPress={() =>
+    router.push("/health/department-staff-dashboard")
+  }
+/>
+
+)
+}
       <Card
   icon="document-text"
   color="#7c3aed"

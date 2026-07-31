@@ -18,8 +18,8 @@ type NotificationItem = {
   message: string;
   is_read: boolean;
   created_at: string;
+  type?: string;
 };
-
 export default function HealthNotifications() {
 
   const [notifications, setNotifications] =
@@ -124,7 +124,57 @@ export default function HealthNotifications() {
     return d.toLocaleString();
 
   };
+const getNotificationStyle = (
+  type?: string
+) => {
 
+  switch(type){
+
+    case "called":
+      return {
+        icon:"🔔",
+        color:"#16A34A",
+      };
+
+    case "consultation":
+      return {
+        icon:"🩺",
+        color:"#2563EB",
+      };
+
+    case "admitted":
+      return {
+        icon:"🏥",
+        color:"#7C3AED",
+      };
+
+    case "transferred":
+      return {
+        icon:"🚑",
+        color:"#F59E0B",
+      };
+
+    case "referral":
+      return {
+        icon:"📄",
+        color:"#DC2626",
+      };
+
+    case "discharged":
+      return {
+        icon:"✅",
+        color:"#16A34A",
+      };
+
+    default:
+      return {
+        icon:"📢",
+        color:"#6B7280",
+      };
+
+  }
+
+};
 
   const renderItem = ({
     item,
@@ -142,12 +192,32 @@ export default function HealthNotifications() {
 
       <View style={styles.headerRow}>
 
-        <Text
-          style={styles.title}
-        >
-          {item.title}
-        </Text>
+        <View
+style={{
+flexDirection:"row",
+alignItems:"center",
+flex:1,
+}}
+>
 
+<Text
+style={{
+fontSize:22,
+marginRight:8,
+}}
+>
+{
+getNotificationStyle(item.type).icon
+}
+</Text>
+
+<Text
+style={styles.title}
+>
+{item.title}
+</Text>
+
+</View>
 
         {!item.is_read && (
           <View
@@ -245,7 +315,7 @@ export default function HealthNotifications() {
             styles.subtitle
           }
         >
-          Hospital queue updates and alerts
+         Hospital consultation, referral and visit updates
         </Text>
 
       </View>

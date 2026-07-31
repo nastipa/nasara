@@ -248,16 +248,11 @@ const registerPatient = async () => {
 
     }
 
-
-    setPatient(json.patient);
+setPatient(json.patient);
 
 setShowRegister(false);
 
-
-// Automatically join OPD queue
-await joinOPDQueueAfterRegistration(
-  json.patient.id
-);
+setSelectedDepartment(null);
     setForm({
   full_name:"",
   phone:"",
@@ -289,77 +284,7 @@ await joinOPDQueueAfterRegistration(
   }
 
 };
-const joinOPDQueueAfterRegistration = async (
-  patientId:any
-) => {
 
-  try {
-
-    const {
-      data:{
-        session
-      }
-    } =
-    await supabase.auth.getSession();
-
-
-    const response =
-      await fetch(
-        `${API_URL}/hospital/join-queue`,
-        {
-          method:"POST",
-
-          headers:{
-            "Content-Type":
-              "application/json",
-
-            Authorization:
-              `Bearer ${session?.access_token}`,
-          },
-
-body: JSON.stringify({
-
-  patient_record_id: patientId,
-
-  condition:"OPD consultation",
-
-  priority_case: priorityCase
-
-})
-        }
-      );
-
-
-    const json =
-      await response.json();
-
-
-    if(!response.ok){
-
-      throw new Error(
-        json.error ||
-        "Queue creation failed"
-      );
-
-    }
-
-
-    // Show receipt data
-    setQueueReceipt(
-      json.booking
-    );
-
-
-  }catch(err:any){
-
-    showMessage(
-      "Queue Error",
-      err.message
-    );
-
-  }
-
-};
 const joinOPDQueue = async () => {
 
   if (!patient) {
@@ -369,7 +294,13 @@ const joinOPDQueue = async () => {
     );
     return;
   }
-
+if (!selectedDepartment) {
+  showMessage(
+    "Select Department",
+    "Please select a department before joining queue."
+  );
+  return;
+}
 
   try {
 
@@ -399,12 +330,18 @@ const joinOPDQueue = async () => {
           },
 
           body: JSON.stringify({
-   
+
   patient_record_id: patient.id,
 
-  condition: "OPD consultation",
-priority_case: priorityCase
-}),    }
+  department_id: selectedDepartment?.id,
+
+  condition:
+    `${selectedDepartment?.name || "OPD"} consultation`,
+
+  priority_case: priorityCase
+
+})
+}
       );
 
 
@@ -482,21 +419,7 @@ const loadDepartments = async () => {
         json.departments || []
       );
 
-      // Automatically select OPD
-      const opd =
-        json.departments?.find(
-          (item:any)=>
-          item.name
-          .toLowerCase()
-          ===
-          "opd"
-        );
-
-
-      if(opd){
-        setSelectedDepartment(opd);
-      }
-
+     setSelectedDepartment(null);
     }
 
 
@@ -702,7 +625,7 @@ joiningQueue
 <ActivityIndicator color="#fff" />
 :
 <Text style={styles.buttonText}>
-Join OPD Queue
+Join Department Queue
 </Text>
 }
 
@@ -927,7 +850,7 @@ Phone:
 <Text style={styles.receiptText}>
 Department:
 {" "}
-{selectedDepartment?.name || "OPD"}
+{queueReceipt?.department_name || selectedDepartment?.name}
 </Text>
 
 

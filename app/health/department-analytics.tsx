@@ -48,7 +48,6 @@ type Analytics = {
   discharged: number;
 
   emergency: number;
-  
 
   average_wait_minutes: number;
 
@@ -68,20 +67,6 @@ type Analytics = {
   children: number;
   adults: number;
   elderly: number;
-  consultation: number;
-
-transferred: number;
-
-referred: number;
-
-currently_admitted: number;
-
-departments: any[];
-
-hourly: {
-  hour: string;
-  patients: number;
-}[];
 };
 export default function HospitalAnalytics() {
 
@@ -96,7 +81,11 @@ const [selectedDate, setSelectedDate] =
 const [showDatePicker, setShowDatePicker] =
   useState(false);
 
+const [admittedPatients, setAdmittedPatients] =
+  useState(0);
 
+const [dischargedPatients, setDischargedPatients] =
+  useState(0);
   const [analytics, setAnalytics] =
   useState<Analytics>({
     total_patients:0,
@@ -104,6 +93,7 @@ const [showDatePicker, setShowDatePicker] =
 
     waiting:0,
     called:0,
+   
     completed:0,
 
     cancelled:0,
@@ -113,17 +103,6 @@ const [showDatePicker, setShowDatePicker] =
     discharged:0,
 
     emergency:0,
-    consultation:0,
-
-transferred:0,
-
-referred:0,
-
-currently_admitted:0,
-
-departments:[],
-
-hourly:[],
 
     average_wait_minutes:0,
 
@@ -143,7 +122,6 @@ hourly:[],
     children:0,
     adults:0,
     elderly:0,
-
   });
 
   const loadAnalytics =
@@ -195,7 +173,13 @@ hourly:[],
         setAnalytics(
           json.analytics
         );
-       
+        setAdmittedPatients(
+  json.analytics.admitted ?? 0
+);
+
+setDischargedPatients(
+  json.analytics.discharged ?? 0
+);
 
       } catch (err: any) {
 
@@ -307,7 +291,7 @@ hourly:[],
     >
 
       <Text style={styles.header}>
-        📊 Hospital Analytics
+        📊 Department Analytics
       </Text>
        <View
   style={styles.dateContainer}
@@ -360,8 +344,8 @@ hourly:[],
   )
 )}
       <Text style={styles.subtitle}>
-        Monitor today's hospital performance,
-        patient flow and waiting times.
+       Monitor your department's patient flow,
+queue performance and service efficiency.
       </Text>
 
       <View style={styles.grid}>
@@ -398,30 +382,7 @@ hourly:[],
   color="#0EA5E9"
   icon="bed"
 />
-<StatCard
-  title="Consultation"
-  value={analytics.consultation}
-  color="#3B82F6"
-  icon="medkit"
-/>
-<StatCard
-  title="Transferred"
-  value={analytics.transferred}
-  color="#8B5CF6"
-  icon="swap-horizontal"
-/>
-<StatCard
-  title="Referred"
-  value={analytics.referred}
-  color="#14B8A6"
-  icon="share-social"
-/>
-<StatCard
-  title="Currently Admitted"
-  value={analytics.currently_admitted}
-  color="#0284C7"
-  icon="bed"
-/>
+
 <StatCard
   title="Discharged"
   value={analytics.discharged}
@@ -493,41 +454,7 @@ Average Consultation
 </Text>
 
 </View>
-<View style={styles.row}>
 
-<Ionicons
-name="bed"
-size={22}
-color="#0284C7"
-/>
-
-<Text style={styles.rowText}>
-Currently Admitted
-</Text>
-
-<Text style={styles.rowValue}>
-{analytics.currently_admitted}
-</Text>
-
-</View>
-
-<View style={styles.row}>
-
-<Ionicons
-name="business"
-size={22}
-color="#2563EB"
-/>
-
-<Text style={styles.rowText}>
-Busiest Department
-</Text>
-
-<Text style={styles.rowValue}>
-{analytics.busiest_department ?? "-"}
-</Text>
-
-</View>
 
 <View style={styles.row}>
 
@@ -667,7 +594,7 @@ Peak Hour
 <View style={styles.summaryCard}>
 
   <Text style={styles.summaryTitle}>
-    Hospital Performance
+    Department Performance
   </Text>
 
   <View style={styles.row}>
@@ -687,30 +614,6 @@ Peak Hour
     </Text>
 
   </View>
-  <View style={styles.summaryCard}>
-
-<Text style={styles.summaryTitle}>
-Department Performance
-</Text>
-
-{analytics.departments.map((dept:any)=>(
-<View
-key={dept.department_id}
-style={styles.row}
->
-
-<Text style={styles.rowText}>
-{dept.department_name}
-</Text>
-
-<Text style={styles.rowValue}>
-{dept.patients} Patients
-</Text>
-
-</View>
-))}
-
-</View>
 
   <View style={styles.row}>
 

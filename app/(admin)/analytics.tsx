@@ -1,5 +1,3 @@
-import { useEffect, useState } from "react";
-
 import {
   ActivityIndicator,
   Dimensions,
@@ -10,1169 +8,2149 @@ import {
   View,
 } from "react-native";
 
-import { LineChart } from "react-native-chart-kit";
+import { useEffect, useState } from "react";
+
 
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
 import { supabase } from "../../lib/supabase";
 
+
 const screenWidth =
   Dimensions.get("window").width;
 
+
 export default function Analytics() {
-  const [loading, setLoading] =
-    useState(true);
 
-  const [data, setData] =
-    useState<any>({
-      users: 0,
-      newUsersToday: 0,
 
-      dau: 0,
-      wau: 0,
-      mau: 0,
+const [loading,setLoading] =
+useState(true);
 
-      stickiness: 0,
 
-      activeUsers: 0,
+const [data,setData] =
+useState<any>({
 
-      items: 0,
-      liveStreams: 0,
-      battles: 0,
 
-      revenue: 0,
+/*
+========================
+EXECUTIVE
+========================
+*/
 
-      boostRevenue: 0,
-      adsRevenue: 0,
-      battleRevenue: 0,
-      verificationRevenue: 0,
-      farms: 0,
-verifiedFarms: 0,
-boostedFarms: 0,
-deliveries: 0,
-deliveryRevenue: 0,
+users:0,
+newUsersToday:0,
 
-  
+dau:0,
+wau:0,
+mau:0,
 
-      growth: [],
-      labels: [],
+stickiness:0,
 
-      fraudScore: 0,
-      trustScore: 0,
+revenue:0,
 
-      fundingScore: 0,
-      valuation: 0,
+valuation:0,
+valuationText:"",
 
-      suspiciousUsers: [],
-      latestUsers: [],
+growthScore:0,
 
-      topUsers: [],
 
-      reports: 0,
-      bannedUsers: 0,
 
-      pitch: "",
-    });
+/*
+========================
+SOCIAL
+========================
+*/
 
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
+reels:0,
 
-  const loadAnalytics =
-    async () => {
-      try {
-        setLoading(true);
+liveStreams:0,
 
-        const today = new Date();
+groups:0,
 
-        const startToday =
-          new Date();
+messages:0,
 
-        startToday.setHours(
-          0,
-          0,
-          0,
-          0
-        );
+statuses:0,
 
-        const sevenDaysAgo =
-          new Date();
+followers:0,
 
-        sevenDaysAgo.setDate(
-          today.getDate() - 7
-        );
+translationUsage:0,
 
-        const thirtyDaysAgo =
-          new Date();
 
-        thirtyDaysAgo.setDate(
-          today.getDate() - 30
-        );
 
-        const last7: string[] =
-          [];
+/*
+========================
+MARKETPLACE
+========================
+*/
 
-        for (
-          let i = 6;
-          i >= 0;
-          i--
-        ) {
-          const d = new Date();
 
-          d.setDate(
-            today.getDate() - i
-          );
+items:0,
 
-          last7.push(
-            d
-              .toISOString()
-              .split("T")[0]
-          );
-        }
-      
-        /* ================= USERS ================= */
+verifiedSellers:0,
 
-        const {
-          data: usersData,
-        } = await supabase
-          .from("profiles")
-          .select(`
-            id,
-            full_name,
-            phone,
-            created_at,
-            phone_verified,
-            coins
-          `)
-          .order("created_at", {
-            ascending: false,
-          });
+offers:0,
 
-        const users =
-          usersData?.length || 0;
+auctions:0,
 
-        const newUsersToday =
-          usersData?.filter(
-            (u: any) => {
-              return (
-                new Date(
-                  u.created_at
-                ) >= startToday
-              );
-            }
-          ).length || 0;
+ads:0,
 
-        /* ================= EVENTS ================= */
+banners:0,
 
-        const {
-          data: analyticsData,
-        } = await supabase
-          .from("analytics_events")
-          .select(`
-            user_id,
-            created_at
-          `);
+promotions:0,
 
-        const activeUsers =
-          analyticsData?.length ||
-          0;
+boosts:0,
 
-        /* ================= DAU ================= */
 
-        const dauUsers =
-          new Set(
-            analyticsData
-              ?.filter(
-                (e: any) =>
-                  new Date(
-                    e.created_at
-                  ) >= startToday
-              )
-              .map(
-                (e: any) =>
-                  e.user_id
-              )
-          );
 
-        const dau =
-          dauUsers.size || 0;
+/*
+========================
+FARM
+========================
+*/
 
-        /* ================= WAU ================= */
 
-        const wauUsers =
-          new Set(
-            analyticsData
-              ?.filter(
-                (e: any) =>
-                  new Date(
-                    e.created_at
-                  ) >=
-                  sevenDaysAgo
-              )
-              .map(
-                (e: any) =>
-                  e.user_id
-              )
-          );
+farms:0,
 
-        const wau =
-          wauUsers.size || 0;
+verifiedFarms:0,
 
-        /* ================= MAU ================= */
+farmProducts:0,
 
-        const mauUsers =
-          new Set(
-            analyticsData
-              ?.filter(
-                (e: any) =>
-                  new Date(
-                    e.created_at
-                  ) >=
-                  thirtyDaysAgo
-              )
-              .map(
-                (e: any) =>
-                  e.user_id
-              )
-          );
 
-        const mau =
-          mauUsers.size || 0;
 
-        const stickiness =
-          mau > 0
-            ? (
-                (dau / mau) *
-                100
-              ).toFixed(1)
-            : 0;
+/*
+========================
+DELIVERY
+========================
+*/
 
-        /* ================= ITEMS ================= */
+deliveries:0,
 
-        const {
-          count: items,
-        } = await supabase
-          .from("items_live")
-          .select("*", {
-            count: "exact",
-            head: true,
-          });
-          /* ================= FARMS ================= */
+deliveryRevenue:0,
 
-const {
-  count: farms,
-} = await supabase
-  .from("farm_profiles")
-  .select("*", {
-    count: "exact",
-    head: true,
-  });
+
+
+/*
+========================
+HEALTH
+========================
+*/
+
+
+hospitals:0,
+
+patients:0,
+
+hospitalBookings:0,
+
+emergencySearches:0,
+
+
+
+/*
+========================
+UTILITIES
+========================
+*/
+
+
+utilityApplications:0,
+
+utilityRevenue:0,
+
+
+
+/*
+========================
+ELECTIONS
+========================
+*/
+
+
+publicBattles:0,
+
+elections:0,
+
+candidates:0,
+
+votes:0,
+
+
+
+/*
+========================
+MENTORSHIP
+========================
+*/
+
+
+mentors:0,
+
+students:0,
+
+sessions:0,
+
+
+
+/*
+========================
+TRUST
+========================
+*/
+
+
+reports:0,
+
+blockedUsers:0,
+
+fraudScore:0,
+
+trustScore:0,
+
+
+
+/*
+========================
+REFERRAL
+========================
+*/
+
+
+referrals:0,
+
+
+/*
+========================
+REVENUE
+========================
+*/
+
+
+adsRevenue:0,
+
+boostRevenue:0,
+
+promotionRevenue:0,
+
+auctionRevenue:0,
+
+
+/*
+========================
+CHART
+========================
+*/
+
+
+growth:[],
+
+labels:[],
+
+
+});
+
+
+
+
+
+useEffect(()=>{
+
+loadAnalytics();
+
+},[]);
+
+
+
+
+
+const countTable =
+async(
+table:string
+)=>{
 
 const {
-  count: verifiedFarms,
-} = await supabase
-  .from("farm_profiles")
-  .select("*", {
-    count: "exact",
-    head: true,
-  })
-  .eq("is_verified", true);
+count,
+error
+}=await supabase
+.from(table)
+.select("*",
+{
+count:"exact",
+head:true
+});
+
+
+if(error){
+
+console.log(
+table,
+error.message
+);
+
+return 0;
+
+}
+
+
+return count || 0;
+
+};
+
+
+
+
+
+
+const loadAnalytics =
+async()=>{
+
+
+try{
+
+
+setLoading(true);
+
+
+
+/*
+========================
+USERS
+========================
+*/
+
 
 const {
-  count: boostedFarms,
-} = await supabase
-  .from("farm_profiles")
-  .select("*", {
-    count: "exact",
-    head: true,
-  })
-  .eq("is_boosted", true);
+data:usersData
+}=await supabase
+.from("profiles")
+.select(
+`
+id,
+created_at,
+phone_verified
+`
+);
 
-/* ================= DELIVERIES ================= */
+
+
+const users =
+usersData?.length || 0;
+
+
+
+const today =
+new Date();
+
+today.setHours(
+0,
+0,
+0,
+0
+);
+
+
+
+const newUsersToday =
+usersData?.filter(
+(u:any)=>
+new Date(
+u.created_at
+)>=today
+).length || 0;
+
+
+
+
+
+/*
+========================
+ENGAGEMENT EVENTS
+========================
+*/
+
 
 const {
-  count: deliveries,
-} = await supabase
-  .from("deliveries")
-  .select("*", {
-    count: "exact",
-    head: true,
-  });
+data:events
+}=await supabase
+.from(
+"analytics_events"
+)
+.select(
+`
+user_id,
+created_at
+`
+);
+
+
+
+const dau =
+new Set(
+events
+?.filter(
+(e:any)=>
+new Date(
+e.created_at
+)>=today
+)
+.map(
+(e:any)=>
+e.user_id
+)
+).size;
+
+
+
+const sevenDays =
+new Date();
+
+
+sevenDays.setDate(
+sevenDays.getDate()-7
+);
+
+
+
+const wau =
+new Set(
+events
+?.filter(
+(e:any)=>
+new Date(
+e.created_at
+)>=sevenDays
+)
+.map(
+(e:any)=>
+e.user_id
+)
+).size;
+
+
+
+
+const thirtyDays =
+new Date();
+
+
+thirtyDays.setDate(
+thirtyDays.getDate()-30
+);
+
+
+
+const mau =
+new Set(
+events
+?.filter(
+(e:any)=>
+new Date(
+e.created_at
+)>=thirtyDays
+)
+.map(
+(e:any)=>
+e.user_id
+)
+).size;
+
+
+
+const stickiness =
+mau
+?
+Number(
+(
+dau/mau*100
+).toFixed(1)
+)
+:
+0;
+
+
+
+
+
+/*
+========================
+SOCIAL
+========================
+*/
+
+
+const reels =
+await countTable(
+"posts"
+);
+
+
+
+const liveStreams =
+await countTable(
+"live_streams"
+);
+
+
+
+const groups =
+await countTable(
+"groups"
+);
+
+
+
+const messages =
+await countTable(
+"messages"
+);
+
+
+
+const statuses =
+await countTable(
+"statuses"
+);
+
+
+
+
+
+/*
+========================
+MARKETPLACE
+========================
+*/
+
+
+const items =
+await countTable(
+"items_live"
+);
+
+
+
+const ads =
+await countTable(
+"ads"
+);
+
+
+
+const banners =
+await countTable(
+"banner"
+);
+
+
+
+const promotions =
+await countTable(
+"promoted"
+);
+
+
+
+const boosts =
+await countTable(
+"boosted"
+);
+
+
+
+const auctions =
+await countTable(
+"auctions"
+);
+
+
+
+const offers =
+await countTable(
+"offers"
+);
+
+
+
+
+
+/*
+========================
+FARM
+========================
+*/
+
+
+const farms =
+await countTable(
+"farm_profiles"
+);
+
+
+
+const verifiedFarms =
+await countTable(
+"farm_profiles"
+);
+
+
+
+
+
+/// ========================
+// DELIVERY
+// ========================
+
+const deliveries =
+await countTable(
+  "deliveries"
+);
+
 
 const {
-  data: deliveriesData,
-} = await supabase
-  .from("deliveries")
-  .select("amount");
+data:deliveryData
+}=await supabase
+.from("deliveries")
+.select("amount");
 
-        /* ================= LIVE STREAMS ================= */
-
-        const {
-          count: liveStreams,
-        } = await supabase
-          .from("live_streams")
-          .select("*", {
-            count: "exact",
-            head: true,
-          })
-          .eq("status", "live");
-
-        /* ================= BATTLES ================= */
-
-        const {
-          count: battles,
-        } = await supabase
-          .from("battles")
-          .select("*", {
-            count: "exact",
-            head: true,
-          });
-
-        /* ================= REPORTS ================= */
-
-        const {
-          count: reports,
-        } = await supabase
-          .from("reports")
-          .select("*", {
-            count: "exact",
-            head: true,
-          });
-
-        /* ================= BANNED USERS ================= */
-
-        const {
-          count: bannedUsers,
-        } = await supabase
-          .from("profiles")
-          .select("*", {
-            count: "exact",
-            head: true,
-          })
-          .eq("banned", true);
-
-        /* ================= GROWTH ================= */
-
-        let growth: number[] =
-          [];
-
-        for (let d of last7) {
-          const start =
-            new Date(d);
-
-          const end =
-            new Date(d);
-
-          end.setHours(
-            23,
-            59,
-            59
-          );
-
-          const count =
-            usersData?.filter(
-              (u: any) => {
-                const date =
-                  new Date(
-                    u.created_at
-                  );
-
-                return (
-                  date >=
-                    start &&
-                  date <= end
-                );
-              }
-            ).length || 0;
-
-          growth.push(count);
-        }
-
-        /* ================= FRAUD ================= */
-
-        const suspiciousUsers =
-          usersData?.filter(
-            (u: any) => {
-              return (
-                !u.phone_verified ||
-                !u.phone ||
-                u.phone.length <
-                  8
-              );
-            }
-          ) || [];
-
-        const fraudScore =
-          users > 0
-            ? suspiciousUsers.length /
-              users
-            : 0;
-
-        const trustScore =
-          Math.max(
-            0,
-            1 - fraudScore
-          );
-
-       /* ================= REVENUE ================= */
-
-const boostRevenue =
-  (boostedFarms || 0) * 50;
-
-const adsRevenue =
-  users * 3;
-
-const battleRevenue =
-  (battles || 0) * 20;
-
-const verificationRevenue =
-  (verifiedFarms || 0) * 100;
 
 const deliveryRevenue =
-  deliveriesData?.reduce(
-    (
-      sum: number,
-      d: any
-    ) =>
-      sum +
-      Number(d.amount || 0),
-    0
-  ) || 0;
+deliveryData?.reduce(
+(
+sum:number,
+item:any
+)=>
+sum +
+Number(item.amount || 0),
+0
+) || 0;
+
+
+
+// ========================
+// HEALTH MODULE
+// ========================
+
+
+const hospitals =
+await countTable(
+  "hospitals"
+);
+
+
+
+const patients =
+await countTable(
+  "patients"
+);
+
+
+
+const hospitalBookings =
+await countTable(
+  "hospital_bookings"
+);
+
+
+
+const emergencySearches =
+await countTable(
+  "emergency_requests"
+);
+
+
+
+
+
+// ========================
+// UTILITIES MODULE
+// ========================
+
+
+const utilityApplications =
+await countTable(
+  "utility_applications"
+);
+
+
+
+const {
+data:utilityData
+}=await supabase
+.from(
+"utility_applications"
+)
+.select(
+"application_fee"
+);
+
+
+
+const utilityRevenue =
+utilityData?.reduce(
+(
+sum:number,
+item:any
+)=>
+sum +
+Number(
+item.application_fee || 0
+),
+0
+)
+||
+0;
+
+
+
+
+
+// ========================
+// ELECTION MODULE
+// ========================
+
+
+const publicBattles =
+await countTable(
+"battles"
+);
+
+
+
+const elections =
+await countTable(
+"elections"
+);
+
+
+
+const candidates =
+await countTable(
+"candidates"
+);
+
+
+
+const votes =
+await countTable(
+"votes"
+);
+
+
+
+
+
+
+// ========================
+// MENTORSHIP MODULE
+// ========================
+
+
+const mentors =
+await countTable(
+"mentors"
+);
+
+
+
+const students =
+await countTable(
+"mentorship_students"
+);
+
+
+
+const sessions =
+await countTable(
+"mentorship_sessions"
+);
+
+
+
+
+
+// ========================
+// TRUST & SAFETY
+// ========================
+
+
+const reports =
+await countTable(
+"reports"
+);
+
+
+
+const blockedUsers =
+await countTable(
+"blocked_users"
+);
+
+
+
+const suspiciousUsers =
+usersData?.filter(
+(user:any)=>
+!user.phone_verified
+)
+.length || 0;
+
+
+
+const fraudScore =
+users > 0
+?
+Number(
+(
+suspiciousUsers /
+users *
+100
+)
+.toFixed(1)
+)
+:
+0;
+
+
+
+const trustScore =
+100 - fraudScore;
+
+
+
+
+
+
+// ========================
+// REFERRAL SYSTEM
+// ========================
+
+
+const referrals =
+await countTable(
+"referrals"
+);
+
+
+
+
+
+
+// ========================
+// REVENUE ENGINE
+// ========================
+
+
+/*
+These are estimated
+monetization calculations.
+Replace with real payments
+tables when available.
+*/
+
+
+const adsRevenue =
+ads * 3;
+
+
+
+const boostRevenue =
+boosts * 20;
+
+
+
+const promotionRevenue =
+promotions * 50;
+
+
+
+const auctionRevenue =
+auctions * 10;
+
+
+
+const battleRevenue =
+publicBattles * 20;
+
+
+
+const marketplaceRevenue =
+items * 5;
+
+
 
 const revenue =
-  boostRevenue +
-  adsRevenue +
-  battleRevenue +
-  verificationRevenue +
-  deliveryRevenue;
-        /* ================= TOP USERS ================= */
+adsRevenue +
+boostRevenue +
+promotionRevenue +
+auctionRevenue +
+battleRevenue +
+marketplaceRevenue +
+deliveryRevenue +
+utilityRevenue;
 
-        const topUsers =
-          [...(usersData || [])]
-            .sort(
-              (
-                a: any,
-                b: any
-              ) =>
-                (b.coins ||
-                  0) -
-                (a.coins || 0)
-            )
-            .slice(0, 5);
 
-        /* ================= FUNDING SCORE ================= */
 
-        const fundingScore =
-          calculateFundingScore(
-            {
-              users,
-              revenue,
-              trustScore,
-              dau,
-            }
-          );
 
-        /* ================= VALUATION ================= */
 
-let valuationUSD =
-  2000000;
 
-/* USERS */
+
+// ========================
+// VALUATION ENGINE
+// ========================
+
+
+let valuationUSD = 0;
+
+
+
+/*
+EARLY STAGE
+$10M - $30M
+
+Based on:
+- users
+- product
+- technology
+- market size
+*/
+
 
 valuationUSD +=
-  users * 1200;
+10000000;
 
-/* ENGAGEMENT */
 
-valuationUSD +=
-  dau * 3500;
 
 valuationUSD +=
-  mau * 1800;
+users * 150;
 
-/* MARKETPLACE */
 
-valuationUSD +=
-  (items || 0) * 900;
-
-/* FARMS */
 
 valuationUSD +=
-  (farms || 0) * 5000;
+dau * 3000;
+
+
 
 valuationUSD +=
-  (verifiedFarms || 0) *
-  15000;
+revenue * 20;
+
+
+
+
+
+/*
+STRONG GHANA TRACTION
+$50M - $150M
+
+Multiple verticals:
+- Marketplace
+- Health
+- Farm
+- Elections
+- Utilities
+*/
+
+
+if(
+users > 50000 ||
+revenue > 50000
+){
 
 valuationUSD +=
-  (boostedFarms || 0) *
-  10000;
+50000000;
 
-/* DELIVERIES */
-
-valuationUSD +=
-  (deliveries || 0) *
-  3000;
-
-/* LIVE */
-
-valuationUSD +=
-  (liveStreams || 0) *
-  5000;
-
-/* BATTLES */
-
-valuationUSD +=
-  (battles || 0) *
-  3000;
-
-/* REVENUE */
-
-valuationUSD +=
-  revenue * 25;
-
-/* TRUST */
-
-valuationUSD +=
-  trustScore * 1000000;
-
-if (
-  valuationUSD >
-  25000000
-) {
-  valuationUSD =
-    25000000;
 }
 
-const usdToGhs = 15.5;
+
+
+if(
+farms > 1000 ||
+hospitalBookings > 10000 ||
+items > 10000
+){
+
+valuationUSD +=
+50000000;
+
+}
+
+
+
+
+
+
+/*
+NATIONAL SCALE
+
+$200M+
+
+Conditions:
+
+- Millions users
+- Multiple revenue streams
+- National adoption
+*/
+
+
+if(
+users > 1000000 &&
+revenue > 1000000
+){
+
+valuationUSD =
+200000000;
+
+}
+
+
+
+
+
+const usdToGhs =
+15.5;
+
+
 
 const valuation =
-  Math.round(
-    valuationUSD *
-      usdToGhs
-  );
+Math.round(
+valuationUSD *
+usdToGhs
+);
+
+
 
 const valuationText =
-  `$${Math.round(
-    valuationUSD
-  ).toLocaleString()} (~GH₵ ${valuation.toLocaleString()})`;
-        /* ================= PITCH ================= */
+`$${Math.round(
+valuationUSD
+).toLocaleString()}
+(~GH₵ ${valuation.toLocaleString()})`;
 
-        const pitch =
-          generatePitch({
-            users,
-            revenue,
-            trustScore,
-            dau,
-          });
 
-        setData({
-          users,
-          newUsersToday,
 
-          dau,
-          wau,
-          mau,
 
-          stickiness,
 
-          activeUsers,
 
-          items,
-          liveStreams,
-          battles,
+// ========================
+// FINAL STATE UPDATE
+// ========================
 
-          revenue,
 
-          boostRevenue,
-          adsRevenue,
-          battleRevenue,
-          verificationRevenue,
-          farms,
+setData({
+
+users,
+newUsersToday,
+
+
+dau,
+wau,
+mau,
+
+stickiness,
+
+
+reels,
+
+liveStreams,
+
+groups,
+
+messages,
+
+statuses,
+
+
+items,
+
+ads,
+
+banners,
+
+promotions,
+
+boosts,
+
+auctions,
+
+offers,
+
+
+farms,
+
 verifiedFarms,
-boostedFarms,
+
+
 deliveries,
+
 deliveryRevenue,
-          
 
-          growth,
 
-          labels: last7.map(
-            (d) =>
-              d.slice(5)
-          ),
 
-          fraudScore,
-          trustScore,
+hospitals,
 
-          fundingScore,
-          valuation,
-          valuationText,
-          suspiciousUsers,
-          latestUsers:
-            usersData?.slice(
-              0,
-              20
-            ) || [],
+patients,
 
-          topUsers,
+hospitalBookings,
 
-          reports,
-          bannedUsers,
+emergencySearches,
 
-          pitch,
-        });
-      } catch (e) {
-        console.log(
-          "Analytics error:",
-          e
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
 
-  /* ================= EXPORT PDF ================= */
 
-  const generatePitchPDF =
-    async () => {
-      const html = `
-      <html>
-      <body style="font-family:sans-serif;padding:20px;">
-        <h1>Nasara Investor Report</h1>
+utilityApplications,
 
-        <h2>Core Metrics</h2>
+utilityRevenue,
 
-        <p>Total Users: ${data.users}</p>
-        <p>DAU: ${data.dau}</p>
-        <p>WAU: ${data.wau}</p>
-        <p>MAU: ${data.mau}</p>
 
-        <p>Revenue: GH₵ ${data.revenue}</p>
 
-        <p>Valuation: GH₵ ${data.valuation}</p>
+publicBattles,
 
-        <h2>Trust</h2>
+elections,
 
-        <p>Trust Score: ${(
-          data.trustScore *
-          100
-        ).toFixed(1)}%</p>
+candidates,
 
-        <p>Fraud Score: ${(
-          data.fraudScore *
-          100
-        ).toFixed(1)}%</p>
+votes,
 
-        <h2>Revenue Breakdown</h2>
 
-        <p>Boost Revenue: GH₵ ${data.boostRevenue}</p>
 
-        <p>Ads Revenue: GH₵ ${data.adsRevenue}</p>
+mentors,
 
-        <p>Battle Revenue: GH₵ ${data.battleRevenue}</p>
+students,
 
-        <p>Verification Revenue: GH₵ ${data.verificationRevenue}</p>
+sessions,
 
-        <h2>Top Users</h2>
 
-        ${data.topUsers
-          .map(
-            (u: any) =>
-              <p>${u.full_name}</p>
-          )
-          .join("")}
 
-      </body>
-      </html>
-      `;
+reports,
 
-      const { uri } =
-        await Print.printToFileAsync(
-          {
-            html,
-          }
-        );
+blockedUsers,
 
-      await Sharing.shareAsync(
-        uri
-      );
-    };
+fraudScore,
 
-  if (loading) {
-    return (
-      <View
-        style={styles.center}
-      >
-        <ActivityIndicator />
-      </View>
-    );
-  }
+trustScore,
+
+
+
+referrals,
+
+
+
+adsRevenue,
+
+boostRevenue,
+
+promotionRevenue,
+
+auctionRevenue,
+
+
+
+revenue,
+
+
+valuation,
+
+valuationText,
+
+
+});
+
+
+setData({
+
+users,
+newUsersToday,
+
+dau,
+wau,
+mau,
+
+stickiness,
+
+reels,
+liveStreams,
+groups,
+messages,
+statuses,
+
+items,
+ads,
+banners,
+promotions,
+boosts,
+auctions,
+offers,
+
+farms,
+verifiedFarms,
+
+});
+
+
+
+}
+catch(error){
+
+console.log(
+"Analytics error",
+error
+);
+
+}
+finally{
+
+setLoading(false);
+
+}
+
+
+};
+if (loading) {
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color="#22c55e" />
+      <Text style={styles.text}>
+        Loading Analytics...
+      </Text>
+    </View>
+  );
+}
+const generatePitchPDF =
+async()=>{
+
+const html = `
+
+<html>
+
+<body style="
+font-family:Arial;
+padding:30px;
+">
+
+<h1>
+NASARA INVESTOR REPORT
+</h1>
+
+
+<h2>
+Executive Overview
+</h2>
+
+
+<p>
+Users:
+${data.users}
+</p>
+
+
+<p>
+DAU:
+${data.dau}
+</p>
+
+
+<p>
+MAU:
+${data.mau}
+</p>
+
+
+<p>
+Revenue:
+GH₵ ${data.revenue}
+</p>
+
+
+
+<h2>
+Platform Verticals
+</h2>
+
+
+<p>
+Marketplace:
+${data.items} products
+</p>
+
+
+<p>
+Farms:
+${data.farms}
+</p>
+
+
+<p>
+Hospitals:
+${data.hospitals}
+</p>
+
+
+<p>
+Utility Applications:
+${data.utilityApplications}
+</p>
+
+
+<p>
+Elections:
+${data.elections}
+</p>
+
+
+<p>
+Mentorship Students:
+${data.students}
+</p>
+
+
+
+<h2>
+Revenue Streams
+</h2>
+
+
+<p>
+Ads:
+GH₵ ${data.adsRevenue}
+</p>
+
+
+<p>
+Boosting:
+GH₵ ${data.boostRevenue}
+</p>
+
+
+<p>
+Promotions:
+GH₵ ${data.promotionRevenue}
+</p>
+
+
+<p>
+Delivery:
+GH₵ ${data.deliveryRevenue}
+</p>
+
+
+
+<h2>
+Investor Valuation
+</h2>
+
+
+<h3>
+${data.valuationText}
+</h3>
+
+
+
+<p>
+
+Early Stage:
+US$10M - US$30M
+
+<br/>
+
+Strong Ghana Traction:
+US$50M - US$150M
+
+<br/>
+
+National Scale:
+US$200M+
+
+</p>
+
+
+
+<h2>
+Trust
+</h2>
+
+
+<p>
+Trust Score:
+${data.trustScore}%
+
+</p>
+
+
+<p>
+Fraud Score:
+${data.fraudScore}%
+
+</p>
+
+
+
+</body>
+
+</html>
+
+`;
+
+
+const {uri} =
+await Print.printToFileAsync({
+html
+});
+
+
+await Sharing.shareAsync(uri);
+
+
+};
+
+// ADD THESE HERE
+
+function Section({
+  title,
+  children,
+}: any) {
 
   return (
-    <ScrollView
-      style={styles.container}
-    >
-      <Text style={styles.title}>
-        📊 NASARA ANALYTICS
-      </Text>
-
-      {/* ================= MAIN ================= */}
-
-      <View style={styles.grid}>
-        <Card
-          title="Users"
-          value={data.users}
-        />
-
-        <Card
-          title="New Today"
-          value={
-            data.newUsersToday
-          }
-        />
-
-        <Card
-          title="Revenue"
-          value={`GH₵ ${data.revenue}`}
-        />
-
-       <Card
-  title="Valuation"
-  value={data.valuationText}
-/>
-      </View>
-
-      {/* ================= DAU WAU MAU ================= */}
+    <View>
 
       <Text style={styles.section}>
-        Engagement
+        {title}
       </Text>
 
-      <View style={styles.grid}>
-        <Card
-          title="DAU"
-          value={data.dau}
-        />
+      {children}
 
-        <Card
-          title="WAU"
-          value={data.wau}
-        />
-
-        <Card
-          title="MAU"
-          value={data.mau}
-        />
-
-        <Card
-          title="Stickiness"
-          value={`${data.stickiness}%`}
-        />
-      </View>
-
-      {/* ================= LIVE ================= */}
-
-      <Text style={styles.section}>
-        Live Metrics
-      </Text>
-
-      <View style={styles.grid}>
-        <Card
-          title="Live Streams"
-          value={
-            data.liveStreams
-          }
-        />
-
-        <Card
-          title="Battles"
-          value={data.battles}
-        />
-
-        <Card
-          title="Reports"
-          value={data.reports}
-        />
-
-        <Card
-          title="Banned"
-          value={
-            data.bannedUsers
-          }
-        />
-      </View>
-       <Text style={styles.section}>
-  Farm & Delivery
-</Text>
-
-<View style={styles.grid}>
-  <Card
-    title="Farms"
-    value={data.farms}
-  />
-
-  <Card
-    title="Verified Farms"
-    value={
-      data.verifiedFarms
-    }
-  />
-
-  <Card
-    title="Boosted Farms"
-    value={
-      data.boostedFarms
-    }
-  />
-
-  <Card
-    title="Deliveries"
-    value={
-      data.deliveries
-    }
-  />
-</View>
-      {/* ================= CHART ================= */}
-
-      <Text style={styles.section}>
-        User Growth
-      </Text>
-
-      <LineChart
-        data={{
-          labels: data.labels,
-          datasets: [
-            {
-              data:
-                data.growth,
-            },
-          ],
-        }}
-        width={
-          screenWidth - 40
-        }
-        height={220}
-        chartConfig={{
-          backgroundGradientFrom:
-            "#020617",
-
-          backgroundGradientTo:
-            "#020617",
-
-          color: (
-            o = 1
-          ) =>
-            `rgba(34,197,94,${o})`,
-        }}
-        bezier
-      />
-
-      {/* ================= TRUST ================= */}
-
-      <View style={styles.box}>
-        <Text
-          style={styles.white}
-        >
-          Fraud Score:{" "}
-          {(
-            data.fraudScore *
-            100
-          ).toFixed(1)}
-          %
-        </Text>
-
-        <Text
-          style={styles.white}
-        >
-          Trust Score:{" "}
-          {(
-            data.trustScore *
-            100
-          ).toFixed(1)}
-          %
-        </Text>
-
-        <Text
-          style={styles.white}
-        >
-          Funding Score:{" "}
-          {
-            data.fundingScore
-          }
-          /100
-        </Text>
-      </View>
-
-      {/* ================= REVENUE ================= */}
-
-      <Text style={styles.section}>
-        Revenue Breakdown
-      </Text>
-
-      <View style={styles.grid}>
-        <Card
-          title="Boost"
-          value={`GH₵ ${data.boostRevenue}`}
-        />
-
-        <Card
-          title="Ads"
-          value={`GH₵ ${data.adsRevenue}`}
-        />
-
-        <Card
-          title="Battles"
-          value={`GH₵ ${data.battleRevenue}`}
-        />
-
-        <Card
-          title="Verify"
-          value={`GH₵ ${data.verificationRevenue}`}
-        />
-      </View>
-
-      {/* ================= TOP USERS ================= */}
-
-      <View style={styles.box}>
-        <Text
-          style={styles.white}
-        >
-          🏆 Top Users
-        </Text>
-
-        {data.topUsers.map(
-          (u: any) => (
-            <View
-              key={u.id}
-              style={{
-                marginTop: 10,
-              }}
-            >
-              <Text
-                style={
-                  styles.text
-                }
-              >
-                {
-                  u.full_name
-                }
-              </Text>
-            </View>
-          )
-        )}
-      </View>
-
-      {/* ================= LATEST USERS ================= */}
-
-      <View style={styles.box}>
-        <Text
-          style={styles.white}
-        >
-          Latest Users
-        </Text>
-
-        {data.latestUsers.map(
-          (u: any) => (
-            <View
-              key={u.id}
-              style={{
-                marginTop: 8,
-              }}
-            >
-              <Text
-                style={
-                  styles.text
-                }
-              >
-                {
-                  u.full_name
-                }
-              </Text>
-
-              <Text
-                style={
-                  styles.text
-                }
-              >
-                {u.phone}
-              </Text>
-            </View>
-          )
-        )}
-      </View>
-
-      {/* ================= EXPORT ================= */}
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={
-          generatePitchPDF
-        }
-      >
-        <Text
-          style={
-            styles.buttonText
-          }
-        >
-          📄 Export Report
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
+
 }
 
-function calculateFundingScore(
-  d: any
-) {
-  let score = 70;
 
-  if (d.users > 100)
-    score += 10;
-
-  if (d.revenue > 500)
-    score += 10;
-
-  if (d.trustScore > 0.8)
-    score += 10;
-
-  if (d.dau > 20)
-    score += 10;
-
-  return Math.min(
-    100,
-    score
-  );
-}
-
-function generatePitch(
-  d: any
-) {
-  return `
-  Nasara has ${d.users} users,
-  ${d.dau} daily active users,
-  and growing monetization with
-  strong creator economy potential.
-  `;
-}
 
 function Card({
   title,
   value,
 }: any) {
+
   return (
+
     <View style={styles.card}>
-      <Text style={styles.sub}>
+
+      <Text style={styles.cardTitle}>
         {title}
       </Text>
 
-      <Text style={styles.white}>
+      <Text style={styles.cardValue}>
         {value}
       </Text>
+
     </View>
+
   );
+
+}
+
+
+
+
+
+return (
+
+<ScrollView
+style={styles.container}
+contentContainerStyle={{
+paddingBottom:50
+}}
+>
+
+
+<Text style={styles.title}>
+📊 NASARA ADMIN INTELLIGENCE
+</Text>
+
+
+<Text style={styles.subtitle}>
+Complete ecosystem performance,
+growth analytics and investor valuation.
+</Text>
+
+
+
+{/* ================= EXECUTIVE ================= */}
+
+
+<Section title="🚀 Executive Overview">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Users"
+value={data.users}
+/>
+
+
+<Card
+title="New Today"
+value={data.newUsersToday}
+/>
+
+
+<Card
+title="DAU"
+value={data.dau}
+/>
+
+
+<Card
+title="MAU"
+value={data.mau}
+/>
+
+
+<Card
+title="Revenue"
+value={`GH₵ ${data.revenue}`}
+/>
+
+
+<Card
+title="Valuation"
+value={data.valuationText}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+{/* ================= SOCIAL ================= */}
+
+
+<Section title="💬 Social Intelligence">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Reels"
+value={data.reels}
+/>
+
+
+<Card
+title="Live Streams"
+value={data.liveStreams}
+/>
+
+
+<Card
+title="Groups"
+value={data.groups}
+/>
+
+
+<Card
+title="Messages"
+value={data.messages}
+/>
+
+
+<Card
+title="Statuses"
+value={data.statuses}
+/>
+
+
+<Card
+title="Trust Score"
+value={`${data.trustScore}%`}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+{/* ================= MARKETPLACE ================= */}
+
+
+<Section title="🛒 Friday Market">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Products"
+value={data.items}
+/>
+
+
+<Card
+title="Verified Sellers"
+value={data.verifiedSellers}
+/>
+
+
+<Card
+title="Offers"
+value={data.offers}
+/>
+
+
+<Card
+title="Auctions"
+value={data.auctions}
+/>
+
+
+<Card
+title="Ads"
+value={data.ads}
+/>
+
+
+<Card
+title="Boosts"
+value={data.boosts}
+/>
+
+
+<Card
+title="Promotions"
+value={data.promotions}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= FARM ================= */}
+
+
+<Section title="🌱 Agriculture">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Farms"
+value={data.farms}
+/>
+
+
+<Card
+title="Verified Farms"
+value={data.verifiedFarms}
+/>
+
+
+<Card
+title="Farm Products"
+value={data.farmProducts}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+{/* ================= DELIVERY ================= */}
+
+
+<Section title="🚚 Delivery System">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Deliveries"
+value={data.deliveries}
+/>
+
+
+<Card
+title="Delivery Revenue"
+value={`GH₵ ${data.deliveryRevenue}`}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= HEALTH ================= */}
+
+
+<Section title="🏥 Health">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Hospitals"
+value={data.hospitals}
+/>
+
+
+<Card
+title="Patients"
+value={data.patients}
+/>
+
+
+<Card
+title="Queue Bookings"
+value={data.hospitalBookings}
+/>
+
+
+<Card
+title="Emergency Searches"
+value={data.emergencySearches}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= UTILITIES ================= */}
+
+
+<Section title="⚡ Utilities">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Applications"
+value={data.utilityApplications}
+/>
+
+
+<Card
+title="Revenue"
+value={`GH₵ ${data.utilityRevenue}`}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= ELECTION ================= */}
+
+
+<Section title="🗳️ Elections">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Public Battles"
+value={data.publicBattles}
+/>
+
+
+<Card
+title="Elections"
+value={data.elections}
+/>
+
+
+<Card
+title="Candidates"
+value={data.candidates}
+/>
+
+
+<Card
+title="Votes"
+value={data.votes}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= MENTORSHIP ================= */}
+
+
+<Section title="🎓 Mentorship">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Mentors"
+value={data.mentors}
+/>
+
+
+<Card
+title="Students"
+value={data.students}
+/>
+
+
+<Card
+title="Sessions"
+value={data.sessions}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= TRUST ================= */}
+
+
+<Section title="🛡️ Trust & Safety">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Reports"
+value={data.reports}
+/>
+
+
+<Card
+title="Blocked Users"
+value={data.blockedUsers}
+/>
+
+
+<Card
+title="Fraud Score"
+value={`${data.fraudScore}%`}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= REFERRAL ================= */}
+
+
+<Section title="🎁 Referral Engine">
+
+
+<View style={styles.grid}>
+
+
+<Card
+title="Referrals"
+value={data.referrals}
+/>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+
+{/* ================= VALUATION ================= */}
+
+
+
+<Section title="💰 Investor Valuation">
+
+
+<View style={styles.valuationBox}>
+
+
+<Text style={styles.valuationTitle}>
+Current Estimated Value
+</Text>
+
+
+<Text style={styles.valuation}>
+{data.valuationText}
+</Text>
+
+
+
+<Text style={styles.text}>
+
+🚀 Early Stage:
+{"\n"}
+US$10M - US$30M
+
+{"\n\n"}
+
+🇬🇭 Strong Ghana Traction:
+{"\n"}
+US$50M - US$150M
+
+
+{"\n\n"}
+
+🌍 National Scale:
+{"\n"}
+US$200M+
+
+</Text>
+
+
+</View>
+
+
+</Section>
+
+
+
+
+
+
+
+<TouchableOpacity
+style={styles.button}
+onPress={generatePitchPDF}
+>
+
+
+<Text style={styles.buttonText}>
+📄 Export Investor Report
+</Text>
+
+
+</TouchableOpacity>
+
+
+
+</ScrollView>
+
+);
 }
 
 const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor:
-        "#020617",
-      padding: 20,
-    },
+StyleSheet.create({
 
-    title: {
-      color: "#22c55e",
-      fontSize: 20,
-      fontWeight: "bold",
-      marginBottom: 20,
-    },
+container:{
+flex:1,
+backgroundColor:"#020617",
+padding:20,
+},
 
-    section: {
-      color: "#fff",
-      fontSize: 18,
-      marginTop: 20,
-      marginBottom: 10,
-      fontWeight: "bold",
-    },
 
-    grid: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      justifyContent:
-        "space-between",
-    },
+center:{
+flex:1,
+justifyContent:"center",
+alignItems:"center",
+backgroundColor:"#020617",
+},
 
-    card: {
-      backgroundColor:
-        "#0f172a",
 
-      padding: 14,
 
-      borderRadius: 12,
+title:{
+fontSize:26,
+fontWeight:"900",
+color:"#22c55e",
+marginBottom:8,
+},
 
-      width: "48%",
 
-      marginBottom: 12,
-    },
+subtitle:{
+color:"#94a3b8",
+fontSize:15,
+marginBottom:20,
+lineHeight:22,
+},
 
-    sub: {
-      color: "#9ca3af",
-      marginBottom: 6,
-    },
 
-    white: {
-      color: "#fff",
-      fontWeight: "bold",
-    },
 
-    text: {
-      color: "#cbd5e1",
-    },
+section:{
+fontSize:20,
+fontWeight:"800",
+color:"#fff",
+marginTop:25,
+marginBottom:15,
+},
 
-    box: {
-      backgroundColor:
-        "#0f172a",
 
-      padding: 14,
 
-      borderRadius: 12,
+grid:{
+flexDirection:"row",
+flexWrap:"wrap",
+justifyContent:"space-between",
+},
 
-      marginTop: 15,
-    },
 
-    button: {
-      backgroundColor:
-        "#22c55e",
 
-      padding: 14,
+card:{
+width:"48%",
+backgroundColor:"#0f172a",
+borderRadius:16,
+padding:16,
+marginBottom:14,
 
-      borderRadius: 12,
+borderWidth:1,
+borderColor:"#1e293b",
+},
 
-      marginTop: 20,
 
-      alignItems:
-        "center",
 
-      marginBottom: 50,
-    },
+cardTitle:{
+fontSize:14,
+color:"#94a3b8",
+marginBottom:8,
+},
 
-    buttonText: {
-      color: "#000",
-      fontWeight: "bold",
-    },
 
-    center: {
-      flex: 1,
-      justifyContent:
-        "center",
 
-      alignItems:
-        "center",
+cardValue:{
+fontSize:22,
+fontWeight:"900",
+color:"#22c55e",
+},
 
-      backgroundColor:
-        "#020617",
-    },
-  });
+
+
+valuationBox:{
+backgroundColor:"#052e16",
+padding:20,
+borderRadius:20,
+borderWidth:1,
+borderColor:"#22c55e",
+},
+
+
+
+valuationTitle:{
+fontSize:16,
+color:"#bbf7d0",
+},
+
+
+
+valuation:{
+fontSize:28,
+fontWeight:"900",
+color:"#22c55e",
+marginVertical:15,
+},
+
+
+
+text:{
+color:"#cbd5e1",
+fontSize:15,
+lineHeight:24,
+},
+
+
+
+button:{
+backgroundColor:"#22c55e",
+padding:16,
+borderRadius:15,
+marginTop:30,
+alignItems:"center",
+marginBottom:40,
+},
+
+
+
+buttonText:{
+color:"#020617",
+fontWeight:"900",
+fontSize:16,
+},
+
+
+
+});
