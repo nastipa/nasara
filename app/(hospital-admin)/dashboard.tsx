@@ -707,23 +707,21 @@ const goToCreateDepartmentStaff = () => {
 };
 
 
-
-
-
-
-
-const goToPatientRegistration = () => {
+const goToVoiceRecording = () => {
 
   router.push(
-    "/(hospital-admin)/patient-registration"
+    "/(hospital-admin)/voice-recording"
   );
 
 };
 
+const goToVoiceBoard = () => {
 
+  router.push(
+    "/(hospital-admin)/voice-board"
+  );
 
-
-
+};
 
 const goToWorkingHours = () => {
 
@@ -773,10 +771,6 @@ const goToDepartmentLiveBoard = () => {
 };
 
 
-
-
-
-
 const goToNotifications = () => {
 
   router.push(
@@ -784,10 +778,6 @@ const goToNotifications = () => {
   );
 
 };
-
-
-
-
 
 
 const goToCreateHospitalAdmin = () => {
@@ -1174,7 +1164,29 @@ onPress={goToCreateDepartmentStaff}
 
 />
 
+<QuickAction
 
+title="Voice Board"
+
+icon="volume-high"
+
+color="#0891B2"
+
+onPress={goToVoiceBoard}
+
+/>
+
+<QuickAction
+
+title="Voice Recording"
+
+icon="mic"
+
+color="#0891B2"
+
+onPress={goToVoiceRecording}
+
+/>
 
 <QuickAction
 
@@ -1223,11 +1235,6 @@ onPress={goToWorkingHours}
 )
 
 }
-
-
-
-
-
 
 
 

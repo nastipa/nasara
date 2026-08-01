@@ -1,3 +1,5 @@
+import { useAudioPlayer } from "expo-audio";
+import * as Speech from "expo-speech";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -93,6 +95,7 @@ type Booking = {
   };
 };
 export default function HospitalQueue() {
+  const player = useAudioPlayer();
   const [queue, setQueue] =
     useState<Booking[]>([]);
     const [suggestions, setSuggestions] =
@@ -235,6 +238,83 @@ setQueue(sortedQueue);
   return true;
 
 };
+const playAnnouncement = async (
+  announcement:any
+)=>{
+
+try{
+
+if(!announcement){
+return;
+}
+
+
+const queueNumber =
+announcement.queue_number || "001";
+
+
+// Speak queue number first
+await new Promise<void>((resolve)=>{
+
+Speech.speak(
+queueNumber,
+{
+language:"en-US",
+rate:0.75,
+pitch:1,
+
+onDone:()=>resolve(),
+onError:()=>resolve(),
+
+}
+);
+
+});
+
+
+// Play recorded languages
+
+if(
+announcement.voices &&
+announcement.voices.length
+){
+
+for(
+const voice of announcement.voices
+){
+
+if(voice.audio_url){
+
+player.replace({
+uri:voice.audio_url
+});
+
+player.play();
+
+
+await new Promise(resolve =>
+setTimeout(resolve,5000)
+);
+
+
+}
+
+}
+
+}
+
+
+}
+catch(error){
+
+console.log(
+"VOICE PLAY ERROR",
+error
+);
+
+}
+
+};
 const updateStatus = async (
   bookingId: string,
   status:
@@ -285,20 +365,37 @@ const updateStatus = async (
             }),
           }
         );
-
+     
       const json =
         await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          json.error ||
-            "Unable to update booking."
-        );
-      }
+  throw new Error(
+    json.error ||
+      "Unable to update booking."
+  );
+}
 
-      loadQueue();
-      setUpdating(null);
+// Play voice immediately after calling patient
+if(
+status === "called" &&
+json.voiceAnnouncement
+){
 
+playAnnouncement(
+json.voiceAnnouncement
+);
+
+}
+if (!response.ok) {
+  throw new Error(
+    json.error ||
+      "Unable to update booking."
+  );
+}
+
+loadQueue();
+setUpdating(null);
     } catch (err: any) {
       setUpdating(null);
       showMessage(

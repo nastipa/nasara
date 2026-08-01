@@ -190,6 +190,7 @@ const loadUtilisation = async () => {
       color: "#0891B2",
       route: "/health/department-registration",
     },
+   
     {
       title: "Queue Board",
       subtitle: "Manage today's patient queue",
@@ -218,20 +219,7 @@ const loadUtilisation = async () => {
       color: "#7C3AED",
       route: "/health/department-analytics",
     },
-    {
- title:"Voice Queue Board",
- subtitle:"Automatic patient calling system",
- icon:"volume-high",
- color:"#16A34A",
- route:"/health/department-voice-board",
-},
-{
-  title:"Voice Recording",
-  subtitle:"Record local language queue announcements",
-  icon:"mic",
-  color:"#2563EB",
-  route:"/health/voice-recording",
-},
+   
   ];
   return (
     <SafeAreaView style={styles.container}>
@@ -280,7 +268,12 @@ const loadUtilisation = async () => {
 
         {/* Quick Statistics */}
 
-        <View style={styles.statsRow}>
+       <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.statsRow}
+>
+
 
 <View style={styles.statCard}>
 <Text style={styles.statValue}>
@@ -356,7 +349,7 @@ Called
   </Text>
 </View>
 
-</View>
+</ScrollView>
 
         <View style={styles.metricCard}>
           <View style={styles.metricRow}>
@@ -495,21 +488,20 @@ const styles = StyleSheet.create({
   },
 
   statsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginBottom: 18,
-  },
+  paddingHorizontal: 20,
+  marginBottom: 18,
+  alignItems: "stretch",
+},
 
   statCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    paddingVertical: 18,
-    alignItems: "center",
-    marginHorizontal: 5,
-    elevation: 2,
-  },
+  width: 120,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 18,
+  paddingVertical: 18,
+  alignItems: "center",
+  marginRight: 12,
+  elevation: 2,
+},
 
   statValue: {
     fontSize: 24,

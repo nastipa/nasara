@@ -399,7 +399,7 @@ const loadDepartments = async () => {
 
     const response =
       await fetch(
-        `${API_URL}/hospital/departments`,
+        `${API_URL}/hospital/staff/departments`,
         {
           headers:{
             Authorization:
