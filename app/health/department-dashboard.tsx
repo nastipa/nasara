@@ -818,7 +818,7 @@ const loadReferralDepartments = async (
   }}
 >
   {item.status === "consultation"
-    ? "🟣 Consultation in progress"
+    ? ""
     : item.status === "admitted"
     ? "🟢 Patient Admitted"
     : item.status === "discharged"
@@ -831,8 +831,11 @@ const loadReferralDepartments = async (
 </Text>
 
 )}
-     <View style={styles.actions}>
-
+     <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.actions}
+>
   {item.status === "waiting" && (
 
     <TouchableOpacity
@@ -972,7 +975,7 @@ loadHospitals();
 
 )}
 
-</View>
+</ScrollView>
       
     </View>
   );
@@ -1379,7 +1382,6 @@ backgroundColor:"#9333EA",
 paddingHorizontal:18,
 paddingVertical:10,
 borderRadius:10,
-marginLeft:10,
 },
 
 departmentButton:{
@@ -1410,6 +1412,9 @@ input:{
   borderRadius:10,
   padding:12,
   marginTop:15,
+},
+patientCard: {
+  overflow: "visible",
 },
 
 confirmButton:{
@@ -1444,22 +1449,6 @@ confirmButton:{
     fontWeight: "700",
     color: "#2563EB",
     marginBottom: 5,
-  },
-
-  patientCard: {
-    backgroundColor: "#FFFFFF",
-    marginHorizontal: 16,
-    marginBottom: 14,
-    borderRadius: 16,
-    padding: 18,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 5,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    elevation: 2,
   },
 
   patientHeader: {
@@ -1533,9 +1522,11 @@ transferCard: {
 
 
   actions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
+  flexDirection: "row",
+  alignItems: "center",
+  paddingRight: 20,
+  gap: 10,
+},
  departmentList:{
   maxHeight:250,
 },
@@ -1578,7 +1569,6 @@ backgroundColor:"#EA580C",
 paddingHorizontal:18,
 paddingVertical:10,
 borderRadius:10,
-marginLeft:10,
 },
   completeButton: {
     backgroundColor: "#7C3AED",
