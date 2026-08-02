@@ -253,21 +253,28 @@ const queueNumber =
 announcement.queue_number || "001";
 
 
-// Speak queue number first
-await new Promise<void>((resolve)=>{
+const department =
+announcement.department || "";
 
-Speech.speak(
-queueNumber,
-{
-language:"en-US",
-rate:0.75,
-pitch:1,
 
-onDone:()=>resolve(),
-onError:()=>resolve(),
+// Speak queue number + assigned department
+const departmentName =
+  announcement.department_name || "assigned department";
 
-}
-);
+
+await new Promise<void>((resolve) => {
+
+  Speech.speak(
+   ` ${queueNumber}, please proceed to ${departmentName}`,
+    {
+      language:"en-US",
+      rate:0.75,
+      pitch:1,
+
+      onDone:()=>resolve(),
+      onError:()=>resolve(),
+    }
+  );
 
 });
 

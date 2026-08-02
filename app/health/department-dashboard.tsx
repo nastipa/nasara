@@ -535,50 +535,36 @@ err.message
 };
 
 
-  const loadDepartments =
-useCallback(async()=>{
+  const loadDepartments = useCallback(async () => {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-try{
+    const response = await fetch(
+      `${API_URL}/hospital/staff/departments`,
+      {
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+      }
+    );
 
-const {
-data:{session}
-}
-=
-await supabase.auth.getSession();
+    const json = await response.json();
 
+    // Don't include the current department
+    const filtered =
+      (json.departments || []).filter(
+        (dept: any) =>
+          dept.id !== department_id
+      );
 
-const response =
-await fetch(
-`${API_URL}/hospital/departments`,
-{
-headers:{
-Authorization:
-`Bearer ${session?.access_token}`
-}
-}
-);
+    setDepartments(filtered);
 
-
-const json =
-await response.json();
-
-
-setDepartments(
-json.departments || []
-);
-
-
-}catch(err:any){
-
-showMessage(
-"Error",
-err.message
-);
-
-}
-
-
-},[]);
+  } catch (err: any) {
+    showMessage("Error", err.message);
+  }
+}, [department_id]);
 
 const transferPatient =
 async()=>{
@@ -894,7 +880,7 @@ const loadReferralDepartments = async (
 
 
 
- {item.status === "consultation" && (
+{item.status === "consultation" && (
 
   <>
 
@@ -1056,187 +1042,96 @@ loadHospitals();
             Department Dashboard
           </Text>
 
-          <View
-            style={styles.statsRow}
-          >
-          
-            <View
-              style={
-                styles.statCard
-              }
-            >
-              <Text
-                style={
-                  styles.statValue
-                }
-              >
-                {
-                  dashboard
-                    ?.statistics
-                    .waiting
-                }
-              </Text>
-
-              <Text>
-                Waiting
-              </Text>
-            </View>
-             {
-dashboard?.current_patient && (
-
-<View
-style={styles.currentCard}
+          <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.statsScroll}
 >
 
-<Text
-style={styles.currentTitle}
->
-Currently Serving
-</Text>
+  <View style={[styles.statCard, styles.waitingCard]}>
+    <Text style={styles.statEmoji}>👥</Text>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.waiting}
+    </Text>
+    <Text style={styles.statLabel}>
+      Waiting
+    </Text>
+  </View>
 
+  <View style={[styles.statCard, styles.calledCard]}>
+    <Text style={styles.statEmoji}>🔔</Text>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.called}
+    </Text>
+    <Text style={styles.statLabel}>
+      Called
+    </Text>
+  </View>
 
-<Text
-style={styles.currentName}
->
-{
-dashboard.current_patient.patient_name
-}
-</Text>
+  <View style={[styles.statCard, styles.consultationCard]}>
+    <Text style={styles.statEmoji}>🩺</Text>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.consultation}
+    </Text>
+    <Text style={styles.statLabel}>
+      Consultation
+    </Text>
+  </View>
 
+  <View style={[styles.statCard, styles.admittedCard]}>
+    <Text style={styles.statEmoji}>🛏️</Text>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.admitted}
+    </Text>
+    <Text style={styles.statLabel}>
+      Admitted
+    </Text>
+  </View>
 
-<Text>
-Queue:
-{
-dashboard.current_patient.queue_number
-}
-</Text>
+  <View style={[styles.statCard, styles.dischargedCard]}>
+    <Text style={styles.statEmoji}>🏠</Text>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.discharged}
+    </Text>
+    <Text style={styles.statLabel}>
+      Discharged
+    </Text>
+  </View>
 
-
+  <View style={[styles.statCard, styles.transferCard]}>
+    <Text style={styles.statEmoji}>🔄</Text>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.transferred}
+    </Text>
+    <Text style={styles.statLabel}>
+      Transfer
+    </Text>
+  </View>
+<View style={[styles.statCard, { backgroundColor: "#EDE9FE" }]}>
+  <Text style={styles.statEmoji}>🏥</Text>
+  <Text style={styles.statValue}>
+    {dashboard?.statistics.referred}
+  </Text>
+  <Text style={styles.statLabel}>
+    Referred
+  </Text>
 </View>
+  <View style={[styles.statCard, styles.completedCard]}>
+    <Text style={styles.statEmoji}>✅</Text>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.completed}
+    </Text>
+    <Text style={styles.statLabel}>
+      Completed
+    </Text>
+  </View>
 
-)
-}
-
-            <View
-              style={
-                styles.statCard
-              }
-            >
-              <Text
-                style={
-                  styles.statValue
-                }
-              >
-                {
-                  dashboard
-                    ?.statistics
-                    .called
-                }
-              </Text>
-
-              <Text>
-                Called
-              </Text>
-            </View>
-
-            <View style={styles.statCard}>
-
-<Text style={styles.statValue}>
-{
-dashboard
-?.statistics
-.consultation
-}
-</Text>
-
-<Text>
-Consultation
-</Text>
-
-</View>
-
-
-
-<View style={styles.statCard}>
-
-<Text style={styles.statValue}>
-{
-dashboard
-?.statistics
-.admitted
-}
-</Text>
-
-<Text>
-Admitted
-</Text>
-
-</View>
-
-
-
-<View style={styles.statCard}>
-
-<Text style={styles.statValue}>
-{
-dashboard
-?.statistics
-.discharged
-}
-</Text>
-
-<Text>
-Discharged
-</Text>
-
-</View>
-
-
-
-<View style={styles.statCard}>
-
-<Text style={styles.statValue}>
-{
-dashboard
-?.statistics
-.transferred
-}
-</Text>
-
-<Text>
-Transferred
-</Text>
-
-</View>
-           <View
-  style={
-    styles.statCard
-  }
->
-
-<Text
-  style={
-    styles.statValue
-  }
->
-{
- dashboard
- ?.statistics
- .completed
-}
-</Text>
-
-<Text>
-Completed
-</Text>
-
-</View>
-
+</ScrollView>
 
  
           </View>
 
-        </View>
+    
       }
     />
       <Modal
@@ -1502,7 +1397,22 @@ departmentButton:{
   borderRadius:10,
   marginBottom:10,
 },
-
+statCard: {
+  width: 135,
+  height: 135,
+  marginRight: 14,
+  borderRadius: 20,
+  justifyContent: "center",
+  alignItems: "center",
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 8,
+  shadowOffset: {
+    width: 0,
+    height: 3,
+  },
+  elevation: 3,
+},
 input:{
   borderWidth:1,
   borderColor:"#D1D5DB",
@@ -1537,23 +1447,6 @@ confirmButton:{
  justifyContent:"space-between",
  marginBottom:10,
 },
-
-  statCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    marginHorizontal: 5,
-    padding: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 5,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    elevation: 2,
-  },
 
   statValue: {
     fontSize: 24,
@@ -1613,6 +1506,43 @@ confirmButton:{
     color: "#374151",
     marginBottom: 15,
   },
+  statsScroll: {
+  paddingRight: 20,
+  paddingBottom: 15,
+},
+
+statEmoji: {
+  fontSize: 26,
+  marginBottom: 6,
+},
+
+waitingCard: {
+  backgroundColor: "#DBEAFE",
+},
+
+calledCard: {
+  backgroundColor: "#FEF3C7",
+},
+
+consultationCard: {
+  backgroundColor: "#EDE9FE",
+},
+
+admittedCard: {
+  backgroundColor: "#DCFCE7",
+},
+
+dischargedCard: {
+  backgroundColor: "#FCE7F3",
+},
+
+transferCard: {
+  backgroundColor: "#FFEDD5",
+},
+
+completedCard: {
+  backgroundColor: "#D1FAE5",
+},
 
   actions: {
     flexDirection: "row",
@@ -1668,6 +1598,15 @@ marginLeft:10,
     paddingVertical: 10,
     borderRadius: 10,
   },
+ 
+
+statLabel: {
+  marginTop: 6,
+  fontSize: 14,
+  fontWeight: "600",
+  color: "#4B5563",
+  textAlign: "center",
+},
 
   buttonText: {
     color: "#FFFFFF",

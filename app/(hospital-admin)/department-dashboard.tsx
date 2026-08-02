@@ -53,16 +53,15 @@ type DashboardResponse = {
     name: string;
     average_minutes: number;
   };
-
-  statistics: {
+statistics: {
   waiting: number;
   called: number;
-  checked_in: number;
+  consultation: number;
+  admitted: number;
+  discharged: number;
+  transferred: number;
+  referred: number;
   completed: number;
-
-  emergency: number;
-  urgent: number;
-
   total_today: number;
 };
 
@@ -569,189 +568,69 @@ err.message
             Department Dashboard
           </Text>
 
-          <View
-            style={styles.statsRow}
-          >
-          
-            <View
-              style={
-                styles.statCard
-              }
-            >
-              <Text
-                style={
-                  styles.statValue
-                }
-              >
-                {
-                  dashboard
-                    ?.statistics
-                    .waiting
-                }
-              </Text>
-
-              <Text>
-                Waiting
-              </Text>
-            </View>
-             {
-dashboard?.current_patient && (
-
-<View
-style={styles.currentCard}
+          <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.statsScroll}
 >
 
-<Text
-style={styles.currentTitle}
->
-Currently Serving
-</Text>
+  <View style={styles.statCard}>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.waiting}
+    </Text>
+    <Text style={styles.statLabel}>Waiting</Text>
+  </View>
 
+  <View style={styles.statCard}>
+    <Text style={styles.statValue}>
+      {dashboard?.statistics.called}
+    </Text>
+    <Text style={styles.statLabel}>Called</Text>
+  </View>
 
-<Text
-style={styles.currentName}
->
-{
-dashboard.current_patient.patient_name
-}
-</Text>
+  <View style={styles.statCard}>
+    <Text style={[styles.statValue,{color:"#9333EA"}]}>
+      {dashboard?.statistics.consultation}
+    </Text>
+    <Text style={styles.statLabel}>Consultation</Text>
+  </View>
 
+  <View style={styles.statCard}>
+    <Text style={[styles.statValue,{color:"#16A34A"}]}>
+      {dashboard?.statistics.admitted}
+    </Text>
+    <Text style={styles.statLabel}>Admitted</Text>
+  </View>
 
-<Text>
-Queue:
-{
-dashboard.current_patient.queue_number
-}
-</Text>
+  <View style={styles.statCard}>
+    <Text style={[styles.statValue,{color:"#2563EB"}]}>
+      {dashboard?.statistics.discharged}
+    </Text>
+    <Text style={styles.statLabel}>Discharged</Text>
+  </View>
 
+  <View style={styles.statCard}>
+    <Text style={[styles.statValue,{color:"#EA580C"}]}>
+      {dashboard?.statistics.transferred}
+    </Text>
+    <Text style={styles.statLabel}>Transferred</Text>
+  </View>
 
-</View>
+  <View style={styles.statCard}>
+    <Text style={[styles.statValue,{color:"#7C3AED"}]}>
+      {dashboard?.statistics.referred}
+    </Text>
+    <Text style={styles.statLabel}>Referred</Text>
+  </View>
 
-)
-}
+  <View style={styles.statCard}>
+    <Text style={[styles.statValue,{color:"#059669"}]}>
+      {dashboard?.statistics.completed}
+    </Text>
+    <Text style={styles.statLabel}>Completed</Text>
+  </View>
 
-            <View
-              style={
-                styles.statCard
-              }
-            >
-              <Text
-                style={
-                  styles.statValue
-                }
-              >
-                {
-                  dashboard
-                    ?.statistics
-                    .called
-                }
-              </Text>
-
-              <Text>
-                Called
-              </Text>
-            </View>
-
-            <View
-              style={
-                styles.statCard
-              }
-            >
-              <Text
-                style={
-                  styles.statValue
-                }
-              >
-                {
-                  dashboard
-                    ?.statistics
-                    .checked_in
-                }
-              </Text>
-
-              <Text>
-                Checked In
-              </Text>
-            </View>
-           <View
-  style={
-    styles.statCard
-  }
->
-
-<Text
-  style={
-    styles.statValue
-  }
->
-{
- dashboard
- ?.statistics
- .completed
-}
-</Text>
-
-<Text>
-Completed
-</Text>
-
-</View>
-<View
-style={styles.statCard}
->
-
-<Text
-style={[
-styles.statValue,
-{
-color:"#DC2626"
-}
-]}
->
-
-{
-dashboard
-?.statistics
-.emergency
-}
-
-</Text>
-
-
-<Text>
-Emergency
-</Text>
-
-</View>
-<View
-style={styles.statCard}
->
-
-<Text
-style={[
-styles.statValue,
-{
-color:"#F59E0B"
-}
-]}
->
-
-{
-dashboard
-?.statistics
-.urgent
-}
-
-</Text>
-
-
-<Text>
-Urgent
-</Text>
-
-</View>
- 
-          </View>
+</ScrollView>
 
         </View>
       }
@@ -912,6 +791,35 @@ input:{
   padding:12,
   marginTop:15,
 },
+statsScroll: {
+  paddingRight: 20,
+},
+
+statCard: {
+  width: 120,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 18,
+  paddingVertical: 18,
+  paddingHorizontal: 12,
+  marginRight: 14,
+  alignItems: "center",
+
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 5,
+  shadowOffset: {
+    width: 0,
+    height: 2,
+  },
+  elevation: 3,
+},
+
+statLabel: {
+  marginTop: 8,
+  fontSize: 14,
+  fontWeight: "600",
+  color: "#6B7280",
+},
 
 confirmButton:{
   backgroundColor:"#2563EB",
@@ -940,23 +848,7 @@ confirmButton:{
  marginBottom:10,
 },
 
-  statCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    marginHorizontal: 5,
-    padding: 16,
-    borderRadius: 14,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 5,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    elevation: 2,
-  },
-
+  
   statValue: {
     fontSize: 24,
     fontWeight: "700",

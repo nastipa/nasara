@@ -37,6 +37,11 @@ type LiveQueue = {
   current_serving: string | null;
 
   next_numbers: string[];
+  queue_board: {
+  queue_number: string;
+  status: string;
+  is_you: boolean;
+}[];
 
   your_number: string | null;
 
@@ -47,6 +52,47 @@ type LiveQueue = {
   total_waiting: number;
 
   progress_percent?: number;
+};
+
+const getStatusLabel = (
+  status: string
+) => {
+
+  switch(status) {
+
+    case "waiting":
+      return "Waiting";
+
+    case "called":
+      return "Consultation";
+
+    case "in_consultation":
+      return "Consultation";
+
+    case "admitted":
+      return "Admitted";
+
+    case "discharged":
+      return "Discharged";
+
+    case "transferred":
+      return "Transferred";
+
+    case "referred":
+      return "Referral";
+
+    case "completed":
+      return "Completed";
+
+    default:
+      return status
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, c =>
+          c.toUpperCase()
+        );
+
+  }
+
 };
 export default function LiveQueueScreen() {
   const [loading, setLoading] =
@@ -228,7 +274,7 @@ Your consultation turn is ready.
     fontSize: 16,
   }}
 >
-  Please wait until your queue number is called for consultation.
+ Please wait until your queue number reaches the consultation desk.
 </Text>
           </View>
 
@@ -312,34 +358,88 @@ queue.current_serving === queue.your_number && (
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>
-              Next Numbers
-            </Text>
 
-            <View style={styles.nextContainer}>
-              {queue.next_numbers?.length ? (
-                queue.next_numbers?.map(
-                  (num, index) => (
-                    <View
-                      key={index}
-                      style={styles.nextBadge}
-                    >
-                      <Text
-                        style={styles.nextBadgeText}
-                      >
-                        {num}
-                      </Text>
-                    </View>
-                  )
-                )
-              ) : (
-                <Text style={styles.infoText}>
-                  No upcoming queue numbers.
-                </Text>
-              )}
-            </View>
+  <Text style={styles.sectionTitle}>
+    Live Queue Board
+  </Text>
+
+  {queue.queue_board?.length ? (
+
+    queue.queue_board.map(
+      (item, index) => (
+
+        <View
+          key={index}
+         style={[
+  styles.queueRow,
+
+  item.is_you && {
+    backgroundColor: "#DBEAFE",
+    borderColor: "#2563EB",
+    borderWidth: 2,
+  },
+
+  item.status === "called" && {
+    backgroundColor: "#DCFCE7",
+    borderColor: "#16A34A",
+    borderWidth: 2,
+  },
+]}
+        >
+
+          <Text
+            style={styles.queueRowNumber}
+          >
+            {item.queue_number}
+          </Text>
+
+          <View
+            style={{
+              flex: 1,
+              alignItems: "flex-end",
+            }}
+          >
+
+           {item.is_you ? (
+
+<Text
+  style={styles.youBadge}
+>
+  YOU
+</Text>
+
+) : item.status === "called" ? (
+
+<Text
+  style={styles.servingBadge}
+>
+  SERVING
+</Text>
+
+) : (
+
+<Text
+  style={styles.queueStatus}
+>
+  {getStatusLabel(item.status)}
+</Text>
+)}
           </View>
 
+        </View>
+
+      )
+    )
+
+  ) : (
+
+    <Text style={styles.infoText}>
+      Queue board unavailable.
+    </Text>
+
+  )}
+
+</View>
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>
               Queue Statistics
@@ -459,7 +559,16 @@ const styles = StyleSheet.create({
     color: "#16A34A",
     marginTop: 6,
   },
-
+  servingBadge: {
+  backgroundColor: "#16A34A",
+  color: "#FFFFFF",
+  paddingHorizontal: 12,
+  paddingVertical: 4,
+  borderRadius: 20,
+  overflow: "hidden",
+  fontWeight: "700",
+  fontSize: 13,
+},
   infoText: {
     fontSize: 16,
     color: "#444",
@@ -485,4 +594,36 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 16,
   },
+  queueRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#F9FAFB",
+  paddingVertical: 14,
+  paddingHorizontal: 16,
+  borderRadius: 12,
+  marginBottom: 10,
+},
+
+queueRowNumber: {
+  fontSize: 22,
+  fontWeight: "700",
+  color: "#111827",
+},
+
+queueStatus: {
+  fontSize: 14,
+  fontWeight: "600",
+  color: "#6B7280",
+},
+
+youBadge: {
+  backgroundColor: "#2563EB",
+  color: "#FFFFFF",
+  paddingHorizontal: 12,
+  paddingVertical: 4,
+  borderRadius: 20,
+  overflow: "hidden",
+  fontWeight: "700",
+  fontSize: 13,
+},
 });

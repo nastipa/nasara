@@ -48,16 +48,16 @@ const showMessage = (
 
 
 type DashboardData = {
-
   waiting: number;
   called: number;
-  checked_in: number;
+  consultation: number;
+  admitted: number;
+  discharged: number;
+  transferred: number;
+  referred: number;
   completed: number;
   total: number;
-
 };
-
-
 
 export default function HospitalDashboard() {
 
@@ -66,16 +66,18 @@ export default function HospitalDashboard() {
 
 
 
-  const [dashboard, setDashboard] =
-    useState<DashboardData>({
-
-      waiting: 0,
-      called: 0,
-      checked_in: 0,
-      completed: 0,
-      total: 0,
-
-    });
+ const [dashboard, setDashboard] =
+useState<DashboardData>({
+  waiting:0,
+  called:0,
+  consultation:0,
+  admitted:0,
+  discharged:0,
+  transferred:0,
+  referred:0,
+  completed:0,
+  total:0,
+});
 
 
 
@@ -158,10 +160,6 @@ useCallback(async (currentRole:string) => {
 
     }
 
-
-
-
-
     const response =
       await fetch(
 
@@ -181,14 +179,8 @@ useCallback(async (currentRole:string) => {
       );
 
 
-
-
-
     const json =
       await response.json();
-
-
-
 
 
     if (!response.ok) {
@@ -201,45 +193,22 @@ useCallback(async (currentRole:string) => {
     }
 
 
-
-
-
     setDashboard({
-
-      waiting:
-        json.analytics?.waiting_patients || 0,
-
-
-      called:
-        json.analytics?.called_patients || 0,
-
-
-      checked_in:
-        json.analytics?.checked_in_patients || 0,
-
-
-      completed:
-        json.analytics?.completed_patients || 0,
-
-
-      total:
-        json.analytics?.total_bookings || 0,
-
-
-    });
-
-
-
+  waiting: json.analytics?.waiting_patients || 0,
+  called: json.analytics?.called_patients || 0,
+  consultation: json.analytics?.consultation_patients || 0,
+  admitted: json.analytics?.admitted_patients || 0,
+  discharged: json.analytics?.discharged_patients || 0,
+  transferred: json.analytics?.transferred_patients || 0,
+  referred: json.analytics?.referred_patients || 0,
+  completed: json.analytics?.completed_patients || 0,
+  total: json.analytics?.total_bookings || 0,
+});
 
 
     setAnalytics(
       json.analytics
     );
-
-
-
-
-
 
     /*
     ===========================================
@@ -723,14 +692,6 @@ const goToVoiceBoard = () => {
 
 };
 
-const goToWorkingHours = () => {
-
-  router.push(
-    "/(hospital-admin)/working-hours"
-  );
-
-};
-
 
 
 
@@ -749,10 +710,10 @@ const goToAnalytics = () => {
 
 
 
-const goToLiveBoard = () => {
+const goToDepartmentLiveBoard = () => {
 
   router.push(
-    "/(hospital-admin)/live-board"
+    "/(hospital-admin)/department-live-board"
   );
 
 };
@@ -762,10 +723,10 @@ const goToLiveBoard = () => {
 
 
 
-const goToDepartmentLiveBoard = () => {
+const goToHospitalLiveBoard = () => {
 
   router.push(
-    "/(hospital-admin)/department-live-board"
+    "/(hospital-admin)/hospital-live-board"
   );
 
 };
@@ -924,100 +885,81 @@ return (
 {
 role === "hospital_admin" && (
 
-<View style={styles.statsGrid}>
+<ScrollView
+horizontal
+showsHorizontalScrollIndicator={false}
+contentContainerStyle={styles.statsGrid}
+>
 
 
 <StatCard
-
 title="Waiting"
-
 value={dashboard.waiting}
-
 color="#F59E0B"
-
 icon="time"
-
 />
 
-
-
 <StatCard
-
 title="Called"
-
 value={dashboard.called}
-
-color="#3B82F6"
-
+color="#2563EB"
 icon="megaphone"
-
 />
 
-
-
 <StatCard
-
-title="Checked In"
-
-value={dashboard.checked_in}
-
-color="#10B981"
-
-icon="checkmark-circle"
-
-/>
-
-
-
-<StatCard
-
-title="Completed"
-
-value={dashboard.completed}
-
-color="#8B5CF6"
-
+title="Consultation"
+value={dashboard.consultation}
+color="#9333EA"
 icon="medical"
-
 />
 
-
-
 <StatCard
-
-title="Emergency"
-
-value={analytics?.emergency || 0}
-
-color="#DC2626"
-
-icon="warning"
-
+title="Admitted"
+value={dashboard.admitted}
+color="#16A34A"
+icon="bed"
 />
 
-
+<StatCard
+title="Discharged"
+value={dashboard.discharged}
+color="#0EA5E9"
+icon="exit"
+/>
 
 <StatCard
+title="Transferred"
+value={dashboard.transferred}
+color="#EA580C"
+icon="swap-horizontal"
+/>
 
+<StatCard
+title="Referred"
+value={dashboard.referred}
+color="#8B5CF6"
+icon="share-social"
+/>
+
+<StatCard
+title="Completed"
+value={dashboard.completed}
+color="#14B8A6"
+icon="checkmark-done"
+/>
+
+<StatCard
 title="Today's Total"
-
 value={dashboard.total}
-
 color="#EF4444"
-
 icon="people"
-
 />
 
 
-</View>
+</ScrollView>
 
 )
 }
-
-
-
-
 
 
 {
@@ -1127,11 +1069,6 @@ No department utilisation available.
 }
 
 
-
-
-
-
-
 {
 role === "hospital_admin" && (
 
@@ -1204,30 +1141,15 @@ onPress={goToAnalytics}
 
 <QuickAction
 
-title="Department Live Board"
+title="Hospital Live Board"
 
 icon="desktop"
 
 color="#DC2626"
 
-onPress={goToDepartmentLiveBoard}
+onPress={goToHospitalLiveBoard}
 
 />
-
-
-
-<QuickAction
-
-title="Working Hours"
-
-icon="time"
-
-color="#16A34A"
-
-onPress={goToWorkingHours}
-
-/>
-
 
 
 </View>
@@ -1444,28 +1366,12 @@ const styles = StyleSheet.create({
 
 
   statsGrid:{
-    flexDirection:"row",
-    flexWrap:"wrap",
-    justifyContent:"space-between",
-    marginBottom:26,
-  },
-
-
-  statCard:{
-    width:"48%",
-    backgroundColor:"#FFFFFF",
-    borderRadius:16,
-    padding:16,
-    marginBottom:14,
-    borderLeftWidth:6,
-
-    shadowColor:"#000",
-    shadowOpacity:0.08,
-    shadowRadius:6,
-    shadowOffset:{
-      width:0,
-      height:3,
-    },
+  paddingRight:20,
+  marginBottom:24,
+},
+statCard:{
+  width:160,
+  marginRight:14,
 
     elevation:3,
   },
