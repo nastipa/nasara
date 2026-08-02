@@ -328,8 +328,8 @@ const updateStatus = async (
   | "waiting"
   | "called"
   | "in_consultation"
-  | "completed"
   | "admitted"
+  |  "discharged"
   | "transferred"
   | "referred"
   | "cancelled"
@@ -895,66 +895,65 @@ Normal
 
       {item.status === "in_consultation" && (
 
-  <View style={styles.consultationActions}>
+ <View style={styles.consultationActions}>
 
-    <TouchableOpacity
-      style={styles.completeButton}
-      onPress={() =>
-        updateStatus(
-          item.id,
-          "completed"
-        )
-      }
-    >
-      <Text style={styles.buttonText}>
-        Complete
-      </Text>
-    </TouchableOpacity>
+  <TouchableOpacity
+    style={styles.admitButton}
+    onPress={() =>
+      updateStatus(
+        item.id,
+        "admitted"
+      )
+    }
+  >
+    <Text style={styles.buttonText}>
+      Admit
+    </Text>
+  </TouchableOpacity>
 
-    <TouchableOpacity
-      style={styles.admitButton}
-      onPress={() =>
-        updateStatus(
-          item.id,
-          "admitted"
-        )
-      }
-    >
-      <Text style={styles.buttonText}>
-        Admit
-      </Text>
-    </TouchableOpacity>
+  <TouchableOpacity
+    style={styles.dischargeButton}
+    onPress={() =>
+      updateStatus(
+        item.id,
+        "discharged"
+      )
+    }
+  >
+    <Text style={styles.buttonText}>
+      Discharge
+    </Text>
+  </TouchableOpacity>
 
-    <TouchableOpacity
-      style={styles.transferButton}
-      onPress={() =>
-        updateStatus(
-          item.id,
-          "transferred"
-        )
-      }
-    >
-      <Text style={styles.buttonText}>
-        Transfer
-      </Text>
-    </TouchableOpacity>
+  <TouchableOpacity
+    style={styles.transferButton}
+    onPress={() =>
+      updateStatus(
+        item.id,
+        "transferred"
+      )
+    }
+  >
+    <Text style={styles.buttonText}>
+      Transfer
+    </Text>
+  </TouchableOpacity>
 
-    <TouchableOpacity
-      style={styles.referralButton}
-      onPress={() =>
-        updateStatus(
-          item.id,
-          "referred"
-        )
-      }
-    >
-      <Text style={styles.buttonText}>
-        Refer
-      </Text>
-    </TouchableOpacity>
+  <TouchableOpacity
+    style={styles.referralButton}
+    onPress={() =>
+      updateStatus(
+        item.id,
+        "referred"
+      )
+    }
+  >
+    <Text style={styles.buttonText}>
+      Refer
+    </Text>
+  </TouchableOpacity>
 
-  </View>
-
+</View>
 )}
     </View>
   </View>
@@ -1132,6 +1131,12 @@ return (
   fontWeight: "700",
   color: "#111827",
   marginBottom: 10,
+},
+dischargeButton: {
+  backgroundColor: "#10B981",
+  borderRadius: 10,
+  paddingHorizontal: 16,
+  paddingVertical: 12,
 },
 
   cardHeader: {

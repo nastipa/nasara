@@ -39,16 +39,14 @@ type Analytics = {
   waiting: number;
   called: number;
 
-  completed: number;
+  consultation: number;
+  admitted: number;
+  discharged: number;
+  transferred: number;
+  referred: number;
 
   cancelled: number;
   no_show: number;
-
-  admitted: number;
-  discharged: number;
-
-  emergency: number;
-  
 
   average_wait_minutes: number;
 
@@ -68,20 +66,15 @@ type Analytics = {
   children: number;
   adults: number;
   elderly: number;
-  consultation: number;
 
-transferred: number;
+  currently_admitted: number;
 
-referred: number;
+  departments: any[];
 
-currently_admitted: number;
-
-departments: any[];
-
-hourly: {
-  hour: string;
-  patients: number;
-}[];
+  hourly: {
+    hour:string;
+    patients:number;
+  }[];
 };
 export default function HospitalAnalytics() {
 
@@ -97,54 +90,49 @@ const [showDatePicker, setShowDatePicker] =
   useState(false);
 
 
-  const [analytics, setAnalytics] =
-  useState<Analytics>({
-    total_patients:0,
-    patients_served_today:0,
+const [analytics,setAnalytics] =
+useState<Analytics>({
 
-    waiting:0,
-    called:0,
-    completed:0,
+total_patients:0,
+patients_served_today:0,
 
-    cancelled:0,
-    no_show:0,
+waiting:0,
+called:0,
 
-    admitted:0,
-    discharged:0,
-
-    emergency:0,
-    consultation:0,
-
+consultation:0,
+admitted:0,
+discharged:0,
 transferred:0,
-
 referred:0,
+
+cancelled:0,
+no_show:0,
 
 currently_admitted:0,
 
 departments:[],
-
 hourly:[],
 
-    average_wait_minutes:0,
+average_wait_minutes:0,
 
-    busiest_department:null,
-    busiest_department_count:0,
+busiest_department:null,
+busiest_department_count:0,
 
-    peak_hour:null,
+peak_hour:null,
 
-    cancellation_rate:0,
-    no_show_rate:0,
+cancellation_rate:0,
+no_show_rate:0,
 
-    average_consultation_minutes:0,
+average_consultation_minutes:0,
 
-    male_patients:0,
-    female_patients:0,
+male_patients:0,
+female_patients:0,
 
-    children:0,
-    adults:0,
-    elderly:0,
+children:0,
+adults:0,
+elderly:0,
 
-  });
+});
 
   const loadAnalytics =
     useCallback(async () => {
@@ -380,12 +368,7 @@ hourly:[],
           icon="time"
         />
 
-        <StatCard
-          title="Completed"
-          value={analytics.completed}
-          color="#16A34A"
-          icon="checkmark-circle"
-        />
+        
 <StatCard
   title="Patients Served"
   value={analytics.patients_served_today}
@@ -428,12 +411,7 @@ hourly:[],
   color="#10B981"
   icon="exit"
 />
-       <StatCard
-  title="Emergency"
-  value={analytics.emergency}
-  color="#DC2626"
-  icon="warning"
-/>
+      
 
 <StatCard
   title="Cancelled"

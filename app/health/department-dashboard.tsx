@@ -61,7 +61,7 @@ type DashboardResponse = {
   discharged: number;
   transferred: number;
   referred: number;
-  completed: number;
+  
 
   total_today: number;
 };
@@ -197,7 +197,7 @@ console.log("Next Department:", selectedDepartment);
     bookingId: string,
     status:
       | "called"
-      | "completed"
+     
   ) => {
     try {
       const {
@@ -808,17 +808,13 @@ const loadReferralDepartments = async (
   "discharged",
   "transferred",
   "referred",
-  "completed",
 ].includes(item.status) && (
 
 <Text
   style={{
     marginTop: 8,
     fontWeight: "700",
-    color:
-      item.status === "completed"
-        ? "#16A34A"
-        : "#7C3AED",
+    color: "#7C3AED",
   }}
 >
   {item.status === "consultation"
@@ -831,7 +827,7 @@ const loadReferralDepartments = async (
     ? "🟠 Patient Transferred"
     : item.status === "referred"
     ? "🟣 Patient Referred"
-    : "✅ Completed"}
+    : ""}
 </Text>
 
 )}
@@ -1068,7 +1064,11 @@ loadHospitals();
     </Text>
   </View>
 
-  <View style={[styles.statCard, styles.consultationCard]}>
+  <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  contentContainerStyle={styles.consultationCard}
+>
     <Text style={styles.statEmoji}>🩺</Text>
     <Text style={styles.statValue}>
       {dashboard?.statistics.consultation}
@@ -1076,7 +1076,7 @@ loadHospitals();
     <Text style={styles.statLabel}>
       Consultation
     </Text>
-  </View>
+  </ScrollView>
 
   <View style={[styles.statCard, styles.admittedCard]}>
     <Text style={styles.statEmoji}>🛏️</Text>
@@ -1116,16 +1116,7 @@ loadHospitals();
     Referred
   </Text>
 </View>
-  <View style={[styles.statCard, styles.completedCard]}>
-    <Text style={styles.statEmoji}>✅</Text>
-    <Text style={styles.statValue}>
-      {dashboard?.statistics.completed}
-    </Text>
-    <Text style={styles.statLabel}>
-      Completed
-    </Text>
-  </View>
-
+  
 </ScrollView>
 
  
@@ -1540,9 +1531,6 @@ transferCard: {
   backgroundColor: "#FFEDD5",
 },
 
-completedCard: {
-  backgroundColor: "#D1FAE5",
-},
 
   actions: {
     flexDirection: "row",

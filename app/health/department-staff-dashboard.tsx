@@ -31,7 +31,7 @@ const [stats, setStats] = useState({
   discharged: 0,
   transferred: 0,
   referred: 0,
-  completed: 0,
+ 
 });
 
 
@@ -340,14 +340,6 @@ Called
   </Text>
 </View>
 
-<View style={styles.statCard}>
-  <Text style={styles.statValue}>
-    {stats.completed}
-  </Text>
-  <Text style={styles.statLabel}>
-    Completed
-  </Text>
-</View>
 
 </ScrollView>
 

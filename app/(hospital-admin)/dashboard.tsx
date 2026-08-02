@@ -55,7 +55,7 @@ type DashboardData = {
   discharged: number;
   transferred: number;
   referred: number;
-  completed: number;
+ 
   total: number;
 };
 
@@ -75,7 +75,7 @@ useState<DashboardData>({
   discharged:0,
   transferred:0,
   referred:0,
-  completed:0,
+  
   total:0,
 });
 
@@ -201,7 +201,6 @@ useCallback(async (currentRole:string) => {
   discharged: json.analytics?.discharged_patients || 0,
   transferred: json.analytics?.transferred_patients || 0,
   referred: json.analytics?.referred_patients || 0,
-  completed: json.analytics?.completed_patients || 0,
   total: json.analytics?.total_bookings || 0,
 });
 
@@ -941,12 +940,7 @@ color="#8B5CF6"
 icon="share-social"
 />
 
-<StatCard
-title="Completed"
-value={dashboard.completed}
-color="#14B8A6"
-icon="checkmark-done"
-/>
+
 
 <StatCard
 title="Today's Total"

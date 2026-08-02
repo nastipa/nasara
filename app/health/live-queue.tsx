@@ -81,9 +81,6 @@ const getStatusLabel = (
     case "referred":
       return "Referral";
 
-    case "completed":
-      return "Completed";
-
     default:
       return status
         .replace(/_/g, " ")

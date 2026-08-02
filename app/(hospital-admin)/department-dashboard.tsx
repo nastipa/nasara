@@ -61,7 +61,6 @@ statistics: {
   discharged: number;
   transferred: number;
   referred: number;
-  completed: number;
   total_today: number;
 };
 
@@ -181,10 +180,9 @@ console.log("Next Department:", selectedDepartment);
   };
   const updateStatus = async (
     bookingId: string,
-    status:
-      | "called"
-      | "checked_in"
-      | "completed"
+    status: "called"
+     
+    
   ) => {
     try {
       const {
@@ -454,38 +452,11 @@ err.message
   )}
 
 
-  {item.status === "called" && (
-    <TouchableOpacity
-      style={styles.checkInButton}
-      onPress={() =>
-        updateStatus(
-          item.booking_id,
-          "checked_in"
-        )
-      }
-    >
-      <Text style={styles.buttonText}>
-        Check In
-      </Text>
-    </TouchableOpacity>
-  )}
 
 
-  {item.status === "checked_in" && (
+  {item.status === "consultation" && (
     <>
-    <TouchableOpacity
-      style={styles.completeButton}
-      onPress={() =>
-        updateStatus(
-          item.booking_id,
-          "completed"
-        )
-      }
-    >
-      <Text style={styles.buttonText}>
-        Complete
-      </Text>
-    </TouchableOpacity>
+    
     
   <TouchableOpacity
         style={styles.transferButton}
@@ -623,12 +594,7 @@ err.message
     <Text style={styles.statLabel}>Referred</Text>
   </View>
 
-  <View style={styles.statCard}>
-    <Text style={[styles.statValue,{color:"#059669"}]}>
-      {dashboard?.statistics.completed}
-    </Text>
-    <Text style={styles.statLabel}>Completed</Text>
-  </View>
+  
 
 </ScrollView>
 
@@ -923,12 +889,7 @@ confirmButton:{
     borderRadius: 10,
   },
 
-  checkInButton: {
-    backgroundColor: "#16A34A",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
+  
   currentCard:{
 backgroundColor:"#FFFFFF",
 marginHorizontal:16,
