@@ -6,13 +6,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  View,
+  View
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
 
 const API_URL =
   "https://nasara-upload-server.onrender.com";
+  const tickerMessage =
+  "WELCOME • PLEASE LISTEN FOR YOUR QUEUE NUMBER • FOLLOW THE DIGITAL DISPLAY FOR LIVE UPDATES • KEEP YOUR PHONE AVAILABLE FOR NOTIFICATIONS • FOLLOW STAFF INSTRUCTIONS AT ALL TIMES • EMERGENCY PATIENTS ARE GIVEN PRIORITY • THANK YOU FOR CHOOSING OUR HOSPITAL • ";
 
 type DepartmentBoard = {
   department_id: string;
@@ -40,17 +42,25 @@ export default function LiveBoardScreen() {
 
   const [departments, setDepartments] =
     useState<DepartmentBoard[]>([]);
-    const pulse =
+    const pulseAnimations =
+  useRef<
+    Record<string, Animated.Value>
+  >({});
+const fadeAnim =
   useRef(
     new Animated.Value(1)
   ).current;
-
+  
 const previousServing =
   useRef<Record<string,string>>({});
 const [showBanner, setShowBanner] =
   useState(false);
 const [currentTime, setCurrentTime] =
   useState(new Date());
+  const [page, setPage] = useState(0);
+  
+
+const rowsPerPage = 4;
 
   const loadBoard =
     useCallback(async () => {
@@ -95,7 +105,17 @@ const [currentTime, setCurrentTime] =
         );
         (json.departments || []).forEach(
   (dept: DepartmentBoard) => {
+  if (
+  !pulseAnimations.current[
+    dept.department_id
+  ]
+) {
 
+  pulseAnimations.current[
+    dept.department_id
+  ] = new Animated.Value(1);
+
+}
     const previous =
       previousServing.current[
         dept.department_id
@@ -112,44 +132,29 @@ setTimeout(() => {
 }, 4000)
       Animated.sequence([
 
-        Animated.timing(
-          pulse,
-          {
-            toValue:1.12,
-            duration:300,
-            useNativeDriver:true,
-          }
-        ),
+Animated.timing(
+pulseAnimations.current[
+dept.department_id
+],
+{
+toValue:1.25,
+duration:180,
+useNativeDriver:true,
+}
+),
 
-        Animated.timing(
-          pulse,
-          {
-            toValue:1,
-            duration:300,
-            useNativeDriver:true,
-          }
-        ),
+Animated.timing(
+pulseAnimations.current[
+dept.department_id
+],
+{
+toValue:1,
+duration:180,
+useNativeDriver:true,
+}
+),
 
-        Animated.timing(
-          pulse,
-          {
-            toValue:1.12,
-            duration:300,
-            useNativeDriver:true,
-          }
-        ),
-
-        Animated.timing(
-          pulse,
-          {
-            toValue:1,
-            duration:300,
-            useNativeDriver:true,
-          }
-        ),
-
-      ]).start();
-
+]).start();
     }
 
     previousServing.current[
@@ -182,17 +187,59 @@ setTimeout(() => {
       5000
     );
 
+   
+
   const clockInterval =
     setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
+    const pageInterval =
+  setInterval(() => {
+
+    const totalPages =
+      Math.max(
+        1,
+        Math.ceil(
+          departments.length / rowsPerPage
+        )
+      );
+
+    Animated.sequence([
+
+Animated.timing(
+fadeAnim,
+{
+toValue:0,
+duration:350,
+useNativeDriver:true,
+}
+),
+
+]).start(() => {
+
+setPage(prev =>
+(prev + 1) % totalPages
+);
+
+Animated.timing(
+fadeAnim,
+{
+toValue:1,
+duration:350,
+useNativeDriver:true,
+}
+).start();
+
+});
+  }, 8000);
 
   return () => {
-    clearInterval(refreshInterval);
-    clearInterval(clockInterval);
-  };
+  clearInterval(refreshInterval);
+  clearInterval(clockInterval);
+  clearInterval(pageInterval);
+};
 
-}, [loadBoard]);
+}, [loadBoard, departments.length]);
 
   const onRefresh = () => {
 
@@ -201,6 +248,11 @@ setTimeout(() => {
     loadBoard();
 
   };
+   const visibleDepartments =
+  departments.slice(
+    page * rowsPerPage,
+    page * rowsPerPage + rowsPerPage
+  );
 
   if (loading) {
 
@@ -363,153 +415,118 @@ Please proceed to your department
   </Text>
 
 </View>
-      {departments.map((dept) => (
-<View
-  key={dept.department_id}
-  style={[
-    styles.card,
-    {
-      borderTopWidth:8,
-      borderTopColor:
-        getDepartmentColor(
-          dept.department_name
-        ),
-    },
-  ]}
+     <Animated.View
+style={[
+styles.boardContainer,
+{
+opacity:fadeAnim,
+},
+]}
 >
 
+<View style={styles.boardHeader}>
 
-   <Text
-  style={[
-    styles.departmentName,
-    {
-      color:
-        getDepartmentColor(
-          dept.department_name
-        ),
-    },
-  ]}
->
-  {dept.department_name}
+<Text style={[styles.colDepartment]}>
+Department
 </Text>
 
-    <View style={styles.servingBox}>
+<Text style={[styles.colServing]}>
+Now Serving
+</Text>
 
-  <Text style={styles.servingLabel}>
-    🟢 NOW SERVING
-  </Text>
+<Text style={[styles.colWaiting]}>
+Waiting
+</Text>
 
- <Animated.View
+<Text style={[styles.colAverage]}>
+Est.
+</Text>
+
+</View>
+
+{visibleDepartments.map((dept) => (
+<View
+key={dept.department_id}
+style={styles.boardRow}
+>
+
+<Text
+style={[
+styles.colDepartment,
+{
+color:getDepartmentColor(
+dept.department_name
+),
+},
+]}
+numberOfLines={1}
+>
+
+{dept.department_name}
+
+</Text>
+
+<Animated.Text
   style={[
-    styles.servingBubble,
+    styles.colServing,
     {
-      transform:[
+      color:
+        dept.current_serving
+          ? "#22C55E"
+          : "#9CA3AF",
+      transform: [
         {
-          scale:pulse,
+          scale:
+            pulseAnimations.current[
+              dept.department_id
+            ] || 1,
         },
       ],
     },
   ]}
 >
-
-    <Text style={styles.servingNumber}>
-  {(dept.current_serving ?? "--").replace("-", "\n")}
+  {dept.current_serving || "--"}
+</Animated.Text>
+<Text
+  style={[
+    styles.colWaiting,
+    {
+      color:
+        dept.waiting > 20
+          ? "#DC2626" // Red
+          : dept.waiting > 10
+          ? "#CA8A04" // Amber
+          : "#16A34A", // Green
+    },
+  ]}
+>
+  {dept.waiting}
 </Text>
 
-  </Animated.View>
+<Text style={styles.colAverage}>
 
-  <Text style={styles.servingMessage}>
+{dept.average_wait_minutes}m
 
-    {dept.current_serving
-      ? "Please proceed to this department"
-      : "Waiting for next patient"}
-
-  </Text>
-
-</View>
-
-    <View style={styles.statsRow}>
-
-      <View style={styles.statCard}>
-
-        <Text style={styles.statValue}>
-          {dept.waiting}
-        </Text>
-
-        <Text style={styles.statLabel}>
-          Waiting
-        </Text>
-
-      </View>
-
-      <View style={styles.statCard}>
-
-        <Text style={styles.statValue}>
-          {dept.average_wait_minutes}
-        </Text>
-
-        <Text style={styles.statLabel}>
-          Est. Wait
-        </Text>
-
-      </View>
-
-    </View>
-
-    <Text style={styles.nextTitle}>
-      NEXT NUMBERS
-    </Text>
-
-    <View style={styles.waitingContainer}>
-
-  {dept.next_numbers.length > 0 ? (
-
-    <>
-      {dept.next_numbers
-        .slice(0,5)
-        .map(number => (
-
-          <View
-            key={number}
-            style={styles.waitingBubble}
-          >
-
-            <Text style={styles.waitingText}>
-  {number.replace("-", "\n")}
 </Text>
 
-          </View>
-
-      ))}
-
-      {dept.waiting > 5 && (
-
-        <View style={styles.moreBubble}>
-
-          <Text style={styles.moreText}>
-            +{dept.waiting - 5} More
-          </Text>
-
-        </View>
-
-      )}
-
-    </>
-
-  ) : (
-
-    <Text style={styles.empty}>
-      No waiting patients
-    </Text>
-
-  )}
-
 </View>
-
-  </View>
 
 ))}
 
+</Animated.View>
+<View style={styles.footer}>
+
+  <Text style={styles.footerText}>
+    Page {page + 1} of{" "}
+    {Math.max(
+      1,
+      Math.ceil(
+        departments.length / rowsPerPage
+      )
+    )}
+  </Text>
+
+</View>
 </ScrollView>
  </>
 );
@@ -545,6 +562,17 @@ flex:1,
 justifyContent:"center",
 alignItems:"center",
 },
+footer: {
+  alignItems: "center",
+  marginTop: 16,
+  marginBottom: 10,
+},
+
+footerText: {
+  fontSize: 18,
+  fontWeight: "700",
+  color: "#6B7280",
+},
 
 title:{
 fontSize:28,
@@ -552,7 +580,57 @@ fontWeight:"800",
 color:"#111827",
 textAlign:"center",
 },
+boardContainer:{
+backgroundColor:"#FFFFFF",
+borderRadius:18,
+overflow:"hidden",
+marginBottom:20,
+},
 
+boardRow:{
+flexDirection:"row",
+height:95,
+paddingHorizontal:24,
+borderBottomWidth:1,
+borderBottomColor:"#E5E7EB",
+alignItems:"center",
+justifyContent:"center",
+},
+colDepartment:{
+flex:2.6,
+fontSize:28,
+fontWeight:"800",
+color:"#111827",
+},
+
+colServing:{
+flex:1.8,
+fontSize:46,
+fontWeight:"900",
+textAlign:"center",
+letterSpacing:2,
+color:"#16A34A",
+},
+colWaiting:{
+flex:1,
+fontSize:36,
+fontWeight:"900",
+textAlign:"center",
+color:"#2563EB",
+},
+colAverage:{
+flex:1,
+fontSize:28,
+fontWeight:"800",
+textAlign:"center",
+color:"#EA580C",
+},
+boardHeader:{
+flexDirection:"row",
+backgroundColor:"#111827",
+paddingVertical:22,
+paddingHorizontal:24,
+},
 subtitle:{
 fontSize:16,
 color:"#6B7280",
