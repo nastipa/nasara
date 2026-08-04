@@ -1012,6 +1012,9 @@ loadHospitals();
         item.booking_id
       }
       renderItem={renderPatient}
+ItemSeparatorComponent={() => (
+  <View style={{ height: 16 }} />
+)}
       refreshControl={
         <RefreshControl
           refreshing={
@@ -1066,6 +1069,29 @@ loadHospitals();
       Called
     </Text>
   </View>
+  <View style={styles.nowServingCard}>
+
+  <Text style={styles.nowServingTitle}>
+    🔔 CURRENTLY CALLED
+  </Text>
+
+  {dashboard?.current_patient ? (
+    <>
+      <Text style={styles.nowServingQueue}>
+        {dashboard.current_patient.queue_number}
+      </Text>
+
+      <Text style={styles.nowServingName}>
+        {dashboard.current_patient.patient_name || "Unknown Patient"}
+      </Text>
+    </>
+  ) : (
+    <Text style={styles.nowServingWaiting}>
+      No patient has been called.
+    </Text>
+  )}
+
+</View>
 
   <ScrollView
   horizontal
@@ -1377,18 +1403,26 @@ modalTitle:{
   fontWeight:"700",
   marginBottom:20,
 },
-referralButton:{
-backgroundColor:"#9333EA",
-paddingHorizontal:18,
-paddingVertical:10,
-borderRadius:10,
-},
 
 departmentButton:{
   backgroundColor:"#F3F4F6",
   padding:14,
   borderRadius:10,
   marginBottom:10,
+},
+patientCard: {
+  backgroundColor: "#FFFFFF",
+  borderRadius: 16,
+  padding: 18,
+  marginHorizontal: 16,
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 6,
+  shadowOffset: {
+    width: 0,
+    height: 3,
+  },
+  elevation: 3,
 },
 statCard: {
   width: 135,
@@ -1413,9 +1447,7 @@ input:{
   padding:12,
   marginTop:15,
 },
-patientCard: {
-  overflow: "visible",
-},
+
 
 confirmButton:{
   backgroundColor:"#2563EB",
@@ -1524,26 +1556,14 @@ transferCard: {
   actions: {
   flexDirection: "row",
   alignItems: "center",
-  paddingRight: 20,
-  gap: 10,
+  paddingVertical: 4,
+  paddingRight: 16,
 },
  departmentList:{
   maxHeight:250,
 },
 
-  callButton: {
-    backgroundColor: "#2563EB",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-
-  checkInButton: {
-    backgroundColor: "#16A34A",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
+  
   currentCard:{
 backgroundColor:"#FFFFFF",
 marginHorizontal:16,
@@ -1563,20 +1583,46 @@ fontSize:20,
 fontWeight:"700",
 marginVertical:8,
 },
-
-transferButton:{
-backgroundColor:"#EA580C",
-paddingHorizontal:18,
-paddingVertical:10,
-borderRadius:10,
+callButton: {
+  backgroundColor: "#2563EB",
+  borderRadius: 10,
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  marginRight: 8,
 },
-  completeButton: {
-    backgroundColor: "#7C3AED",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
- 
+
+checkInButton: {
+  backgroundColor: "#16A34A",
+  borderRadius: 10,
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  marginRight: 8,
+},
+
+completeButton: {
+  backgroundColor: "#7C3AED",
+  borderRadius: 10,
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  marginRight: 8,
+},
+
+transferButton: {
+  backgroundColor: "#EA580C",
+  borderRadius: 10,
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  marginRight: 8,
+},
+
+referralButton: {
+  backgroundColor: "#9333EA",
+  borderRadius: 10,
+  paddingHorizontal: 14,
+  paddingVertical: 10,
+  marginRight: 8,
+},
+  
 
 statLabel: {
   marginTop: 6,
@@ -1590,4 +1636,48 @@ statLabel: {
     color: "#FFFFFF",
     fontWeight: "700",
   },
+  nowServingCard: {
+  backgroundColor: "#FFFFFF",
+  marginHorizontal: 18,
+  marginBottom: 22,
+  borderRadius: 18,
+  padding: 20,
+  alignItems: "center",
+
+  shadowColor: "#000",
+  shadowOpacity: 0.08,
+  shadowRadius: 6,
+  shadowOffset: {
+    width: 0,
+    height: 3,
+  },
+  elevation: 3,
+},
+
+nowServingTitle: {
+  fontSize: 16,
+  fontWeight: "800",
+  color: "#2563EB",
+},
+
+nowServingQueue: {
+  marginTop: 10,
+  fontSize: 34,
+  fontWeight: "900",
+  color: "#111827",
+},
+
+nowServingName: {
+  marginTop: 8,
+  fontSize: 18,
+  fontWeight: "700",
+  color: "#374151",
+  textAlign: "center",
+},
+
+nowServingWaiting: {
+  marginTop: 12,
+  fontSize: 16,
+  color: "#6B7280",
+},
 });
