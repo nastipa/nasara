@@ -1,4 +1,7 @@
-import { useAudioPlayer } from "expo-audio";
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+} from "expo-audio";
 import * as Speech from "expo-speech";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -98,8 +101,10 @@ export default function HospitalQueue() {
   const player = useAudioPlayer();
   const [queue, setQueue] =
     useState<Booking[]>([]);
+
     const [suggestions, setSuggestions] =
   useState<Record<string, string>>({});
+
     const [updating,setUpdating] =
 useState<string | null>(null);
 
@@ -108,6 +113,10 @@ useState<string | null>(null);
 
   const [refreshing, setRefreshing] =
     useState(false);
+
+const [announcementCache, setAnnouncementCache] =
+  useState<Record<string, any>>({});
+  
     const currentPatient =
   queue.find(
     item => item.status === "called"
@@ -171,8 +180,16 @@ setQueue(sortedQueue);
     }, []);
 
   useEffect(() => {
+
+  (async () => {
+
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+    });
+
     loadQueue();
 
+  })();
     const interval =
       setInterval(() => {
         loadQueue();
@@ -293,14 +310,17 @@ const voice of announcement.voices
 if(voice.audio_url){
 
 player.replace({
-uri:voice.audio_url
+  uri: voice.audio_url,
 });
+player.seekTo(0);
+await new Promise(resolve =>
+  setTimeout(resolve, 300)
+);
 
 player.play();
 
-
 await new Promise(resolve =>
-setTimeout(resolve,5000)
+  setTimeout(resolve, 5000)
 );
 
 
@@ -384,14 +404,19 @@ const updateStatus = async (
 }
 
 // Play voice immediately after calling patient
-if(
-status === "called" &&
-json.voiceAnnouncement
-){
+if (
+  status === "called" &&
+  json.voiceAnnouncement
+) {
 
-playAnnouncement(
-json.voiceAnnouncement
-);
+  setAnnouncementCache(prev => ({
+    ...prev,
+    [bookingId]: json.voiceAnnouncement,
+  }));
+
+  playAnnouncement(
+    json.voiceAnnouncement
+  );
 
 }
 if (!response.ok) {
@@ -878,19 +903,49 @@ Normal
       )}
 
       {item.status === "called" && (
-  <TouchableOpacity
-    style={styles.consultationButton}
-    onPress={() =>
-      updateStatus(
-        item.id,
-        "in_consultation"
-      )
+
+<View style={{ gap:10 }}>
+
+<TouchableOpacity
+  style={styles.replayButton}
+  onPress={() => {
+
+    const announcement =
+      announcementCache[item.id];
+
+    if (announcement) {
+      playAnnouncement(
+        announcement
+      );
     }
-  >
-    <Text style={styles.buttonText}>
-      Start Consultation
-    </Text>
-  </TouchableOpacity>
+
+  }}
+>
+
+<Text style={styles.buttonText}>
+🔊 Replay Announcement
+</Text>
+
+</TouchableOpacity>
+
+<TouchableOpacity
+  style={styles.consultationButton}
+  onPress={() =>
+    updateStatus(
+      item.id,
+      "in_consultation"
+    )
+  }
+>
+
+<Text style={styles.buttonText}>
+Start Consultation
+</Text>
+
+</TouchableOpacity>
+
+</View>
+
 )}
 
       {item.status === "in_consultation" && (
@@ -1468,5 +1523,12 @@ applyButton:{
   borderRadius:10,
   paddingHorizontal:14,
   paddingVertical:10,
+},
+
+replayButton:{
+  backgroundColor:"#1D4ED8",
+  borderRadius:10,
+  paddingHorizontal:18,
+  paddingVertical:12,
 },
 });
