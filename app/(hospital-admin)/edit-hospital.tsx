@@ -1,7 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import {
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,9 +17,19 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
-export default function CreateHospital() {
+export default function EditHospital() {
   const router = useRouter();
+  const params =
+    useLocalSearchParams<{
+      id?: string;
+    }>();
+  const hospitalId =
+    Array.isArray(params.id)
+      ? params.id[0]
+      : params.id;
   const [loading, setLoading] =
+    useState(true);
+  const [saving, setSaving] =
     useState(false);
   const [capturingLocation, setCapturingLocation] =
     useState(false);
@@ -37,27 +50,21 @@ export default function CreateHospital() {
   const [email, setEmail] =
     useState("");
   /*
-   * =====================================================
-   * IMPORTANT
-   * =====================================================
+   * IMPORTANT:
    *
-   * These coordinates are the FIXED coordinates
-   * of the HOSPITAL.
+   * These are the FIXED coordinates of the
+   * HOSPITAL.
    *
-   * They are NOT the patient's location.
+   * They are not the patient's coordinates.
    *
-   * They are NOT the administrator's permanent location.
-   *
-   * Emergency distance calculation will later use:
-   *
-   * PATIENT CURRENT GPS
-   *        ↓
-   * HOSPITAL SAVED GPS
+   * They are not automatically updated.
    */
   const [latitude, setLatitude] =
     useState("");
   const [longitude, setLongitude] =
     useState("");
+  const [hasEmergency, setHasEmergency] =
+    useState(true);
   const showMessage = (
     title: string,
     message?: string
@@ -77,20 +84,121 @@ export default function CreateHospital() {
   };
   /*
    * =====================================================
-   * CAPTURE ACTUAL HOSPITAL LOCATION
+   * LOAD HOSPITAL
+   * =====================================================
+   */
+  const loadHospital = async () => {
+    try {
+      if (!hospitalId) {
+        showMessage(
+          "Error",
+          "Hospital ID is missing."
+        );
+        router.back();
+        return;
+      }
+      setLoading(true);
+      const {
+        data,
+        error,
+      } =
+        await (supabase as any)
+          .from("hospitals")
+          .select("*")
+          .eq(
+            "id",
+            hospitalId
+          )
+          .single();
+      if (error) {
+        throw error;
+      }
+      if (!data) {
+        throw new Error(
+          "Hospital not found."
+        );
+      }
+      setHospitalName(
+        data.name || ""
+      );
+      setHospitalCode(
+        data.code || ""
+      );
+      setRegion(
+        data.region || ""
+      );
+      setDistrict(
+        data.district || ""
+      );
+      setCity(
+        data.city || ""
+      );
+      setAddress(
+        data.address || ""
+      );
+      setPhone(
+        data.phone || ""
+      );
+      setEmail(
+        data.email || ""
+      );
+      /*
+       * Preserve the hospital's existing
+       * GPS coordinates.
+       */
+      setLatitude(
+        data.latitude != null
+          ? Number(
+              data.latitude
+            ).toFixed(7)
+          : ""
+      );
+      setLongitude(
+        data.longitude != null
+          ? Number(
+              data.longitude
+            ).toFixed(7)
+          : ""
+      );
+      setHasEmergency(
+        data.has_emergency !== false
+      );
+    } catch (error: any) {
+      console.log(
+        "Load hospital error:",
+        error
+      );
+      showMessage(
+        "Error",
+        error?.message ||
+          "Unable to load hospital."
+      );
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    loadHospital();
+  }, [hospitalId]);
+  /*
+   * =====================================================
+   * CAPTURE ACTUAL HOSPITAL GPS
    * =====================================================
    *
-   * ONLY use this when the administrator is
-   * physically standing at the hospital.
+   * IMPORTANT:
    *
-   * We use BestForNavigation accuracy where
-   * supported.
+   * Only use this button when the administrator
+   * is physically at the hospital.
+   *
+   * This GPS becomes the hospital's saved
+   * coordinates.
    */
   const captureLocation = async () => {
     try {
       setCapturingLocation(true);
       /*
-       * Request location permission.
+       * Request permission.
        */
       const permission =
         await Location.requestForegroundPermissionsAsync();
@@ -105,24 +213,19 @@ export default function CreateHospital() {
         return;
       }
       /*
-       * Check whether device location
-       * services are enabled.
+       * Check device location services.
        */
       const servicesEnabled =
         await Location.hasServicesEnabledAsync();
       if (!servicesEnabled) {
         showMessage(
           "Location Services Disabled",
-          "Please turn on Location Services on this device and try again."
+          "Please turn on Location Services and try again."
         );
         return;
       }
       /*
-       * Get a fresh GPS position.
-       *
-       * BestForNavigation gives the highest
-       * available accuracy for navigation-style
-       * positioning on supported devices.
+       * Get fresh high-accuracy GPS.
        */
       const location =
         await Location.getCurrentPositionAsync(
@@ -140,7 +243,7 @@ export default function CreateHospital() {
       const accuracy =
         location.coords.accuracy;
       /*
-       * Validate coordinates.
+       * Validate GPS.
        */
       if (
         !Number.isFinite(lat) ||
@@ -152,9 +255,6 @@ export default function CreateHospital() {
         );
         return;
       }
-      /*
-       * Validate latitude.
-       */
       if (
         lat < -90 ||
         lat > 90
@@ -165,9 +265,6 @@ export default function CreateHospital() {
         );
         return;
       }
-      /*
-       * Validate longitude.
-       */
       if (
         lng < -180 ||
         lng > 180
@@ -179,12 +276,10 @@ export default function CreateHospital() {
         return;
       }
       /*
-       * If GPS reports very poor accuracy,
-       * warn the administrator instead of
-       * silently saving a bad hospital location.
+       * Do not save a very inaccurate location.
        *
-       * 100 metres is used as a reasonable
-       * warning threshold.
+       * 100 metres is our warning/rejection
+       * threshold for hospital coordinates.
        */
       if (
         accuracy != null &&
@@ -192,15 +287,14 @@ export default function CreateHospital() {
       ) {
         showMessage(
           "GPS Accuracy Is Low",
-          `The device reports approximately ${Math.round(
+          `The device currently reports approximately ${Math.round(
             accuracy
           )} metres accuracy.\n\nPlease move outside or to an area with a clearer GPS signal and try again.`
         );
         return;
       }
       /*
-       * Save hospital coordinates with
-       * 7 decimal places.
+       * Update the form.
        */
       setLatitude(
         lat.toFixed(7)
@@ -208,9 +302,6 @@ export default function CreateHospital() {
       setLongitude(
         lng.toFixed(7)
       );
-      /*
-       * Show exactly what was captured.
-       */
       showMessage(
         "Hospital Location Captured",
         `Latitude: ${lat.toFixed(
@@ -223,7 +314,7 @@ export default function CreateHospital() {
                 accuracy
               )} metres`
             : ""
-        }\n\nMake sure you are physically at the hospital before saving.`
+        }\n\nReview the coordinates before saving.`
       );
     } catch (error: any) {
       console.log(
@@ -241,7 +332,7 @@ export default function CreateHospital() {
   };
   /*
    * =====================================================
-   * VALIDATE HOSPITAL COORDINATES
+   * VALIDATE COORDINATES
    * =====================================================
    */
   const validateCoordinates = () => {
@@ -282,20 +373,26 @@ export default function CreateHospital() {
       return null;
     }
     return {
-      latitude: hospitalLatitude,
-      longitude: hospitalLongitude,
+      latitude:
+        hospitalLatitude,
+      longitude:
+        hospitalLongitude,
     };
   };
   /*
    * =====================================================
-   * SAVE HOSPITAL
+   * SAVE CHANGES
    * =====================================================
    */
-  const saveHospital = async () => {
+  const saveChanges = async () => {
     try {
-      /*
-       * Hospital name.
-       */
+      if (!hospitalId) {
+        showMessage(
+          "Error",
+          "Hospital ID is missing."
+        );
+        return;
+      }
       if (
         !hospitalName.trim()
       ) {
@@ -306,49 +403,23 @@ export default function CreateHospital() {
         return;
       }
       /*
-       * Validate hospital GPS.
+       * Validate fixed hospital GPS.
        */
       const coordinates =
         validateCoordinates();
       if (!coordinates) {
         return;
       }
-      setLoading(true);
+      setSaving(true);
       /*
-       * Get logged-in user.
-       */
-      const {
-        data: {
-          user,
-        },
-      } =
-        await supabase.auth.getUser();
-      if (!user) {
-        showMessage(
-          "Login Required",
-          "Please login again."
-        );
-        return;
-      }
-      /*
-       * =================================================
-       * CREATE HOSPITAL
-       * =================================================
-       *
-       * IMPORTANT:
-       *
-       * latitude and longitude below are the
-       * ACTUAL HOSPITAL coordinates.
-       *
-       * They are NOT generated from the patient's
-       * location.
+       * Update hospital.
        */
       const {
         error,
       } =
         await (supabase as any)
           .from("hospitals")
-          .insert({
+          .update({
             name:
               hospitalName.trim(),
             code:
@@ -379,30 +450,21 @@ export default function CreateHospital() {
               coordinates.latitude,
             longitude:
               coordinates.longitude,
-            /*
-             * Hospital status.
-             */
-            is_active: true,
-            status: "active",
-            has_emergency: true,
-            profile_completed: true,
-            created_by:
-              user.id,
-          });
+            has_emergency:
+              hasEmergency,
+            profile_completed:
+              true,
+          })
+          .eq(
+            "id",
+            hospitalId
+          );
       if (error) {
-        console.log(
-          "Create hospital error:",
-          error
-        );
-        showMessage(
-          "Error",
-          error.message
-        );
-        return;
+        throw error;
       }
       showMessage(
         "Success",
-        `Hospital created successfully.\n\nHospital GPS:\n${coordinates.latitude.toFixed(
+        `Hospital updated successfully.\n\nHospital GPS:\n${coordinates.latitude.toFixed(
           7
         )}, ${coordinates.longitude.toFixed(
           7
@@ -411,18 +473,49 @@ export default function CreateHospital() {
       router.back();
     } catch (error: any) {
       console.log(
-        "Save hospital error:",
+        "Update hospital error:",
         error
       );
       showMessage(
         "Error",
         error?.message ||
-          "Failed to create hospital."
+          "Unable to update hospital."
       );
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+  /*
+   * =====================================================
+   * LOADING SCREEN
+   * =====================================================
+   */
+  if (loading) {
+    return (
+      <View
+        style={
+          styles.loadingContainer
+        }
+      >
+        <ActivityIndicator
+          size="large"
+          color="#2563EB"
+        />
+        <Text
+          style={
+            styles.loadingText
+          }
+        >
+          Loading hospital...
+        </Text>
+      </View>
+    );
+  }
+  /*
+   * =====================================================
+   * SCREEN
+   * =====================================================
+   */
   return (
     <ScrollView
       style={styles.container}
@@ -431,13 +524,39 @@ export default function CreateHospital() {
       }
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={styles.title}>
-        Create Hospital
-      </Text>
-      <Text style={styles.subtitle}>
-        Register a hospital and save its
-        exact physical GPS location.
-      </Text>
+      <View
+        style={styles.headerRow}
+      >
+        <TouchableOpacity
+          onPress={() =>
+            router.back()
+          }
+          style={
+            styles.backButton
+          }
+        >
+          <Ionicons
+            name="arrow-back"
+            size={24}
+            color="#111827"
+          />
+        </TouchableOpacity>
+        <View>
+          <Text
+            style={styles.title}
+          >
+            Edit Hospital
+          </Text>
+          <Text
+            style={
+              styles.subtitle
+            }
+          >
+            Update hospital information
+            and exact GPS location.
+          </Text>
+        </View>
+      </View>
       <TextInput
         style={styles.input}
         placeholder="Hospital Name *"
@@ -458,9 +577,7 @@ export default function CreateHospital() {
         style={styles.input}
         placeholder="Region"
         value={region}
-        onChangeText={
-          setRegion
-        }
+        onChangeText={setRegion}
       />
       <TextInput
         style={styles.input}
@@ -474,9 +591,7 @@ export default function CreateHospital() {
         style={styles.input}
         placeholder="Town / City"
         value={city}
-        onChangeText={
-          setCity
-        }
+        onChangeText={setCity}
       />
       <TextInput
         style={styles.input}
@@ -502,11 +617,17 @@ export default function CreateHospital() {
         onChangeText={setEmail}
       />
       {/* =================================================
-          HOSPITAL LOCATION
+          HOSPITAL GPS
           ================================================= */}
-      <View style={styles.locationCard}>
+      <View
+        style={
+          styles.locationCard
+        }
+      >
         <View
-          style={styles.locationHeader}
+          style={
+            styles.locationHeader
+          }
         >
           <Ionicons
             name="location"
@@ -524,21 +645,22 @@ export default function CreateHospital() {
                 styles.locationTitle
               }
             >
-              Exact Hospital Location
+              Exact Hospital GPS Location
             </Text>
             <Text
               style={
                 styles.locationDescription
               }
             >
-              These coordinates are permanently
-              used as this hospital's location
-              when calculating emergency distance.
+              These coordinates represent the
+              hospital's permanent physical
+              location.
             </Text>
           </View>
         </View>
-        {/* LATITUDE */}
-        <Text style={styles.fieldLabel}>
+        <Text
+          style={styles.fieldLabel}
+        >
           Hospital Latitude
         </Text>
         <TextInput
@@ -550,8 +672,9 @@ export default function CreateHospital() {
             setLatitude
           }
         />
-        {/* LONGITUDE */}
-        <Text style={styles.fieldLabel}>
+        <Text
+          style={styles.fieldLabel}
+        >
           Hospital Longitude
         </Text>
         <TextInput
@@ -563,7 +686,7 @@ export default function CreateHospital() {
             setLongitude
           }
         />
-        {/* CAPTURE */}
+        {/* CURRENT GPS */}
         <TouchableOpacity
           style={[
             styles.locationButton,
@@ -637,12 +760,12 @@ export default function CreateHospital() {
           )}
         <View
           style={
-            styles.locationWarningBox
+            styles.warningBox
           }
         >
           <Ionicons
             name="warning"
-            size={18}
+            size={19}
             color="#92400E"
           />
           <Text
@@ -650,11 +773,11 @@ export default function CreateHospital() {
               styles.locationWarning
             }
           >
-            Only use "Capture Hospital GPS"
-            when you are physically at the
+            Only tap "Capture Hospital GPS"
+            when you are physically at this
             hospital. If you are somewhere
-            else, manually enter the exact
-            coordinates of the hospital.
+            else, manually enter the hospital's
+            exact coordinates.
           </Text>
         </View>
         <Text
@@ -662,11 +785,61 @@ export default function CreateHospital() {
             styles.distanceExplanation
           }
         >
-          Emergency distance will be calculated
-          from the patient's current GPS location
-          to these hospital coordinates.
+          Emergency distance is calculated
+          from the patient's current GPS
+          location to these saved hospital
+          coordinates.
         </Text>
       </View>
+      {/* =================================================
+          EMERGENCY STATUS
+          ================================================= */}
+      <TouchableOpacity
+        style={
+          styles.emergencyToggle
+        }
+        onPress={() =>
+          setHasEmergency(
+            !hasEmergency
+          )
+        }
+      >
+        <Ionicons
+          name={
+            hasEmergency
+              ? "checkbox"
+              : "square-outline"
+          }
+          size={26}
+          color={
+            hasEmergency
+              ? "#DC2626"
+              : "#6B7280"
+          }
+        />
+        <View
+          style={{
+            flex: 1,
+            marginLeft: 12,
+          }}
+        >
+          <Text
+            style={
+              styles.emergencyTitle
+            }
+          >
+            Emergency Hospital
+          </Text>
+          <Text
+            style={
+              styles.emergencyDescription
+            }
+          >
+            Include this hospital in
+            emergency hospital results.
+          </Text>
+        </View>
+      </TouchableOpacity>
       {/* =================================================
           SAVE
           ================================================= */}
@@ -675,21 +848,21 @@ export default function CreateHospital() {
           styles.saveButton
         }
         disabled={
-          loading ||
+          saving ||
           capturingLocation
         }
         onPress={
-          saveHospital
+          saveChanges
         }
       >
-        {loading ? (
+        {saving ? (
           <ActivityIndicator
             color="#fff"
           />
         ) : (
           <>
             <Ionicons
-              name="add-circle"
+              name="save"
               size={20}
               color="#fff"
             />
@@ -698,7 +871,7 @@ export default function CreateHospital() {
                 styles.saveButtonText
               }
             >
-              Create Hospital
+              Save Changes
             </Text>
           </>
         )}
@@ -722,17 +895,48 @@ const styles =
       padding: 20,
       paddingBottom: 50,
     },
+    loadingContainer: {
+      flex: 1,
+      justifyContent:
+        "center",
+      alignItems:
+        "center",
+      backgroundColor:
+        "#F5F7FA",
+    },
+    loadingText: {
+      marginTop: 12,
+      color: "#6B7280",
+      fontSize: 16,
+    },
+    headerRow: {
+      flexDirection:
+        "row",
+      alignItems:
+        "flex-start",
+      marginBottom: 24,
+    },
+    backButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      backgroundColor:
+        "#FFFFFF",
+      alignItems:
+        "center",
+      justifyContent:
+        "center",
+      marginRight: 12,
+    },
     title: {
       fontSize: 28,
       fontWeight: "700",
       color: "#111827",
-      marginBottom: 6,
     },
     subtitle: {
-      fontSize: 15,
+      marginTop: 4,
+      fontSize: 14,
       color: "#6B7280",
-      marginBottom: 24,
-      lineHeight: 22,
     },
     input: {
       backgroundColor:
@@ -759,7 +963,6 @@ const styles =
       borderRadius: 16,
       padding: 18,
       marginTop: 8,
-      marginBottom: 12,
       borderWidth: 1,
       borderColor:
         "#FECACA",
@@ -793,7 +996,6 @@ const styles =
         "center",
       justifyContent:
         "center",
-      marginTop: 2,
     },
     locationButtonDisabled: {
       opacity: 0.7,
@@ -813,8 +1015,7 @@ const styles =
         "#DCFCE7",
       borderRadius: 10,
       padding: 12,
-      marginTop: 2,
-      marginBottom: 12,
+      marginTop: 12,
     },
     coordinateTitle: {
       color: "#166534",
@@ -826,7 +1027,7 @@ const styles =
       fontSize: 13,
       marginTop: 3,
     },
-    locationWarningBox: {
+    warningBox: {
       flexDirection:
         "row",
       alignItems:
@@ -835,7 +1036,7 @@ const styles =
         "#FEF3C7",
       borderRadius: 10,
       padding: 12,
-      marginTop: 2,
+      marginTop: 12,
     },
     locationWarning: {
       flex: 1,
@@ -851,6 +1052,31 @@ const styles =
       lineHeight: 19,
       fontStyle: "italic",
     },
+    emergencyToggle: {
+      flexDirection:
+        "row",
+      alignItems:
+        "center",
+      backgroundColor:
+        "#FFFFFF",
+      borderRadius: 16,
+      padding: 18,
+      marginTop: 16,
+      borderWidth: 1,
+      borderColor:
+        "#E5E7EB",
+    },
+    emergencyTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: "#111827",
+    },
+    emergencyDescription: {
+      marginTop: 4,
+      fontSize: 13,
+      color: "#6B7280",
+      lineHeight: 18,
+    },
     saveButton: {
       backgroundColor:
         "#2563EB",
@@ -860,7 +1086,7 @@ const styles =
         "center",
       justifyContent:
         "center",
-      marginTop: 12,
+      marginTop: 18,
       minHeight: 54,
       flexDirection:
         "row",

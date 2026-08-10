@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import * as Location from "expo-location";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,15 +18,20 @@ const API_URL =
 type Hospital = {
   id: string;
   name: string;
-  phone: string;
-  address: string;
-  city: string;
-  district: string;
-  region: string;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  district: string | null;
+  region: string | null;
+  // Hospital's SAVED GPS coordinates
   latitude: number | null;
   longitude: number | null;
-  has_emergency: boolean;
+  // Calculated from patient's current GPS location
   distance_km: number | null;
+};
+type PatientLocation = {
+  latitude: number;
+  longitude: number;
 };
 const showMessage = (
   title: string,
@@ -44,155 +49,119 @@ const showMessage = (
 };
 export default function EmergencyHospitals() {
   const [loading, setLoading] =
-    useState(true);
+    useState(false);
   const [refreshing, setRefreshing] =
+    useState(false);
+  const [locating, setLocating] =
     useState(false);
   const [hospitals, setHospitals] =
     useState<Hospital[]>([]);
   const [patientLocation, setPatientLocation] =
-    useState<{
-      latitude: number;
-      longitude: number;
-    } | null>(null);
+    useState<PatientLocation | null>(null);
   /*
    * =========================================================
-   * GET PATIENT'S CURRENT LOCATION
+   * GET PATIENT CURRENT LOCATION
    * =========================================================
+   *
+   * IMPORTANT:
+   * This function is ONLY called when the user
+   * presses "Get My Current Location".
+   *
+   * We do NOT call it automatically when the
+   * screen opens.
    */
   const getPatientLocation =
-    useCallback(async () => {
-      /*
-       * Web browser
-       */
-      if (Platform.OS === "web") {
-        if (
-          !navigator.geolocation
-        ) {
-          throw new Error(
-            "Location services are not available on this device."
+    useCallback(async (): Promise<PatientLocation | null> => {
+      try {
+        setLocating(true);
+        /*
+         * Request permission only when the user
+         * explicitly asks to get their location.
+         */
+        const permission =
+          await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== "granted") {
+          showMessage(
+            "Location Required",
+            "Please allow location access so we can calculate the distance from you to nearby emergency hospitals."
           );
+          return null;
         }
-        return new Promise<{
-          latitude: number;
-          longitude: number;
-        }>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              resolve({
-                latitude:
-                  position.coords.latitude,
-                longitude:
-                  position.coords.longitude,
-              });
-            },
-            (error) => {
-              console.log(
-                "Web location error:",
-                error
-              );
-              reject(
-                new Error(
-                  "Unable to get your current location. Please allow location access."
-                )
-              );
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 15000,
-              maximumAge: 0,
-            }
+        /*
+         * Get a fresh GPS position.
+         */
+        const location =
+          await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Highest,
+          });
+        const latitude =
+          location.coords.latitude;
+        const longitude =
+          location.coords.longitude;
+        /*
+         * Validate coordinates.
+         */
+        if (
+          !Number.isFinite(latitude) ||
+          !Number.isFinite(longitude)
+        ) {
+          showMessage(
+            "Location Error",
+            "Unable to determine your current GPS location."
           );
-        });
-      }
-      /*
-       * =====================================================
-       * MOBILE LOCATION
-       * =====================================================
-       */
-      const permission =
-        await Location.requestForegroundPermissionsAsync();
-      if (
-        permission.status !==
-        "granted"
-      ) {
-        throw new Error(
-          "Location permission is required to find emergency hospitals near you."
+          return null;
+        }
+        const currentLocation: PatientLocation = {
+          latitude,
+          longitude,
+        };
+        console.log(
+          "PATIENT CURRENT LOCATION:",
+          currentLocation
         );
-      }
-      /*
-       * Check whether location services
-       * are actually enabled.
-       */
-      const servicesEnabled =
-        await Location.hasServicesEnabledAsync();
-      if (!servicesEnabled) {
-        throw new Error(
-          "Please turn on Location Services and try again."
+        setPatientLocation(
+          currentLocation
         );
-      }
-      /*
-       * Get the patient's CURRENT position.
-       *
-       * maximumAge: 0 means we don't intentionally
-       * reuse an old cached position.
-       */
-      const location =
-        await Location.getCurrentPositionAsync({
-          accuracy:
-            Location.Accuracy.High,
-        });
-      if (
-        !location ||
-        !location.coords
-      ) {
-        throw new Error(
-          "Unable to determine your current location."
+        return currentLocation;
+      } catch (error: any) {
+        console.log(
+          "Patient location error:",
+          error
         );
-      }
-      const latitude =
-        location.coords.latitude;
-      const longitude =
-        location.coords.longitude;
-      if (
-        !Number.isFinite(latitude) ||
-        !Number.isFinite(longitude)
-      ) {
-        throw new Error(
-          "Invalid GPS coordinates were received."
+        showMessage(
+          "Location Error",
+          error?.message ||
+            "Unable to get your current location."
         );
+        return null;
+      } finally {
+        setLocating(false);
       }
-      return {
-        latitude,
-        longitude,
-      };
     }, []);
   /*
    * =========================================================
-   * LOAD NEAREST EMERGENCY HOSPITALS
+   * LOAD EMERGENCY HOSPITALS USING PATIENT LOCATION
    * =========================================================
+   *
+   * This function requires a location.
+   *
+   * The hospital latitude/longitude are already
+   * saved in the database.
+   *
+   * Backend calculates:
+   *
+   * USER GPS
+   *    ↓
+   * HOSPITAL SAVED GPS
+   *    ↓
+   * DISTANCE
    */
-  const loadHospitals =
-    useCallback(async () => {
+  const loadHospitals = useCallback(
+    async (
+      location: PatientLocation
+    ) => {
       try {
         setLoading(true);
-        /*
-         * STEP 1
-         * Get patient's current location.
-         */
-        const location =
-          await getPatientLocation();
-        /*
-         * Save patient's location
-         * for display/debugging.
-         */
-        setPatientLocation(
-          location
-        );
-        /*
-         * STEP 2
-         * Send CURRENT patient location
-         * to backend.
-         */
         const url =
           `${API_URL}/hospital/emergency-hospitals` +
           `?latitude=${encodeURIComponent(
@@ -209,51 +178,116 @@ export default function EmergencyHospitals() {
           await fetch(url);
         const json =
           await response.json();
+        console.log(
+          "Emergency hospital response:",
+          json
+        );
         if (!response.ok) {
           throw new Error(
             json.error ||
-            "Unable to load emergency hospitals."
+              "Unable to load emergency hospitals."
           );
         }
+        const hospitalList: Hospital[] =
+          Array.isArray(json.hospitals)
+            ? json.hospitals
+            : [];
         /*
-         * Backend has already sorted
-         * hospitals from nearest → farthest.
+         * Sort nearest hospital first.
          */
+        hospitalList.sort(
+          (
+            a: Hospital,
+            b: Hospital
+          ) => {
+            if (
+              a.distance_km == null
+            ) {
+              return 1;
+            }
+            if (
+              b.distance_km == null
+            ) {
+              return -1;
+            }
+            return (
+              Number(a.distance_km) -
+              Number(b.distance_km)
+            );
+          }
+        );
         setHospitals(
-          json.hospitals || []
+          hospitalList
         );
-      } catch (err: any) {
+      } catch (error: any) {
         console.log(
-          "Emergency hospitals error:",
-          err
+          "Emergency hospitals loading error:",
+          error
         );
-        setHospitals([]);
         showMessage(
-          "Location Required",
-          err.message ||
-          "Unable to find your current location."
+          "Error",
+          error?.message ||
+            "Unable to load emergency hospitals."
         );
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
-    }, [getPatientLocation]);
+    },
+    []
+  );
   /*
    * =========================================================
-   * INITIAL LOAD
+   * USER CLICKS "GET MY CURRENT LOCATION"
    * =========================================================
    */
-  useEffect(() => {
-    loadHospitals();
-  }, [loadHospitals]);
+  const handleGetCurrentLocation =
+    async () => {
+      if (locating || loading) {
+        return;
+      }
+      /*
+       * First capture the user's current GPS.
+       */
+      const location =
+        await getPatientLocation();
+      if (!location) {
+        return;
+      }
+      /*
+       * Then use that exact location to
+       * calculate hospital distances.
+       */
+      await loadHospitals(
+        location
+      );
+    };
   /*
    * =========================================================
    * REFRESH
    * =========================================================
+   *
+   * Refresh does NOT silently request GPS.
+   *
+   * If we already have a location, use the
+   * existing location.
+   *
+   * Otherwise the user must press
+   * "Get My Current Location".
    */
-  const onRefresh = () => {
+  const onRefresh = async () => {
+    if (!patientLocation) {
+      setRefreshing(false);
+      showMessage(
+        "Location Required",
+        "Please tap 'Get My Current Location' first."
+      );
+      return;
+    }
     setRefreshing(true);
-    loadHospitals();
+    await loadHospitals(
+      patientLocation
+    );
   };
   /*
    * =========================================================
@@ -261,7 +295,7 @@ export default function EmergencyHospitals() {
    * =========================================================
    */
   const callHospital = (
-    phone?: string
+    phone?: string | null
   ) => {
     if (!phone) {
       showMessage(
@@ -272,62 +306,84 @@ export default function EmergencyHospitals() {
     }
     Linking.openURL(
       `tel:${phone}`
-    );
+    ).catch(() => {
+      showMessage(
+        "Error",
+        "Unable to make the call."
+      );
+    });
   };
   /*
    * =========================================================
    * OPEN DIRECTIONS
-   *
-   * IMPORTANT:
-   * destination = hospital GPS
-   *
-   * The map application uses the patient's
-   * current location as the starting point.
    * =========================================================
+   *
+   * START:
+   * User's captured current GPS location
+   *
+   * DESTINATION:
+   * Hospital's saved latitude/longitude
+   *
+   * No Google Maps API key is required.
    */
   const openDirections = (
     hospital: Hospital
   ) => {
+    if (!patientLocation) {
+      showMessage(
+        "Location Required",
+        "Please tap 'Get My Current Location' first."
+      );
+      return;
+    }
     if (
       hospital.latitude == null ||
       hospital.longitude == null
     ) {
-      /*
-       * Fallback if hospital has no GPS.
-       */
-      const search =
-        encodeURIComponent(
-          `${hospital.name}, ${hospital.address}, ${hospital.city}, ${hospital.region}, Ghana`
-        );
-      const url =
-        Platform.OS === "ios"
-          ? `http://maps.apple.com/?q=${search}`
-          : `https://www.google.com/maps/search/?api=1&query=${search}`;
-      Linking.openURL(url)
-        .catch(() => {
-          showMessage(
-            "Error",
-            "Unable to open maps."
-          );
-        });
+      showMessage(
+        "Hospital Location Unavailable",
+        "This hospital does not have a saved GPS location."
+      );
       return;
     }
-    /*
-     * Exact hospital GPS destination.
-     */
+    const origin =
+      `${patientLocation.latitude},${patientLocation.longitude}`;
     const destination =
       `${hospital.latitude},${hospital.longitude}`;
-    const url =
-      Platform.OS === "ios"
-        ? `http://maps.apple.com/?daddr=${destination}`
-        :` https://www.google.com/maps/dir/?api=1&destination=${destination}`;
-    Linking.openURL(url)
-      .catch(() => {
-        showMessage(
-          "Error",
-          "Unable to open maps."
-        );
-      });
+    let url = "";
+    /*
+     * iOS → Apple Maps
+     */
+    if (Platform.OS === "ios") {
+      url =
+        `http://maps.apple.com/?saddr=${encodeURIComponent(
+          origin
+        )}&daddr=${encodeURIComponent(
+          destination
+        )}`;
+    }
+    /*
+     * Android / Web → Google Maps
+     *
+     * This does NOT require a Google Maps API key.
+     */
+    else {
+      url =
+        `https://www.google.com/maps/dir/?api=1` +
+        `&origin=${encodeURIComponent(
+          origin
+        )}` +
+        `&destination=${encodeURIComponent(
+          destination
+        )}` +
+        `&travelmode=driving`;
+    }
+    Linking.openURL(url).catch(() => {
+      showMessage(
+        "Maps Error",
+        "Unable to open maps."
+      );
+    });
   };
   /*
    * =========================================================
@@ -336,17 +392,29 @@ export default function EmergencyHospitals() {
    */
   const renderHospital = ({
     item,
+    index,
   }: {
     item: Hospital;
+    index: number;
   }) => (
     <View style={styles.card}>
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
+        <View style={styles.numberCircle}>
+          <Text style={styles.numberText}>
+            {index + 1}
+          </Text>
+        </View>
+        <View
+          style={{
+            flex: 1,
+            marginLeft: 12,
+          }}
+        >
           <Text style={styles.name}>
             {item.name}
           </Text>
           <Text style={styles.location}>
-            {item.city}
+            {item.city || ""}
             {item.region
               ? ` • ${item.region}`
               : ""}
@@ -363,21 +431,28 @@ export default function EmergencyHospitals() {
           </Text>
         </View>
       </View>
-      {/* Distance calculated from patient's CURRENT location. */}
-{item.distance_km != null && (
-        <View style={styles.distanceRow}>
+      {item.distance_km != null && (
+        <View
+          style={
+            styles.distanceContainer
+          }
+        >
           <Ionicons
             name="navigate"
             size={18}
             color="#2563EB"
           />
           <Text style={styles.distance}>
-            {item.distance_km} km away
+            {Number(
+              item.distance_km
+            ).toFixed(2)}{" "}
+            km away
           </Text>
         </View>
       )}
       <Text style={styles.address}>
-        {item.address}
+        {item.address ||
+          "Hospital address unavailable."}
       </Text>
       <View style={styles.buttonRow}>
         <TouchableOpacity
@@ -417,31 +492,7 @@ export default function EmergencyHospitals() {
   );
   /*
    * =========================================================
-   * LOADING
-   * =========================================================
-   */
-  if (loading) {
-    return (
-      <View
-        style={
-          styles.loadingContainer
-        }
-      >
-        <ActivityIndicator
-          size="large"
-          color="#DC2626"
-        />
-        <Text
-          style={styles.loadingText}
-        >
-          Finding nearest emergency hospitals...
-        </Text>
-      </View>
-    );
-  }
-  /*
-   * =========================================================
-   * MAIN SCREEN
+   * SCREEN
    * =========================================================
    */
   return (
@@ -450,243 +501,380 @@ export default function EmergencyHospitals() {
         🚑 Emergency Hospitals
       </Text>
       <Text style={styles.subHeader}>
-        Hospitals are sorted from nearest to
-        farthest based on your current GPS location.
+        Find emergency hospitals near you.
+        Tap the button below to use your
+        current GPS location and calculate
+        the distance to each hospital.
       </Text>
-      {/* Show the coordinates being used. */}
-{patientLocation && (
-        <View style={styles.locationCard}>
+      /*
+       * =====================================================
+       * GET CURRENT LOCATION BUTTON
+       * =====================================================
+       */
+      <TouchableOpacity
+        style={[
+          styles.locationButton,
+          (locating || loading) &&
+            styles.locationButtonDisabled,
+        ]}
+        onPress={
+          handleGetCurrentLocation
+        }
+        disabled={
+          locating || loading
+        }
+      >
+        {locating ? (
+          <ActivityIndicator
+            size="small"
+            color="#fff"
+          />
+        ) : (
           <Ionicons
             name="location"
-            size={20}
+            size={21}
+            color="#fff"
+          />
+        )}
+        <Text
+          style={
+            styles.locationButtonText
+          }
+        >
+          {locating
+            ? "Getting Your Location..."
+            : patientLocation
+            ? "Update My Current Location"
+            : "Get My Current Location"}
+        </Text>
+      </TouchableOpacity>
+      /*
+       * =====================================================
+       * LOCATION STATUS
+       * =====================================================
+       */
+      {patientLocation && (
+        <View
+          style={
+            styles.locationStatus
+          }
+        >
+          <Ionicons
+            name="checkmark-circle"
+            size={19}
             color="#16A34A"
           />
-          <View style={styles.locationContent}>
-            <Text style={styles.locationTitle}>
-              Your current location
+          <View style={{ flex: 1 }}>
+            <Text
+              style={
+                styles.locationStatusText
+              }
+            >
+              Current location captured
             </Text>
-            <Text style={styles.coordinates}>
-              {patientLocation.latitude.toFixed(6)}
-              {", "}
-              {patientLocation.longitude.toFixed(6)}
+            <Text
+              style={
+                styles.coordinatesText
+              }
+            >
+              {patientLocation.latitude.toFixed(
+                6
+              )}
+              {" , "}
+              {patientLocation.longitude.toFixed(
+                6
+              )}
             </Text>
           </View>
-          <View style={styles.locationDot} />
         </View>
       )}
-      <FlatList
-        data={hospitals}
-        keyExtractor={(item) =>
-          item.id
-        }
-        renderItem={
-          renderHospital
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
+      /*
+       * =====================================================
+       * LOADING
+       * =====================================================
+       */
+      {loading && (
+        <View
+          style={
+            styles.loadingBox
+          }
+        >
+          <ActivityIndicator
+            size="large"
+            color="#DC2626"
           />
-        }
-        contentContainerStyle={{
-          paddingBottom: 40,
-        }}
-        ListEmptyComponent={
-          <View
-            style={styles.emptyCard}
+          <Text
+            style={
+              styles.loadingText
+            }
           >
-            <Ionicons
-              name="medkit"
-              size={60}
-              color="#DC2626"
+            Calculating distances to
+            emergency hospitals...
+          </Text>
+        </View>
+      )}
+      /*
+       * =====================================================
+       * HOSPITAL LIST
+       * =====================================================
+       */
+      {!loading && (
+        <FlatList
+          data={hospitals}
+          keyExtractor={(item) =>
+            item.id
+          }
+          renderItem={
+            renderHospital
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={
+                refreshing
+              }
+              onRefresh={
+                onRefresh
+              }
             />
-            <Text
-              style={styles.emptyTitle}
+          }
+          contentContainerStyle={{
+            paddingBottom: 40,
+          }}
+          ListEmptyComponent={
+            <View
+              style={
+                styles.emptyCard
+              }
             >
-              No Emergency Hospitals
-            </Text>
-            <Text
-              style={styles.emptyText}
-            >
-              No emergency hospitals were
-              found from your current location.
-            </Text>
-          </View>
-        }
-      />
+              <Ionicons
+                name="location"
+                size={55}
+                color="#DC2626"
+              />
+              <Text
+                style={
+                  styles.emptyTitle
+                }
+              >
+                Find Emergency Hospitals
+              </Text>
+              <Text
+                style={
+                  styles.emptyText
+                }
+              >
+                Tap "Get My Current Location"
+                above. Your current GPS
+                location will then be used to
+                calculate the distance to each
+                hospital.
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
-const styles =
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: "#F5F7FA",
-      padding: 16,
+/*
+ * =========================================================
+ * STYLES
+ * =========================================================
+ */
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F7FA",
+    padding: 16,
+  },
+  header: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#B91C1C",
+    marginBottom: 6,
+  },
+  subHeader: {
+    fontSize: 15,
+    color: "#666",
+    marginBottom: 14,
+    lineHeight: 22,
+  },
+  locationButton: {
+    backgroundColor: "#2563EB",
+    borderRadius: 14,
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+  },
+  locationButtonDisabled: {
+    opacity: 0.7,
+  },
+  locationButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginLeft: 9,
+  },
+  locationStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DCFCE7",
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  locationStatusText: {
+    marginLeft: 8,
+    color: "#166534",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  coordinatesText: {
+    marginLeft: 8,
+    marginTop: 2,
+    color: "#15803D",
+    fontSize: 12,
+  },
+  loadingBox: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 25,
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 15,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
     },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: "#F5F7FA",
-    },
-    loadingText: {
-      marginTop: 12,
-      fontSize: 16,
-      color: "#666",
-      textAlign: "center",
-      paddingHorizontal: 30,
-    },
-    header: {
-      fontSize: 28,
-      fontWeight: "700",
-      color: "#B91C1C",
-      marginBottom: 6,
-    },
-    subHeader: {
-      fontSize: 15,
-      color: "#666",
-      marginBottom: 14,
-      lineHeight: 22,
-    },
-    locationCard: {
-      backgroundColor: "#ECFDF5",
-      borderRadius: 14,
-      padding: 12,
-      marginBottom: 16,
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: "#BBF7D0",
-    },
-    locationContent: {
-      flex: 1,
-      marginLeft: 10,
-    },
-    locationTitle: {
-      fontSize: 14,
-      fontWeight: "700",
-      color: "#166534",
-    },
-    coordinates: {
-      marginTop: 3,
-      fontSize: 12,
-      color: "#15803D",
-    },
-    locationDot: {
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-      backgroundColor: "#16A34A",
-    },
-    card: {
-      backgroundColor: "#fff",
-      borderRadius: 18,
-      padding: 18,
-      marginBottom: 16,
-      shadowColor: "#000",
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
-      shadowOffset: {
-        width: 0,
-        height: 3,
-      },
-      elevation: 3,
-    },
-    headerRow: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    name: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: "#111827",
-    },
-    location: {
-      marginTop: 5,
-      fontSize: 15,
-      color: "#6B7280",
-    },
-    badge: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: "#DC2626",
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 20,
-    },
-    badgeText: {
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 12,
-      marginLeft: 5,
-    },
-    distanceRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginTop: 14,
-    },
-    distance: {
-      marginLeft: 6,
-      fontSize: 16,
-      fontWeight: "700",
-      color: "#2563EB",
-    },
-    address: {
-      marginTop: 8,
-      fontSize: 15,
-      color: "#555",
-      lineHeight: 22,
-    },
-    buttonRow: {
-      flexDirection: "row",
-      marginTop: 18,
-    },
-    callButton: {
-      flex: 1,
-      backgroundColor: "#16A34A",
-      borderRadius: 12,
-      paddingVertical: 14,
-      marginRight: 8,
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    mapButton: {
-      flex: 1,
-      backgroundColor: "#2563EB",
-      borderRadius: 12,
-      paddingVertical: 14,
-      marginLeft: 8,
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    buttonText: {
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 15,
-      marginLeft: 6,
-    },
-    emptyCard: {
-      backgroundColor: "#fff",
-      borderRadius: 18,
-      padding: 30,
-      alignItems: "center",
-      marginTop: 80,
-    },
-    emptyTitle: {
-      marginTop: 16,
-      fontSize: 22,
-      fontWeight: "700",
-      color: "#111827",
-    },
-    emptyText: {
-      marginTop: 10,
-      fontSize: 15,
-      color: "#666",
-      textAlign: "center",
-      lineHeight: 22,
-     
-    },
-  });
+    elevation: 3,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  numberCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#FEE2E2",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  numberText: {
+    color: "#B91C1C",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  name: {
+    fontSize: 19,
+    fontWeight: "700",
+    color: "#111827",
+  },
+  location: {
+    marginTop: 5,
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#DC2626",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  badgeText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  distanceContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 14,
+  },
+  distance: {
+    marginLeft: 6,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#2563EB",
+  },
+  address: {
+    marginTop: 8,
+    fontSize: 15,
+    color: "#555",
+    lineHeight: 22,
+  },
+  buttonRow: {
+    flexDirection: "row",
+    marginTop: 18,
+  },
+  callButton: {
+    flex: 1,
+    backgroundColor: "#16A34A",
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginRight: 8,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mapButton: {
+    flex: 1,
+    backgroundColor: "#2563EB",
+    borderRadius: 12,
+    paddingVertical: 14,
+    marginLeft: 8,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  buttonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+    marginLeft: 6,
+  },
+  emptyCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 30,
+    alignItems: "center",
+    marginTop: 50,
+  },
+  emptyTitle: {
+    marginTop: 16,
+    fontSize: 21,
+    fontWeight: "700",
+    color: "#111827",
+    textAlign: "center",
+  },
+  emptyText: {
+    marginTop: 10,
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+});
