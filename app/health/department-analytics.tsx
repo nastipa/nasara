@@ -38,16 +38,20 @@ type Analytics = {
 
   waiting: number;
   called: number;
+  consultation: number;
 
-  completed: number;
+  admitted: number;
+  discharged: number;
+  transferred: number;
+  referred: number;
 
   cancelled: number;
   no_show: number;
 
-  admitted: number;
-  discharged: number;
-
   emergency: number;
+  urgent: number;
+
+  currently_admitted: number;
 
   average_wait_minutes: number;
 
@@ -67,6 +71,9 @@ type Analytics = {
   children: number;
   adults: number;
   elderly: number;
+
+  departments: any[];
+  hourly: any[];
 };
 export default function HospitalAnalytics() {
 
@@ -81,49 +88,50 @@ const [selectedDate, setSelectedDate] =
 const [showDatePicker, setShowDatePicker] =
   useState(false);
 
-const [admittedPatients, setAdmittedPatients] =
-  useState(0);
-
-const [dischargedPatients, setDischargedPatients] =
-  useState(0);
   const [analytics, setAnalytics] =
   useState<Analytics>({
-    total_patients:0,
-    patients_served_today:0,
+    total_patients: 0,
+    patients_served_today: 0,
 
-    waiting:0,
-    called:0,
-   
-    completed:0,
+    waiting: 0,
+    called: 0,
+    consultation: 0,
 
-    cancelled:0,
-    no_show:0,
+    admitted: 0,
+    discharged: 0,
+    transferred: 0,
+    referred: 0,
 
-    admitted:0,
-    discharged:0,
+    cancelled: 0,
+    no_show: 0,
 
-    emergency:0,
+    emergency: 0,
+    urgent: 0,
 
-    average_wait_minutes:0,
+    currently_admitted: 0,
 
-    busiest_department:null,
-    busiest_department_count:0,
+    average_wait_minutes: 0,
 
-    peak_hour:null,
+    busiest_department: null,
+    busiest_department_count: 0,
 
-    cancellation_rate:0,
-    no_show_rate:0,
+    peak_hour: null,
 
-    average_consultation_minutes:0,
+    cancellation_rate: 0,
+    no_show_rate: 0,
 
-    male_patients:0,
-    female_patients:0,
+    average_consultation_minutes: 0,
 
-    children:0,
-    adults:0,
-    elderly:0,
+    male_patients: 0,
+    female_patients: 0,
+
+    children: 0,
+    adults: 0,
+    elderly: 0,
+
+    departments: [],
+    hourly: [],
   });
-
   const loadAnalytics =
     useCallback(async () => {
 
@@ -173,13 +181,7 @@ const [dischargedPatients, setDischargedPatients] =
         setAnalytics(
           json.analytics
         );
-        setAdmittedPatients(
-  json.analytics.admitted ?? 0
-);
-
-setDischargedPatients(
-  json.analytics.discharged ?? 0
-);
+       
 
       } catch (err: any) {
 
@@ -350,69 +352,84 @@ queue performance and service efficiency.
 
       <View style={styles.grid}>
 
-        <StatCard
-          title="Today's Patients"
-          value={analytics.total_patients}
-          color="#2563EB"
-          icon="people"
-        />
+  <StatCard
+    title="Total Patients"
+    value={analytics.total_patients}
+    color="#2563EB"
+    icon="people"
+  />
 
-        <StatCard
-          title="Waiting"
-          value={analytics.waiting}
-          color="#F59E0B"
-          icon="time"
-        />
+  <StatCard
+    title="Patients Served"
+    value={analytics.patients_served_today}
+    color="#8B5CF6"
+    icon="checkmark-done"
+  />
 
-        <StatCard
-          title="Completed"
-          value={analytics.completed}
-          color="#16A34A"
-          icon="checkmark-circle"
-        />
-<StatCard
-  title="Patients Served"
-  value={analytics.patients_served_today}
-  color="#8B5CF6"
-  icon="business"
-/>
-      <StatCard
-  title="Admitted"
-  value={analytics.admitted}
-  color="#0EA5E9"
-  icon="bed"
-/>
+  <StatCard
+    title="Waiting"
+    value={analytics.waiting}
+    color="#F59E0B"
+    icon="time"
+  />
 
-<StatCard
-  title="Discharged"
-  value={analytics.discharged}
-  color="#10B981"
-  icon="exit"
-/>
-       <StatCard
-  title="Emergency"
-  value={analytics.emergency}
-  color="#DC2626"
-  icon="warning"
-/>
+  <StatCard
+    title="Called"
+    value={analytics.called}
+    color="#2563EB"
+    icon="megaphone"
+  />
 
-<StatCard
-  title="Cancelled"
-  value={analytics.cancelled}
-  color="#EF4444"
-  icon="close-circle"
-/>
+  <StatCard
+    title="Consultation"
+    value={analytics.consultation}
+    color="#0891B2"
+    icon="medical"
+  />
 
-<StatCard
-  title="No Show"
-  value={analytics.no_show}
-  color="#7C3AED"
-  icon="person-remove"
-/>
+  <StatCard
+    title="Admitted"
+    value={analytics.admitted}
+    color="#0EA5E9"
+    icon="bed"
+  />
 
+  <StatCard
+    title="Discharged"
+    value={analytics.discharged}
+    color="#10B981"
+    icon="exit"
+  />
 
-      </View>
+  <StatCard
+    title="Transferred"
+    value={analytics.transferred}
+    color="#7C3AED"
+    icon="swap-horizontal"
+  />
 
+  <StatCard
+    title="Referred"
+    value={analytics.referred}
+    color="#EC4899"
+    icon="git-network"
+  />
+
+  <StatCard
+    title="Cancelled"
+    value={analytics.cancelled}
+    color="#EF4444"
+    icon="close-circle"
+  />
+
+  <StatCard
+    title="No Show"
+    value={analytics.no_show}
+    color="#64748B"
+    icon="person-remove"
+  />
+
+</View>
       <View style={styles.summaryCard}>
 
        <Text style={styles.summaryTitle}>
