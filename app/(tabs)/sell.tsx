@@ -454,14 +454,6 @@ router.replace("/browse");
   />
 
   <QuickCard
-    icon="flash"
-    title="Utilities"
-    color="#25c3eb"
-    onPress={() => router.push("/services")}
-    style={{ width: "23%", marginBottom: 12 }}
-  />
-
-  <QuickCard
     icon="radio-outline"
     title="Normal Live"
     color="#dc4726"
