@@ -1,88 +1,97 @@
 import { useEffect, useMemo, useState } from "react";
-
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Platform,
   RefreshControl,
   Text,
-  TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-
 import { supabase } from "../../lib/supabase";
-
+/* =====================================================
+   SHOW MESSAGE
+===================================================== */
+const showMessage = (
+  title: string,
+  message?: string
+) => {
+  if (Platform.OS === "web") {
+    window.alert(
+      message
+        ? `${title}\n\n${message}`
+        : title
+    );
+  } else {
+    Alert.alert(title, message);
+  }
+};
+/* =====================================================
+   ADMIN LOGISTICS
+===================================================== */
 export default function LogisticsAdmin() {
-
   const [deliveries, setDeliveries] =
     useState<any[]>([]);
-
   const [loading, setLoading] =
     useState(true);
-
   const [refreshing, setRefreshing] =
     useState(false);
-
   const [processingId, setProcessingId] =
     useState("");
-const [priceInputs, setPriceInputs] =
-  useState<Record<string, string>>({});
-  /* ================= LOAD ================= */
-
+  /* =====================================================
+     LOAD DELIVERIES
+  ===================================================== */
   async function loadDeliveries() {
-
     try {
-
       const {
         data,
         error,
-      } =
-        await (supabase as any)
-          .from("deliveries")
-          .select("*")
-          .order(
-            "created_at",
-            {
-              ascending: false,
-            }
-          );
-
-      if (!error) {
-
-        setDeliveries(
-          data || []
+      } = await (supabase as any)
+        .from("deliveries")
+        .select("*")
+        .order("created_at", {
+          ascending: false,
+        });
+      if (error) {
+        console.log(
+          "Load deliveries error:",
+          error
         );
+        showMessage(
+          "Error",
+          error.message
+        );
+        return;
       }
-
-    } catch (err) {
-
-      console.log(err);
+      setDeliveries(data || []);
+    } catch (error: any) {
+      console.log(error);
+      showMessage(
+        "Error",
+        error?.message ||
+          "Unable to load delivery requests."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-
-    setLoading(false);
-
-    setRefreshing(false);
   }
-
-  /* ================= INITIAL ================= */
-
+  /* =====================================================
+     INITIAL LOAD
+  ===================================================== */
   useEffect(() => {
-
     loadDeliveries();
-
   }, []);
-
-  /* ================= REALTIME ================= */
-
+  /* =====================================================
+     REALTIME
+  ===================================================== */
   useEffect(() => {
-
     const channel =
       (supabase as any)
         .channel(
-          "admin-logistics"
+          "admin-logistics-deliveries"
         )
-
         .on(
           "postgres_changes",
           {
@@ -91,262 +100,234 @@ const [priceInputs, setPriceInputs] =
             table: "deliveries",
           },
           () => {
-
             loadDeliveries();
           }
         )
-
         .subscribe();
-
     return () => {
-
-      (supabase as any)
-        .removeChannel(
-          channel
-        );
+      (supabase as any).removeChannel(
+        channel
+      );
     };
-
   }, []);
-
-/* ================= SET PRICE ================= */
-
-async function setPrice(
-  deliveryId: string
-) {
-  const price =
-    priceInputs[deliveryId];
-
-  if (!price) {
-    Alert.alert(
-      "Enter price"
-    );
-    return;
-  }
-
-  try {
-    setProcessingId(
-      deliveryId
-    );
-
-    const { error } =
-      await (supabase as any)
+  /* =====================================================
+     VERIFY PAYMENT
+     
+     This does NOT send the request to riders yet.
+     Payment verified:
+       payment_status = paid
+       status = payment_verified
+  ===================================================== */
+  async function verifyPayment(
+    deliveryId: string
+  ) {
+    try {
+      setProcessingId(deliveryId);
+      const {
+        data,
+        error,
+      } = await (supabase as any)
         .from("deliveries")
         .update({
-          amount:
-            Number(price),
-          status:
-            "awaiting_payment",
+          payment_status: "paid",
+          status: "payment_verified",
         })
-        .eq(
-          "id",
-          deliveryId);
-
-    if (error) {
-      Alert.alert(
-        "Error",
-        error.message
-      );
-      setProcessingId("");
-      return;
-    }
-
-    setPriceInputs(
-      (prev) => ({
-        ...prev,
-        [deliveryId]:
-          "",
-      })
-    );
-
-    await loadDeliveries();
-
-    Alert.alert(
-      "Success",
-      "Price added"
-    );
-
-  } catch (err: any) {
-
-    Alert.alert(
-      "Error",
-      err?.message
-    );
-  }
-
-  setProcessingId("");
-}
-  /* ================= VERIFY PAYMENT ================= */
-
- async function verifyPayment(
-  deliveryId: string
-) {
-
-  try {
-
-    setProcessingId(
-      deliveryId
-    );
-
-    const {
-      data,
-      error,
-    } =
-      await (supabase as any)
-        .from("deliveries")
-        .update({
-
-          payment_status:
-            "paid",
-
-          status:
-            "pending",
-        })
-        .eq(
-          "id",
-          deliveryId
-        )
-        .select();
-
-    if (error) {
-
-      Alert.alert(
-        "Payment Error",
-        error.message
-      );
-
-      setProcessingId("");
-
-      return;
-    }
-
-    if (!data || !data.length) {
-
-      Alert.alert(
-        "Update Failed",
-        "Delivery was not updated"
-      );
-
-      setProcessingId("");
-      
-
-      return;
-    }
-async function setPrice(
-  deliveryId: string
-) {
-  const price =
-    priceInputs[deliveryId];
-
-  if (!price) {
-    Alert.alert(
-      "Enter price"
-    );
-    return;
-  }
-
-  try {
-    setProcessingId(
-      deliveryId
-    );
-
-    const { error } =
-      await (supabase as any)
-        .from("deliveries")
-        .update({
-          amount:
-            Number(price),
-          status:
-            "awaiting_payment",
-        })
-        .eq(
-          "id",
-          deliveryId
+        .eq("id", deliveryId)
+        .select()
+        .single();
+      if (error) {
+        console.log(
+          "Payment verification error:",
+          error
         );
-
-    if (error) {
-      Alert.alert(
-        "Error",
-        error.message
+        showMessage(
+          "Payment Error",
+          error.message
+        );
+        return;
+      }
+      if (!data) {
+        showMessage(
+          "Update Failed",
+          "The delivery could not be updated."
+        );
+        return;
+      }
+      await loadDeliveries();
+      showMessage(
+        "Payment Verified",
+        "Payment has been verified. The delivery is now waiting for admin approval."
       );
+    } catch (error: any) {
+      console.log(error);
+      showMessage(
+        "Error",
+        error?.message ||
+          "Unable to verify payment."
+      );
+    } finally {
       setProcessingId("");
-      return;
     }
-
-    setPriceInputs(
-      (prev) => ({
-        ...prev,
-        [deliveryId]:
-          "",
-      })
-    );
-
-    await loadDeliveries();
-
-    Alert.alert(
-      "Success",
-      "Price added"
-    );
-  } catch (err: any) {
-    Alert.alert(
-      "Error",
-      err?.message
-    );
   }
-
-  setProcessingId("");
-}
-    /* ================= FORCE REFRESH ================= */
-
-    await loadDeliveries();
-
-    Alert.alert(
-      "Success",
-      "Payment verified successfully"
-    );
-
-  } catch (err: any) {
-
-    console.log(err);
-
-    Alert.alert(
-      "Error",
-      err?.message
-    );
+  /* =====================================================
+     APPROVE REQUEST FOR RIDER
+     
+     IMPORTANT:
+     
+     Only after payment has been verified does
+     the admin get this button.
+     status = approved
+     The rider dashboard should only display
+     deliveries where status = "approved".
+  ===================================================== */
+  async function approveForRider(
+    deliveryId: string
+  ) {
+    try {
+      setProcessingId(deliveryId);
+      const {
+        data,
+        error,
+      } = await (supabase as any)
+        .from("deliveries")
+        .update({
+          status: "approved",
+        })
+        .eq("id", deliveryId)
+        .eq(
+          "payment_status",
+          "paid"
+        )
+        .select()
+        .single();
+      if (error) {
+        console.log(
+          "Approval error:",
+          error
+        );
+        showMessage(
+          "Approval Error",
+          error.message
+        );
+        return;
+      }
+      if (!data) {
+        showMessage(
+          "Approval Failed",
+          "The request was not approved. Make sure payment has been verified."
+        );
+        return;
+      }
+      await loadDeliveries();
+      showMessage(
+        "Request Approved",
+        "The request has been approved and is now available to riders."
+      );
+    } catch (error: any) {
+      console.log(error);
+      showMessage(
+        "Error",
+        error?.message ||
+          "Unable to approve this request."
+      );
+    } finally {
+      setProcessingId("");
+    }
   }
-
-  setProcessingId("");
-}
-
-  /* ================= STATS ================= */
-
+  /* =====================================================
+     REJECT REQUEST
+     
+     Optional admin control.
+     
+     A rejected request will NEVER appear on
+     the rider dashboard because rider dashboard
+     only reads approved requests.
+  ===================================================== */
+  async function rejectRequest(
+    deliveryId: string
+  ) {
+    try {
+      setProcessingId(deliveryId);
+      const {
+        error,
+      } = await (supabase as any)
+        .from("deliveries")
+        .update({
+          status: "rejected",
+        })
+        .eq("id", deliveryId);
+      if (error) {
+        showMessage(
+          "Rejection Error",
+          error.message
+        );
+        return;
+      }
+      await loadDeliveries();
+      showMessage(
+        "Request Rejected",
+        "The delivery/rider request has been rejected."
+      );
+    } catch (error: any) {
+      console.log(error);
+      showMessage(
+        "Error",
+        error?.message ||
+          "Unable to reject request."
+      );
+    } finally {
+      setProcessingId("");
+    }
+  }
+  /* =====================================================
+     STATS
+  ===================================================== */
   const totalDeliveries =
     deliveries.length;
-
   const deliveredCount =
     useMemo(() => {
-
       return deliveries.filter(
-        (d) =>
-          d.status ===
+        (item) =>
+          item.status ===
           "delivered"
       ).length;
-
     }, [deliveries]);
-
   const activeCount =
     useMemo(() => {
-
       return deliveries.filter(
-        (d) =>
-          d.status !==
-          "delivered"
+        (item) =>
+          item.status !==
+          "delivered" &&
+          item.status !==
+          "rejected"
       ).length;
-
     }, [deliveries]);
-
+  const waitingPaymentCount =
+    useMemo(() => {
+      return deliveries.filter(
+        (item) =>
+          item.payment_status !==
+          "paid"
+      ).length;
+    }, [deliveries]);
+  const waitingApprovalCount =
+    useMemo(() => {
+      return deliveries.filter(
+        (item) =>
+          item.payment_status ===
+            "paid" &&
+          item.status !==
+            "approved" &&
+          item.status !==
+            "assigned" &&
+          item.status !==
+            "picked_up" &&
+          item.status !==
+            "delivered"
+      ).length;
+    }, [deliveries]);
   const totalRevenue =
     useMemo(() => {
-
       return deliveries.reduce(
         (
           sum,
@@ -358,414 +339,831 @@ async function setPrice(
           ),
         0
       );
-
     }, [deliveries]);
-
-  /* ================= LOADING ================= */
-
+  /* =====================================================
+     STATUS DISPLAY
+  ===================================================== */
+  function getStatusLabel(
+    item: any
+  ) {
+    if (
+      item.status ===
+      "pending" &&
+      item.payment_status !==
+        "paid"
+    ) {
+      return "AWAITING PAYMENT";
+    }
+    if (
+      item.status ===
+      "awaiting_payment"
+    ) {
+      return "AWAITING PAYMENT";
+    }
+    if (
+      item.status ===
+      "payment_verified"
+    ) {
+      return "PAYMENT VERIFIED";
+    }
+    if (
+      item.status ===
+      "approved"
+    ) {
+      return "APPROVED FOR RIDER";
+    }
+    if (
+      item.status ===
+      "assigned"
+    ) {
+      return "RIDER ASSIGNED";
+    }
+    if (
+      item.status ===
+      "picked_up"
+    ) {
+      return "PICKED UP";
+    }
+    if (
+      item.status ===
+      "delivered"
+    ) {
+      return "DELIVERED";
+    }
+    if (
+      item.status ===
+      "rejected"
+    ) {
+      return "REJECTED";
+    }
+    return String(
+      item.status || ""
+    ).toUpperCase();
+  }
+  function getStatusColor(
+    item: any
+  ) {
+    if (
+      item.status ===
+      "delivered"
+    ) {
+      return "#16a34a";
+    }
+    if (
+      item.status ===
+      "approved"
+    ) {
+      return "#2563eb";
+    }
+    if (
+      item.status ===
+      "payment_verified"
+    ) {
+      return "#7c3aed";
+    }
+    if (
+      item.status ===
+      "rejected"
+    ) {
+      return "#dc2626";
+    }
+    if (
+      item.payment_status !==
+      "paid"
+    ) {
+      return "#f59e0b";
+    }
+    return "#6b7280";
+  }
+  /* =====================================================
+     LOADING
+  ===================================================== */
   if (loading) {
-
     return (
-      <ActivityIndicator
+      <View
         style={{
           flex: 1,
+          justifyContent:
+            "center",
+          alignItems:
+            "center",
         }}
-        size="large"
-      />
+      >
+        <ActivityIndicator
+          size="large"
+        />
+        <Text
+          style={{
+            marginTop: 10,
+            color:
+              "#6b7280",
+          }}
+        >
+          Loading logistics...
+        </Text>
+      </View>
     );
   }
-
-  /* ================= UI ================= */
-
+  /* =====================================================
+     UI
+  ===================================================== */
   return (
-
     <View
       style={{
         flex: 1,
+        backgroundColor:
+          "#f5f7fb",
         padding: 15,
       }}
     >
-
+      {/* =================================================
+          HEADER
+      ================================================= */}
       <Text
         style={{
-          fontSize: 26,
-          fontWeight: "bold",
+          fontSize: 28,
+          fontWeight: "900",
+          color:
+            "#111827",
+          marginBottom: 5,
+        }}
+      >
+        🚚 Logistics Admin
+      </Text>
+      <Text
+        style={{
+          color:
+            "#6b7280",
           marginBottom: 20,
         }}
       >
-        🚚 Logistics Analytics
+        Review payments and approve
+        requests for riders.
       </Text>
-
-      {/* ================= STATS ================= */}
-
+      {/* =================================================
+          REVENUE
+      ================================================= */}
       <View
         style={{
           backgroundColor:
             "#111827",
-          borderRadius: 16,
+          borderRadius: 18,
           padding: 20,
-          marginBottom: 20,
+          marginBottom: 12,
         }}
       >
-
         <Text
           style={{
-            color: "#fff",
-            fontSize: 16,
+            color:
+              "#d1d5db",
+            fontSize: 14,
           }}
         >
-          Total Revenue
+          Total Delivery Value
         </Text>
-
         <Text
           style={{
-            color: "#fff",
+            color:
+              "#fff",
             fontSize: 34,
-            fontWeight: "bold",
-            marginTop: 10,
+            fontWeight:
+              "900",
+            marginTop: 6,
           }}
         >
-          GH₵
-          {" "}
-          {Number(
-            totalRevenue
-          ).toLocaleString()}
+          GH₵{" "}
+          {totalRevenue.toLocaleString(
+            undefined,
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }
+          )}
         </Text>
-
       </View>
-
+      {/* =================================================
+          STATS
+      ================================================= */}
       <View
         style={{
-          flexDirection: "row",
-          justifyContent:
-            "space-between",
+          flexDirection:
+            "row",
           marginBottom: 20,
         }}
       >
-
         <View
           style={{
             flex: 1,
             backgroundColor:
               "#fff",
-            borderWidth: 1,
-            borderColor: "#ddd",
             borderRadius: 14,
-            padding: 16,
-            marginRight: 8,
+            padding: 14,
+            marginRight: 5,
           }}
         >
-
-          <Text>Total</Text>
-
+          <Text>
+            Total
+          </Text>
           <Text
             style={{
-              fontSize: 28,
-              fontWeight: "bold",
-              marginTop: 10,
+              fontSize: 25,
+              fontWeight:
+                "900",
+              marginTop: 5,
             }}
           >
             {
               totalDeliveries
             }
           </Text>
-
         </View>
-
         <View
           style={{
             flex: 1,
             backgroundColor:
               "#fff",
-            borderWidth: 1,
-            borderColor: "#ddd",
             borderRadius: 14,
-            padding: 16,
-            marginHorizontal: 4,
+            padding: 14,
+            marginHorizontal: 5,
           }}
         >
-
-          <Text>Delivered</Text>
-
+          <Text>
+            Payment
+          </Text>
           <Text
             style={{
-              fontSize: 28,
-              fontWeight: "bold",
-              marginTop: 10,
+              fontSize: 25,
+              fontWeight:
+                "900",
+              marginTop: 5,
             }}
           >
             {
-              deliveredCount
+              waitingPaymentCount
             }
           </Text>
-
         </View>
-
         <View
           style={{
             flex: 1,
             backgroundColor:
               "#fff",
-            borderWidth: 1,
-            borderColor: "#ddd",
             borderRadius: 14,
-            padding: 16,
-            marginLeft: 8,
+            padding: 14,
+            marginLeft: 5,
           }}
         >
-
-          <Text>Active</Text>
-
+          <Text>
+            Approval
+          </Text>
           <Text
             style={{
-              fontSize: 28,
-              fontWeight: "bold",
-              marginTop: 10,
+              fontSize: 25,
+              fontWeight:
+                "900",
+              marginTop: 5,
             }}
           >
             {
-              activeCount
+              waitingApprovalCount
             }
           </Text>
-
         </View>
-
       </View>
-
-      {/* ================= LIST ================= */}
-
+      {/* =================================================
+          DELIVERY LIST
+      ================================================= */}
       <FlatList
         data={deliveries}
-        keyExtractor={(i) => i.id}
+        keyExtractor={(
+          item
+        ) =>
+          String(
+            item.id
+          )}
         refreshControl={
           <RefreshControl
             refreshing={
               refreshing
             }
             onRefresh={() => {
-
               setRefreshing(
                 true
               );
-
               loadDeliveries();
             }}
           />
         }
-        renderItem={({
-          item,
-        }) => (
-
+        ListEmptyComponent={
           <View
             style={{
-              backgroundColor:
-                "#fff",
-              borderWidth: 1,
-              borderColor:
-                "#ddd",
-              borderRadius: 14,
-              padding: 15,
-              marginBottom: 12,
+              padding: 30,
+              alignItems:
+                "center",
             }}
           >
-
             <Text
               style={{
+                fontSize:
+                  18,
                 fontWeight:
-                  "bold",
-                fontSize: 17,
+                  "800",
               }}
             >
-              📦 {item.item_name}
+              No requests yet
             </Text>
-
-            <Text
-              style={{
-                marginTop: 6,
-              }}
-            >
-              📍 {
-                item.pickup_address
-              }
-            </Text>
-
-            <Text
-              style={{
-                marginTop: 4,
-              }}
-            >
-              🏁 {
-                item.dropoff_address
-              }
-            </Text>
-
-            <Text
-              style={{
-                marginTop: 4,
-              }}
-            >
-              📞 {
-                item.receiver_phone
-              }
-            </Text>
-
-            <Text
-              style={{
-                marginTop: 8,
-                fontWeight:
-                  "bold",
-              }}
-            >
-              💰 GH₵
-              {" "}
-              {Number(
-                item.amount || 0
-              ).toLocaleString()}
-            </Text>
-
+          </View>
+        }
+        renderItem={({
+          item,
+        }) => {
+          const isProcessing =
+            processingId ===
+            item.id;
+          const paymentPaid =
+            item.payment_status ===
+            "paid";
+          const waitingForPayment =
+            !paymentPaid;
+          const paymentVerified =
+            item.status ===
+            "payment_verified";
+          const alreadyApproved =
+            item.status ===
+            "approved";
+          return (
             <View
               style={{
-                marginTop: 10,
-                alignSelf:
-                  "flex-start",
                 backgroundColor:
-                  item.status ===
-                  "delivered"
-                    ? "#16a34a"
-                    : item.status ===
-                      "awaiting_payment"
-                    ? "#dc2626"
-                    : "#f59e0b",
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 20,
+                  "#fff",
+                borderRadius:
+                  18,
+                padding: 17,
+                marginBottom:
+                  13,
+                borderWidth:
+                  1,
+                borderColor:
+                  "#e5e7eb",
               }}
             >
-
-              <Text
+              {/* REQUEST TYPE */}
+              <View
                 style={{
-                  color: "#fff",
-                  fontWeight:
-                    "bold",
+                  flexDirection:
+                    "row",
+                  justifyContent:
+                    "space-between",
+                  alignItems:
+                    "center",
                 }}
               >
-                {item.status}
-              </Text>
-
-            </View>
-            {item.status ===
-  "pending_pricing" && (
-  <View
-    style={{
-      marginTop: 15,
-    }}
-  >
-    <TextInput
-      value={
-        priceInputs[
-          item.id
-        ] || ""
-      }
-      onChangeText={(
-        text
-      ) =>
-        setPriceInputs(
-          (prev) => ({
-            ...prev,
-            [item.id]:
-              text,
-          })
-        )
-      }
-      keyboardType="numeric"
-      placeholder="Enter delivery price"
-      style={{
-        borderWidth: 1,
-        borderColor:
-          "#ddd",
-        borderRadius: 10,
-        padding: 12,
-        marginBottom: 10,
-      }}
-    />
-
-    <TouchableOpacity
-      disabled={
-        processingId ===
-        item.id
-      }
-      onPress={() =>
-        setPrice(
-          item.id
-        )
-      }
-      style={{
-        backgroundColor:
-          "#2563eb",
-        padding: 14,
-        borderRadius: 10,
-      }}
-    >
-      <Text
-        style={{
-          color: "#fff",
-          textAlign:
-            "center",
-          fontWeight:
-            "bold",
-        }}
-      >
-        Set Price
-      </Text>
-    </TouchableOpacity>
-  </View>
-)}
-            {/* ================= VERIFY PAYMENT ================= */}
-
-            {item.status ===
-              "awaiting_payment" && (
-
-              <TouchableOpacity
-                disabled={
-                  processingId ===
-                  item.id
-                }
-                onPress={() =>
-                  verifyPayment(
-                    item.id
-                  )
-                }
-                style={{
-                  backgroundColor:
-                    "#16a34a",
-                  padding: 14,
-                  borderRadius: 10,
-                  marginTop: 15,
-                }}
-              >
-
                 <Text
                   style={{
-                    color: "#fff",
-                    textAlign:
-                      "center",
                     fontWeight:
-                      "bold",
+                      "900",
+                    fontSize:
+                      18,
                   }}
                 >
-                  {processingId ===
-                  item.id
-                    ? "Processing..."
-                    : "Verify Payment"}
+                  {item.request_type ===
+                  "rider"
+                    ? "🏍️ Rider Request"
+                    : "🚚 Delivery Request"}
                 </Text>
-
-              </TouchableOpacity>
-            )}
-
-          </View>
-        )}
+                <View
+                  style={{
+                    backgroundColor:
+                      getStatusColor(
+                        item
+                      ),
+                    paddingHorizontal:
+                      10,
+                    paddingVertical:
+                      6,
+                    borderRadius:
+                      20,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        "#fff",
+                      fontSize:
+                        11,
+                      fontWeight:
+                        "900",
+                    }}
+                  >
+                    {getStatusLabel(
+                      item
+                    )}
+                  </Text>
+                </View>
+              </View>
+              {/* ITEM */}
+              {item.item_name && (
+                <Text
+                  style={{
+                    marginTop:
+                      12,
+                    fontWeight:
+                      "800",
+                    fontSize:
+                      16,
+                  }}
+                >
+                  📦{" "}
+                  {
+                    item.item_name
+                  }
+                </Text>
+              )}
+              {/* PICKUP */}
+              <Text
+                style={{
+                  marginTop:
+                    10,
+                }}
+              >
+                📍 Pickup:{" "}
+                {
+                  item.pickup_address ||
+                  "GPS pickup location"
+                }
+              </Text>
+              {/* PICKUP COORDINATES */}
+              {item.pickup_lat !=
+                null &&
+                item.pickup_lng !=
+                  null && (
+                  <Text
+                    style={{
+                      color:
+                        "#6b7280",
+                      fontSize:
+                        12,
+                      marginTop:
+                        3,
+                    }}
+                  >
+                    Pickup GPS:{" "}
+                    {Number(
+                      item.pickup_lat
+                    ).toFixed(
+                      6
+                    )}
+                    ,{" "}
+                    {Number(
+                      item.pickup_lng
+                    ).toFixed(
+                      6
+                    )}
+                  </Text>
+                )}
+              {/* DROP-OFF */}
+              <Text
+                style={{
+                  marginTop:
+                    7,
+                }}
+              >
+                🏁 Drop-off:{" "}
+                {item.dropoff_place_name ||
+                  item.dropoff_address ||
+                  "Destination"}
+              </Text>
+              {item.dropoff_address &&
+                item.dropoff_place_name && (
+                  <Text
+                    style={{
+                      color:
+                        "#6b7280",
+                      marginTop:
+                        3,
+                    }}
+                  >
+                    {
+                      item.dropoff_address
+                    }
+                  </Text>
+                )}
+              {/* DROP-OFF GPS */}
+              {item.dropoff_lat !=
+                null &&
+                item.dropoff_lng !=
+                  null && (
+                  <Text
+                    style={{
+                      color:
+                        "#6b7280",
+                      fontSize:
+                        12,
+                      marginTop:
+                        3,
+                    }}
+                  >
+                    Destination GPS:{" "}
+                    {Number(
+                      item.dropoff_lat
+                    ).toFixed(
+                      6
+                    )}
+                    ,{" "}
+                    {Number(
+                      item.dropoff_lng
+                    ).toFixed(
+                      6
+                    )}
+                  </Text>
+                )}
+              {/* PHONE */}
+              {item.receiver_phone && (
+                <Text
+                  style={{
+                    marginTop:
+                      8,
+                  }}
+                >
+                  📞 Receiver:{" "}
+                  {
+                    item.receiver_phone
+                  }
+                </Text>
+              )}
+              {/* DISTANCE */}
+              {item.distance_km !=
+                null && (
+                <Text
+                  style={{
+                    marginTop:
+                      8,
+                    fontWeight:
+                      "800",
+                  }}
+                >
+                  📏 Distance:{" "}
+                  {Number(
+                    item.distance_km
+                  ).toFixed(
+                    2
+                  )}{" "}
+                  km
+                </Text>
+              )}
+              {/* PRICE */}
+              <View
+                style={{
+                  marginTop:
+                    12,
+                  backgroundColor:
+                    "#f0fdf4",
+                  borderRadius:
+                    12,
+                  padding:
+                    12,
+                }}
+              >
+                <Text
+                  style={{
+                    color:
+                      "#166534",
+                    fontSize:
+                      13,
+                  }}
+                >
+                  DELIVERY / RIDER FEE
+                </Text>
+                <Text
+                  style={{
+                    color:
+                      "#15803d",
+                    fontSize:
+                      24,
+                    fontWeight:
+                      "900",
+                    marginTop:
+                      3,
+                  }}
+                >
+                  GH₵{" "}
+                  {Number(
+                    item.amount ||
+                      0
+                  ).toFixed(
+                    2
+                  )}
+                </Text>
+              </View>
+              {/* PAYMENT STATUS */}
+              <View
+                style={{
+                  marginTop:
+                    12,
+                  padding:
+                    12,
+                  borderRadius:
+                    12,
+                  backgroundColor:
+                    paymentPaid
+                      ? "#dcfce7"
+                      : "#fff7ed",
+                }}
+              >
+                <Text
+                  style={{
+                    fontWeight:
+                      "900",
+                    color:
+                      paymentPaid
+                        ? "#166534"
+                        : "#9a3412",
+                  }}
+                >
+                  {paymentPaid
+                    ? "✓ PAYMENT RECEIVED"
+                    : "⏳ PAYMENT NOT VERIFIED"}
+                </Text>
+              </View>
+              {/* =================================================
+                  VERIFY PAYMENT
+              ================================================= */}
+              {waitingForPayment &&
+                item.status !==
+                  "rejected" &&
+                item.status !==
+                  "delivered" && (
+                  <TouchableOpacity
+                    disabled={
+                      isProcessing
+                    }
+                    onPress={() =>
+                      verifyPayment(
+                        item.id
+                      )
+                    }
+                    style={{
+                      backgroundColor:
+                        "#16a34a",
+                      padding:
+                        15,
+                      borderRadius:
+                        12,
+                      marginTop:
+                        14,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          "#fff",
+                        textAlign:
+                          "center",
+                        fontWeight:
+                          "900",
+                      }}
+                    >
+                      {isProcessing
+                        ? "Processing..."
+                        : "✓ Verify Payment"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              {/* =================================================
+                  APPROVE FOR RIDER
+                  
+                  ONLY appears after payment is paid.
+              ================================================= */}
+              {paymentVerified &&
+                !alreadyApproved && (
+                  <TouchableOpacity
+                    disabled={
+                      isProcessing
+                    }
+                    onPress={() =>
+                      approveForRider(
+                        item.id
+                      )
+                    }
+                    style={{
+                      backgroundColor:
+                        "#2563eb",
+                      padding:
+                        16,
+                      borderRadius:
+                        12,
+                      marginTop:
+                        12,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          "#fff",
+                        textAlign:
+                          "center",
+                        fontWeight:
+                          "900",
+                        fontSize:
+                          16,
+                      }}
+                    >
+                      {isProcessing
+                        ? "Approving..."
+                        : "🚀 Approve for Rider"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              {/* =================================================
+                  APPROVED
+              ================================================= */}
+              {alreadyApproved && (
+                <View
+                  style={{
+                    backgroundColor:
+                      "#dbeafe",
+                    padding:
+                      14,
+                    borderRadius:
+                      12,
+                    marginTop:
+                      12,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color:
+                        "#1d4ed8",
+                      fontWeight:
+                        "900",
+                      textAlign:
+                        "center",
+                    }}
+                  >
+                    ✓ APPROVED
+                  </Text>
+                  <Text
+                    style={{
+                      color:
+                        "#1e40af",
+                      textAlign:
+                        "center",
+                      marginTop:
+                        4,
+                    }}
+                  >
+                    This request is now
+                    available to riders.
+                  </Text>
+                </View>
+              )}
+              {/* =================================================
+                  REJECT
+              ================================================= */}
+              {item.status !==
+                "approved" &&
+                item.status !==
+                  "delivered" &&
+                item.status !==
+                  "rejected" && (
+                  <TouchableOpacity
+                    disabled={
+                      isProcessing
+                    }
+                    onPress={() =>
+                      rejectRequest(
+                        item.id
+                      )
+                    }
+                    style={{
+                      backgroundColor:
+                        "#fee2e2",
+                      padding:
+                        14,
+                      borderRadius:
+                        12,
+                      marginTop:
+                        10,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          "#dc2626",
+                        textAlign:
+                          "center",
+                        fontWeight:
+                          "900",
+                      }}
+                    >
+                      ✕ Reject Request
+                    </Text>
+                  </TouchableOpacity>
+                )}
+            </View>
+          );
+        }}
       />
-
     </View>
   );
 }
