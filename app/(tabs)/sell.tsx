@@ -491,6 +491,14 @@ router.replace("/browse");
     onPress={() => router.push("/health")}
     style={{ width: "23%", marginBottom: 12 }}
   />
+
+  <QuickCard
+  icon="restaurant"
+  title="Restaurant"
+  color="#dc2626"
+  onPress={() => router.push("/restaurants")}
+  style={{ width: "23%", marginBottom: 12 }}
+/>
 </View>
       {/* ================= SELL ITEM ================= */}
 

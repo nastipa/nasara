@@ -55,6 +55,8 @@ export default function AdminDashboard() {
       <Text style={styles.section}> Add/Remove Admin</Text>
       <Tile label="Add Admin" route="/(admin)/add-admin" />
       <Tile label="Remove Admin" route="/(admin)/remove-admin" />
+      <Tile label="Add Restaurant Owner" route="/(admin)/add-restaurant-owner" />
+
 
       
       

@@ -85,6 +85,9 @@ const [adminPassword, setAdminPassword] =
 
 const [checkingAdmin, setCheckingAdmin] =
   useState(false);
+  const [isRestaurantOwner, setIsRestaurantOwner] = useState(false);
+const [restaurantId, setRestaurantId] = useState<string | null>(null);
+const [restaurantOwnerLoading, setRestaurantOwnerLoading] = useState(false);
   
   /* ================= ADMIN SECURITY ================= */
 
@@ -221,10 +224,11 @@ const [earnings, setEarnings] = useState(0);
     const profileId = user ? String(user) : data.session.user.id;
 
     loadProfile(profileId);
-    checkAdmin(profileId);
-    checkUtilityAdmin(profileId);
-    checkHospitalAdmin(profileId);
-    loadLiveSession(profileId);
+   checkAdmin(profileId);
+checkUtilityAdmin(profileId);
+checkHospitalAdmin(profileId);
+checkRestaurantOwner(profileId);
+loadLiveSession(profileId);
     loadLiveStream(profileId);
     loadStats(profileId);
     loadEarnings(profileId);
@@ -395,6 +399,55 @@ const checkHospitalAdmin = async (
 
   setIsHospitalAdmin(!!data);
 };
+/* ================= RESTAURANT OWNER CHECK ================= */
+const checkRestaurantOwner = async (userId: string) => {
+  try {
+    setRestaurantOwnerLoading(true);
+
+    const { data, error } = await (supabase as any)
+      .from("restaurant_owners")
+      .select("id, restaurant_id, status")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (error) {
+      console.log(
+        "Restaurant owner check error:",
+        error.message
+      );
+
+      setIsRestaurantOwner(false);
+      setRestaurantId(null);
+
+      return;
+    }
+
+    if (!data) {
+      setIsRestaurantOwner(false);
+      setRestaurantId(null);
+
+      return;
+    }
+
+    setIsRestaurantOwner(true);
+    setRestaurantId(
+      data.restaurant_id || null
+    );
+
+  } catch (e) {
+    console.log(
+      "Restaurant owner check failed:",
+      e
+    );
+
+    setIsRestaurantOwner(false);
+    setRestaurantId(null);
+
+  } finally {
+    setRestaurantOwnerLoading(false);
+  }
+};
   /* ================= LIVE SESSION ================= */
   const loadLiveSession = async (userId: string) => {
     const { data } = await (supabase as any)
@@ -529,9 +582,10 @@ const loadFollowStats = async (userId: string) => {
 
       loadProfile(profileId);
       checkAdmin(profileId);
-      checkUtilityAdmin(profileId);
-      checkHospitalAdmin(profileId);
-      loadLiveSession(profileId);
+checkUtilityAdmin(profileId);
+checkHospitalAdmin(profileId);
+checkRestaurantOwner(profileId);
+loadLiveSession(profileId);
       loadLiveStream(profileId);
       loadStats(profileId);
       loadEarnings(profileId);
@@ -1151,6 +1205,28 @@ onPress={followUser}
   </>
 )}
 
+{isRestaurantOwner && (
+  <>
+    <Text style={styles.sectionTitle}>
+      🍽️ Restaurant
+    </Text>
+
+    <View style={{ flexDirection: "row" }}>
+      <ActionTile
+        label="Restaurant Admin"
+        bg="#dc2626"
+        disabled={restaurantOwnerLoading}
+        onPress={() => {
+          setShowActionsModal(false);
+
+          router.push(
+            "/(restaurant-owner)/dashboard"
+          );
+        }}
+      />
+    </View>
+  </>
+)}
       <View style={{ marginTop: 12 }} />
       <Button
         title="Close"
