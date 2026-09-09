@@ -136,7 +136,7 @@ export default function RequestDelivery() {
   ===================================================== */
 
   const BASE_FARE = 10;
-  const PRICE_PER_KM = 5;
+  const PRICE_PER_KM = 3;
 
   /* =====================================================
      HAVERSINE DISTANCE
