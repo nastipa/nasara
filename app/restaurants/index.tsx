@@ -1,389 +1,447 @@
-import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
-import * as Location from "expo-location";
-import { router } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useState,
+} from "react";
+
 import {
   ActivityIndicator,
-  Alert,
-  FlatList,
+  Image,
+  Linking,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 
-import { supabase } from "../../lib/supabase";
+import {
+  Ionicons,
+} from "@expo/vector-icons";
+
+import * as Location from "expo-location";
+
+import {
+  useFocusEffect,
+  useRouter,
+} from "expo-router";
+
+import {
+  supabase,
+} from "../../lib/supabase";
+
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const RESTAURANT_API =
+  "https://nasara-upload-server.onrender.com/restaurant";
+
+/* =========================================================
+   TYPES
+========================================================= */
+
+type RestaurantStatus =
+  | "active"
+  | "suspended"
+  | "closed";
 
 type Restaurant = {
   id: string;
   owner_id: string;
+
   name: string;
   description: string | null;
   phone: string;
   whatsapp_phone: string | null;
   address: string;
+
   latitude: number | null;
   longitude: number | null;
+
   logo_url: string | null;
   cover_image_url: string | null;
+
   opening_time: string | null;
   closing_time: string | null;
+
   is_open: boolean;
-  status: "active" | "suspended" | "closed";
+  status: RestaurantStatus;
+
   momo_provider: string | null;
   momo_number: string | null;
   momo_account_name: string | null;
+
   accepts_momo: boolean;
   accepts_cash: boolean;
   accepts_card: boolean;
-  created_at: string;
-  updated_at: string;
 
-  // Calculated from customer's GPS
   distance_km: number | null;
 };
 
-type CustomerLocation = {
-  latitude: number;
-  longitude: number;
-};
+/* =========================================================
+   MESSAGE HELPER
+========================================================= */
 
-const showMessage = (
+function showMessage(
   title: string,
   message?: string
-) => {
+) {
   if (Platform.OS === "web") {
-    window.alert(
-      message
-        ? `${title}\n\n${message}`
-        : title
-    );
-  } else {
-    Alert.alert(title, message);
+    if (typeof window !== "undefined") {
+      window.alert(
+        message
+          ? `${title}\n\n${message}`
+          : title
+      );
+    }
+
+    return;
   }
-};
 
-/*
- * =========================================================
- * HAVERSINE DISTANCE
- * =========================================================
- *
- * Calculates straight-line distance between:
- *
- * CUSTOMER GPS
- *       ↓
- * RESTAURANT GPS
- *
- * Result is returned in kilometres.
- */
-const calculateDistanceKm = (
-  latitude1: number,
-  longitude1: number,
-  latitude2: number,
-  longitude2: number
-): number => {
-  const earthRadiusKm = 6371;
+  console.log(
+    message
+      ? `${title}: ${message}`
+      : title
+  );
+}
 
-  const dLatitude =
-    ((latitude2 - latitude1) * Math.PI) /
-    180;
+/* =========================================================
+   NORMALIZE RESTAURANT STATUS
+========================================================= */
 
-  const dLongitude =
-    ((longitude2 - longitude1) * Math.PI) /
-    180;
-
-  const lat1Radians =
-    (latitude1 * Math.PI) / 180;
-
-  const lat2Radians =
-    (latitude2 * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLatitude / 2) *
-      Math.sin(dLatitude / 2) +
-    Math.cos(lat1Radians) *
-      Math.cos(lat2Radians) *
-      Math.sin(dLongitude / 2) *
-      Math.sin(dLongitude / 2);
-
-  const c =
-    2 *
-    Math.atan2(
-      Math.sqrt(a),
-      Math.sqrt(1 - a)
-    );
-
-  return earthRadiusKm * c;
-};
-
-/*
- * =========================================================
- * RESTAURANT DISCOVERY
- * =========================================================
- */
-export default function RestaurantDiscovery() {
-  const [restaurants, setRestaurants] =
-    useState<Restaurant[]>([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [locating, setLocating] =
-    useState(false);
-
-  const [searchText, setSearchText] =
-    useState("");
-
-  const [customerLocation, setCustomerLocation] =
-    useState<CustomerLocation | null>(
-      null
-    );
-
-  const [nearbyMode, setNearbyMode] =
-    useState(false);
+function normalizeRestaurantStatus(
+  status: any
+): RestaurantStatus {
+  if (
+    status === "active" ||
+    status === "suspended" ||
+    status === "closed"
+  ) {
+    return status;
+  }
 
   /*
-   * =========================================================
-   * LOAD ACTIVE RESTAURANTS
-   * =========================================================
+   * Older restaurants may still contain values such as
+   * pending, approved, or rejected.
    *
-   * We do NOT request GPS automatically.
-   *
-   * This allows customers to browse restaurants
-   * without granting location permission.
+   * They are treated as active here so they don't disappear
+   * from the customer restaurant list after the old checker
+   * was removed.
    */
-  const loadRestaurants = useCallback(
-    async (
-      location?: CustomerLocation | null
-    ) => {
-      try {
-        setLoading(true);
+  if (
+    status === "approved" ||
+    status === "pending" ||
+    status === "rejected"
+  ) {
+    return "active";
+  }
 
-        const { data, error } =
-          await supabase
-            .from("restaurants")
-            .select(`
-              id,
-              owner_id,
-              name,
-              description,
-              phone,
-              whatsapp_phone,
-              address,
-              latitude,
-              longitude,
-              logo_url,
-              cover_image_url,
-              opening_time,
-              closing_time,
-              is_open,
-              status,
-              momo_provider,
-              momo_number,
-              momo_account_name,
-              accepts_momo,
-              accepts_cash,
-              accepts_card,
-              created_at,
-              updated_at
-            `)
-            .eq("status", "active")
-            .order("name", {
-              ascending: true,
-            });
+  return "active";
+}
 
-        if (error) {
-          throw error;
+/* =========================================================
+   NORMALIZE RESTAURANT DATA
+========================================================= */
+
+function normalizeRestaurant(
+  restaurant: any
+): Restaurant {
+  return {
+    ...restaurant,
+
+    status:
+      normalizeRestaurantStatus(
+        restaurant?.status
+      ),
+
+    is_open:
+      restaurant?.is_open === true,
+
+    latitude:
+      restaurant?.latitude !== null &&
+      restaurant?.latitude !== undefined
+        ? Number(restaurant.latitude)
+        : null,
+
+    longitude:
+      restaurant?.longitude !== null &&
+      restaurant?.longitude !== undefined
+        ? Number(restaurant.longitude)
+        : null,
+
+    distance_km:
+      restaurant?.distance_km !== null &&
+      restaurant?.distance_km !== undefined &&
+      Number.isFinite(
+        Number(restaurant.distance_km)
+      )
+        ? Number(restaurant.distance_km)
+        : null,
+
+    accepts_momo:
+      restaurant?.accepts_momo === true,
+
+    accepts_cash:
+      restaurant?.accepts_cash === true,
+
+    accepts_card:
+      restaurant?.accepts_card === true,
+  };
+}
+
+/* =========================================================
+   SCREEN
+========================================================= */
+
+export default function RestaurantsScreen() {
+  const router = useRouter();
+
+  const [
+    restaurants,
+    setRestaurants,
+  ] = useState<Restaurant[]>([]);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    refreshing,
+    setRefreshing,
+  ] = useState(false);
+
+  const [
+    findingNearby,
+    setFindingNearby,
+  ] = useState(false);
+
+  const [
+    showingAll,
+    setShowingAll,
+  ] = useState(true);
+
+  /* =======================================================
+     LOAD ALL ACTIVE RESTAURANTS
+  ======================================================= */
+
+  const loadAllRestaurants =
+    useCallback(async () => {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("restaurants")
+        .select(`
+          id,
+          owner_id,
+          name,
+          description,
+          phone,
+          whatsapp_phone,
+          address,
+          latitude,
+          longitude,
+          logo_url,
+          cover_image_url,
+          opening_time,
+          closing_time,
+          is_open,
+          status,
+          momo_provider,
+          momo_number,
+          momo_account_name,
+          accepts_momo,
+          accepts_cash,
+          accepts_card
+        `)
+        .eq("status", "active")
+        .order("name", {
+          ascending: true,
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      const allRestaurants: Restaurant[] =
+        (data || []).map(
+          (restaurant: any) =>
+            normalizeRestaurant({
+              ...restaurant,
+              distance_km: null,
+            })
+        );
+
+      setRestaurants(
+        allRestaurants
+      );
+
+      setShowingAll(true);
+
+      console.log(
+        "ACTIVE RESTAURANTS:",
+        allRestaurants.length
+      );
+
+      return allRestaurants;
+    }, []);
+
+  /* =======================================================
+     LOAD NEARBY RESTAURANTS
+  ======================================================= */
+
+  const loadNearbyRestaurants =
+    useCallback(
+      async (
+        location: {
+          latitude: number;
+          longitude: number;
+        }
+      ) => {
+        const url =
+          `${RESTAURANT_API}/nearby-restaurants` +
+          `?latitude=${encodeURIComponent(
+            location.latitude
+          )}` +
+          `&longitude=${encodeURIComponent(
+            location.longitude
+          )}`;
+
+        console.log(
+          "NEARBY RESTAURANTS URL:",
+          url
+        );
+
+        const response =
+          await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(
+            `Restaurant server returned ${response.status}`
+          );
         }
 
-        const restaurantList: Restaurant[] =
-          Array.isArray(data)
-            ? data.map((restaurant: any) => {
-                let distanceKm: number | null =
-                  null;
+        const json =
+          await response.json();
 
-                /*
-                 * Calculate distance only when
-                 * customer GPS is available.
-                 */
-                if (
-                  location &&
-                  restaurant.latitude != null &&
-                  restaurant.longitude != null
-                ) {
-                  const restaurantLatitude =
-                    Number(
-                      restaurant.latitude
-                    );
+        if (!json?.success) {
+          throw new Error(
+            json?.error ||
+              "Unable to find nearby restaurants."
+          );
+        }
 
-                  const restaurantLongitude =
-                    Number(
-                      restaurant.longitude
-                    );
-
-                  if (
-                    Number.isFinite(
-                      restaurantLatitude
-                    ) &&
-                    Number.isFinite(
-                      restaurantLongitude
+        const nearbyRestaurants =
+          Array.isArray(
+            json?.restaurants
+          )
+            ? json.restaurants
+                .map(
+                  (restaurant: any) =>
+                    normalizeRestaurant(
+                      restaurant
                     )
-                  ) {
-                    distanceKm =
-                      calculateDistanceKm(
-                        location.latitude,
-                        location.longitude,
-                        restaurantLatitude,
-                        restaurantLongitude
-                      );
-                  }
-                }
-
-                return {
-                  ...restaurant,
-                  distance_km:
-                    distanceKm,
-                };
-              })
+                )
+                .filter(
+                  (
+                    restaurant: Restaurant
+                  ) =>
+                    restaurant.status ===
+                    "active"
+                )
             : [];
 
-        /*
-         * =====================================================
-         * SORTING
-         * =====================================================
-         *
-         * If customer location exists:
-         *
-         * 0.5 km
-         * 1.2 km
-         * 2.4 km
-         * 5.8 km
-         *
-         * Restaurants without GPS go last.
-         */
-        if (location) {
-          restaurantList.sort(
-            (
-              a: Restaurant,
-              b: Restaurant
-            ) => {
-              if (
-                a.distance_km == null &&
-                b.distance_km == null
-              ) {
-                return a.name.localeCompare(
-                  b.name
-                );
-              }
-
-              if (
-                a.distance_km == null
-              ) {
-                return 1;
-              }
-
-              if (
-                b.distance_km == null
-              ) {
-                return -1;
-              }
-
-              return (
-                a.distance_km -
-                b.distance_km
-              );
-            }
-          );
-        }
-
         setRestaurants(
-          restaurantList
+          nearbyRestaurants
         );
-      } catch (error: any) {
+
+        setShowingAll(false);
+
         console.log(
-          "Restaurant loading error:",
-          error
+          "NEARBY ACTIVE RESTAURANTS:",
+          nearbyRestaurants.length
         );
 
-        showMessage(
-          "Error",
-          error?.message ||
-            "Unable to load restaurants."
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    []
-  );
+        return nearbyRestaurants;
+      },
+      []
+    );
 
-  /*
-   * =========================================================
-   * INITIAL LOAD
-   * =========================================================
-   *
-   * Do NOT request GPS automatically.
-   */
-  useEffect(() => {
-    loadRestaurants();
-  }, [loadRestaurants]);
+  /* =======================================================
+     LOAD RESTAURANTS
+  ======================================================= */
 
-  /*
-   * =========================================================
-   * GET CUSTOMER CURRENT GPS
-   * =========================================================
-   */
+  const loadRestaurants =
+    useCallback(
+      async (
+        location?: {
+          latitude: number;
+          longitude: number;
+        }
+      ) => {
+        try {
+          if (!location) {
+            setLoading(true);
+          }
+
+          if (location) {
+            await loadNearbyRestaurants(
+              location
+            );
+
+            return;
+          }
+
+          await loadAllRestaurants();
+
+        } catch (error: any) {
+          console.error(
+            "LOAD RESTAURANTS ERROR:",
+            error
+          );
+
+          showMessage(
+            "Restaurants",
+            error?.message ||
+              "Unable to load restaurants."
+          );
+
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      },
+      [
+        loadAllRestaurants,
+        loadNearbyRestaurants,
+      ]
+    );
+
+  /* =======================================================
+     GET CUSTOMER LOCATION
+  ======================================================= */
+
   const getCustomerLocation =
-    useCallback(async (): Promise<CustomerLocation | null> => {
+    useCallback(async () => {
       try {
-        setLocating(true);
-
-        /*
-         * Request foreground permission only
-         * when customer chooses "Near Me".
-         */
-        const permission =
+        const {
+          status,
+        } =
           await Location.requestForegroundPermissionsAsync();
 
-        if (
-          permission.status !== "granted"
-        ) {
+        if (status !== "granted") {
           showMessage(
             "Location Required",
-            "Please allow location access so Nasara can show restaurants nearest to you."
+            "Please allow location access to find restaurants near you."
           );
 
           return null;
         }
 
-        /*
-         * Check whether location services
-         * are actually enabled.
-         */
-        const servicesEnabled =
-          await Location.hasServicesEnabledAsync();
-
-        if (!servicesEnabled) {
-          showMessage(
-            "Location Services Disabled",
-            "Please turn on location services on your device and try again."
-          );
-
-          return null;
-        }
-
-        /*
-         * Get a fresh GPS position.
-         */
-        const location =
+        const position =
           await Location.getCurrentPositionAsync(
             {
               accuracy:
@@ -392,45 +450,32 @@ export default function RestaurantDiscovery() {
           );
 
         const latitude =
-          location.coords.latitude;
+          position.coords.latitude;
 
         const longitude =
-          location.coords.longitude;
+          position.coords.longitude;
 
-        /*
-         * Validate GPS coordinates.
-         */
         if (
-          !Number.isFinite(latitude) ||
-          !Number.isFinite(longitude)
+          !Number.isFinite(
+            latitude
+          ) ||
+          !Number.isFinite(
+            longitude
+          )
         ) {
-          showMessage(
-            "Location Error",
-            "Unable to determine your current GPS location."
+          throw new Error(
+            "Your current location could not be determined."
           );
-
-          return null;
         }
 
-        const currentLocation: CustomerLocation =
-          {
-            latitude,
-            longitude,
-          };
+        return {
+          latitude,
+          longitude,
+        };
 
-        console.log(
-          "CUSTOMER CURRENT LOCATION:",
-          currentLocation
-        );
-
-        setCustomerLocation(
-          currentLocation
-        );
-
-        return currentLocation;
       } catch (error: any) {
-        console.log(
-          "Customer location error:",
+        console.error(
+          "CUSTOMER LOCATION ERROR:",
           error
         );
 
@@ -441,601 +486,405 @@ export default function RestaurantDiscovery() {
         );
 
         return null;
-      } finally {
-        setLocating(false);
       }
     }, []);
 
-  /*
-   * =========================================================
-   * FIND RESTAURANTS NEAR ME
-   * =========================================================
-   */
+  /* =======================================================
+     FIND NEARBY
+  ======================================================= */
+
   const handleFindNearby =
-    async () => {
-      if (locating || loading) {
+    useCallback(async () => {
+      if (findingNearby) {
         return;
       }
 
-      const location =
-        await getCustomerLocation();
+      try {
+        setFindingNearby(true);
 
-      if (!location) {
-        return;
-      }
+        const location =
+          await getCustomerLocation();
 
-      setNearbyMode(true);
-
-      /*
-       * Recalculate every restaurant's
-       * distance using the fresh GPS.
-       */
-      await loadRestaurants(
-        location
-      );
-    };
-
-  /*
-   * =========================================================
-   * SHOW ALL RESTAURANTS
-   * =========================================================
-   */
-  const handleShowAll =
-    async () => {
-      if (loading) {
-        return;
-      }
-
-      setNearbyMode(false);
-
-      await loadRestaurants(
-        customerLocation
-      );
-    };
-
-  /*
-   * =========================================================
-   * REFRESH
-   * =========================================================
-   *
-   * If GPS has already been captured,
-   * refresh keeps using it.
-   *
-   * Otherwise it simply reloads restaurants.
-   */
-  const onRefresh = async () => {
-    setRefreshing(true);
-
-    await loadRestaurants(
-      customerLocation
-    );
-  };
-
-  /*
-   * =========================================================
-   * OPEN RESTAURANT
-   * =========================================================
-   *
-   * Customer can enter the restaurant and
-   * browse its food/menu.
-   */
-  const openRestaurant = (
-    restaurantId: string
-  ) => {
-    router.push({
-      pathname:
-        "/restaurants/[restaurantId]",
-      params: {
-        restaurantId,
-      },
-    });
-  };
-
-  /*
-   * =========================================================
-   * OPEN DIRECTIONS
-   * =========================================================
-   *
-   * START:
-   * Customer's captured GPS
-   *
-   * DESTINATION:
-   * Restaurant's saved GPS
-   *
-   * No Google Maps API key is required.
-   */
-  const openDirections = (
-    restaurant: Restaurant
-  ) => {
-    if (!customerLocation) {
-      showMessage(
-        "Location Required",
-        "Tap 'Find Restaurants Near Me' first so Nasara knows your current location."
-      );
-
-      return;
-    }
-
-    if (
-      restaurant.latitude == null ||
-      restaurant.longitude == null
-    ) {
-      showMessage(
-        "Restaurant Location Unavailable",
-        "This restaurant has not saved its GPS location yet."
-      );
-
-      return;
-    }
-
-    const restaurantLatitude =
-      Number(restaurant.latitude);
-
-    const restaurantLongitude =
-      Number(restaurant.longitude);
-
-    if (
-      !Number.isFinite(
-        restaurantLatitude
-      ) ||
-      !Number.isFinite(
-        restaurantLongitude
-      )
-    ) {
-      showMessage(
-        "Restaurant Location Error",
-        "This restaurant has an invalid GPS location."
-      );
-
-      return;
-    }
-
-    const origin =
-      `${customerLocation.latitude},${customerLocation.longitude}`;
-
-    const destination =
-      `${restaurantLatitude},${restaurantLongitude}`;
-
-    let url = "";
-
-    /*
-     * =====================================================
-     * iOS → APPLE MAPS
-     * =====================================================
-     */
-    if (Platform.OS === "ios") {
-      url =
-        `http://maps.apple.com/?saddr=${encodeURIComponent(
-          origin
-        )}` +
-        `&daddr=${encodeURIComponent(
-          destination
-        )}` +
-        `&dirflg=d`;
-    }
-
-    /*
-     * =====================================================
-     * ANDROID / WEB → GOOGLE MAPS
-     * =====================================================
-     *
-     * This is simply a Google Maps directions
-     * URL and does NOT require a Google Maps API key.
-     */
-    else {
-      url =
-        `https://www.google.com/maps/dir/?api=1` +
-        `&origin=${encodeURIComponent(
-          origin
-        )}` +
-        `&destination=${encodeURIComponent(
-          destination
-        )}` +
-        `&travelmode=walking`;
-    }
-
-    Linking.openURL(url).catch(
-      () => {
-        showMessage(
-          "Maps Error",
-          "Unable to open maps."
-        );
-      }
-    );
-  };
-
-  /*
-   * =========================================================
-   * SEARCH FILTER
-   * =========================================================
-   */
-  const filteredRestaurants =
-    restaurants.filter(
-      (restaurant) => {
-        const search =
-          searchText
-            .trim()
-            .toLowerCase();
-
-        if (!search) {
-          return true;
+        if (!location) {
+          return;
         }
 
-        return (
-          restaurant.name
-            .toLowerCase()
-            .includes(search) ||
-          (
-            restaurant.description ||
-            ""
-          )
-            .toLowerCase()
-            .includes(search) ||
-          restaurant.address
-            .toLowerCase()
-            .includes(search)
+        await loadRestaurants(
+          location
         );
+
+      } finally {
+        setFindingNearby(false);
       }
+    }, [
+      findingNearby,
+      getCustomerLocation,
+      loadRestaurants,
+    ]);
+
+  /* =======================================================
+     SHOW ALL
+  ======================================================= */
+
+  const handleShowAll =
+    useCallback(async () => {
+      try {
+        setLoading(true);
+
+        await loadAllRestaurants();
+
+      } catch (error: any) {
+        console.error(
+          "SHOW ALL RESTAURANTS ERROR:",
+          error
+        );
+
+        showMessage(
+          "Restaurants",
+          error?.message ||
+            "Unable to load restaurants."
+        );
+
+      } finally {
+        setLoading(false);
+      }
+    }, [
+      loadAllRestaurants,
+    ]);
+
+  /* =======================================================
+     INITIAL LOAD / SCREEN FOCUS
+  ======================================================= */
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAllRestaurants()
+        .catch((error: any) => {
+          console.error(
+            "INITIAL RESTAURANT LOAD ERROR:",
+            error
+          );
+
+          showMessage(
+            "Restaurants",
+            error?.message ||
+              "Unable to load restaurants."
+          );
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }, [
+      loadAllRestaurants,
+    ])
+  );
+
+  /* =======================================================
+     REFRESH
+  ======================================================= */
+
+  const handleRefresh =
+    useCallback(async () => {
+      if (refreshing) {
+        return;
+      }
+
+      setRefreshing(true);
+
+      try {
+        if (!showingAll) {
+          const location =
+            await getCustomerLocation();
+
+          if (location) {
+            await loadNearbyRestaurants(
+              location
+            );
+          }
+
+          return;
+        }
+
+        await loadAllRestaurants();
+
+      } catch (error: any) {
+        console.error(
+          "REFRESH RESTAURANTS ERROR:",
+          error
+        );
+
+        showMessage(
+          "Restaurants",
+          error?.message ||
+            "Unable to refresh restaurants."
+        );
+
+      } finally {
+        setRefreshing(false);
+      }
+    }, [
+      refreshing,
+      showingAll,
+      getCustomerLocation,
+      loadNearbyRestaurants,
+      loadAllRestaurants,
+    ]);
+
+  /* =======================================================
+     OPEN RESTAURANT
+  ======================================================= */
+
+  const openRestaurant =
+    useCallback(
+      (restaurantId: string) => {
+        router.push({
+          pathname:
+            "/restaurants/[restaurantId]",
+
+          params: {
+            restaurantId,
+          },
+        });
+      },
+      [router]
+    );
+  /* =======================================================
+     OPEN CUSTOMER ORDERS
+  ======================================================= */
+
+  const openOrders =
+    useCallback(() => {
+      router.push(
+        "/restaurants/orders"
+      );
+    }, [router]);
+
+  /* =======================================================
+     OPEN DIRECTIONS
+  ======================================================= */
+
+  const openDirections =
+    useCallback(
+      async (
+        restaurant: Restaurant
+      ) => {
+        if (
+          restaurant.latitude === null ||
+          restaurant.longitude === null ||
+          !Number.isFinite(
+            Number(restaurant.latitude)
+          ) ||
+          !Number.isFinite(
+            Number(restaurant.longitude)
+          )
+        ) {
+          showMessage(
+            "Directions",
+            "This restaurant has not added its GPS location yet."
+          );
+
+          return;
+        }
+
+        const latitude =
+          Number(
+            restaurant.latitude
+          );
+
+        const longitude =
+          Number(
+            restaurant.longitude
+          );
+
+        const label =
+          encodeURIComponent(
+            restaurant.name
+          );
+
+        let url = "";
+
+        if (Platform.OS === "ios") {
+          url =
+            `http://maps.apple.com/?daddr=` +
+            `${latitude},${longitude}` +
+            `&dirflg=d`;
+        } else {
+          url =
+            `https://www.google.com/maps/dir/?api=1` +
+            `&destination=${latitude},${longitude}` +
+            `&travelmode=driving` +
+            `&destination_place_id=${label}`;
+        }
+        try {
+          if (Platform.OS === "web") {
+            if (
+              typeof window !==
+              "undefined"
+            ) {
+              window.open(
+                url,
+                "_blank"
+              );
+            }
+
+            return;
+          }
+
+          const supported =
+            await Linking.canOpenURL(
+              url
+            );
+
+          if (!supported) {
+            throw new Error(
+              "Maps could not be opened on this device."
+            );
+          }
+
+          await Linking.openURL(
+            url
+          );
+
+        } catch (error: any) {
+          console.error(
+            "DIRECTIONS ERROR:",
+            error
+          );
+
+          showMessage(
+            "Directions",
+            error?.message ||
+              "Unable to open directions."
+          );
+        }
+      },
+      []
     );
 
-  /*
-   * =========================================================
-   * RESTAURANT CARD
-   * =========================================================
-   */
-  const renderRestaurant = ({
-    item,
-    index,
-  }: {
-    item: Restaurant;
-    index: number;
-  }) => {
-    const isOpen =
-      item.is_open === true;
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
+  if (loading) {
     return (
-      <View style={styles.card}>
-       
-        <View
+      <View
+        style={
+          styles.loadingContainer
+        }
+      >
+        <ActivityIndicator
+          size="large"
+          color="#d71920"
+        />
+
+        <Text
           style={
-            styles.restaurantHeader
+            styles.loadingText
           }
         >
-          <View
-            style={
-              styles.restaurantIcon
-            }
-          >
-            <Ionicons
-              name="restaurant"
-              size={25}
-              color="#DC2626"
-            />
-          </View>
-
-          <View
-            style={
-              styles.restaurantInfo
-            }
-          >
-            <View
-              style={
-                styles.nameRow
-              }
-            >
-              <Text
-                style={styles.name}
-                numberOfLines={1}
-              >
-                {item.name}
-              </Text>
-
-              {index === 0 &&
-                nearbyMode &&
-                item.distance_km !=
-                  null && (
-                  <View
-                    style={
-                      styles.nearestBadge
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.nearestBadgeText
-                      }
-                    >
-                      NEAREST
-                    </Text>
-                  </View>
-                )}
-            </View>
-
-            <Text
-              style={
-                styles.address
-              }
-              numberOfLines={2}
-            >
-              {item.address}
-            </Text>
-          </View>
-        </View>
-
-        
-        {item.distance_km !=
-          null && (
-          <View
-            style={
-              styles.distanceBox
-            }
-          >
-            <Ionicons
-              name="navigate"
-              size={18}
-              color="#2563EB"
-            />
-
-            <Text
-              style={
-                styles.distanceText
-              }
-            >
-              {Number(
-                item.distance_km
-              ).toFixed(2)}{" "}
-              km away
-            </Text>
-          </View>
-        )}
-
-        {!!item.description && (
-          <Text
-            style={
-              styles.description
-            }
-            numberOfLines={2}
-          >
-            {item.description}
-          </Text>
-        )}
-
-        
-        <View
-          style={
-            styles.statusRow
-          }
-        >
-          <View
-            style={[
-              styles.openStatus,
-              isOpen
-                ? styles.openStatusOpen
-                : styles.openStatusClosed,
-            ]}
-          >
-            <View
-              style={[
-                styles.statusDot,
-                isOpen
-                  ? styles.statusDotOpen
-                  : styles.statusDotClosed,
-              ]}
-            />
-
-            <Text
-              style={[
-                styles.openStatusText,
-                isOpen
-                  ? styles.openStatusTextOpen
-                  : styles.openStatusTextClosed,
-              ]}
-            >
-              {isOpen
-                ? "Open"
-                : "Closed"}
-            </Text>
-          </View>
-
-          {item.opening_time &&
-            item.closing_time && (
-              <Text
-                style={
-                  styles.hoursText
-                }
-              >
-                {item.opening_time.slice(
-                  0,
-                  5
-                )}
-                {" - "}
-                {item.closing_time.slice(
-                  0,
-                  5
-                )}
-              </Text>
-            )}
-        </View>
-
-       
-        <View
-          style={
-            styles.buttonRow
-          }
-        >
-         
-          <TouchableOpacity
-            style={[
-              styles.orderButton,
-              !isOpen &&
-                styles.orderButtonDisabled,
-            ]}
-            onPress={() =>
-              openRestaurant(
-                item.id
-              )
-            }
-          >
-            <Ionicons
-              name="restaurant"
-              size={19}
-              color="#fff"
-            />
-
-            <Text
-              style={
-                styles.orderButtonText
-              }
-            >
-              {isOpen
-                ? "Order Food"
-                : "View Restaurant"}
-            </Text>
-          </TouchableOpacity>
-
-         
-          <TouchableOpacity
-            style={
-              styles.directionButton
-            }
-            onPress={() =>
-              openDirections(
-                item
-              )
-            }
-          >
-            <Ionicons
-              name="navigate"
-              size={19}
-              color="#2563EB"
-            />
-
-            <Text
-              style={
-                styles.directionButtonText
-              }
-            >
-              Directions
-            </Text>
-          </TouchableOpacity>
-        </View>
+          Loading restaurants...
+        </Text>
       </View>
     );
-  };
+  }
 
-  /*
-   * =========================================================
-   * SCREEN
-   * =========================================================
-   */
+  /* =======================================================
+     UI
+  ======================================================= */
+
   return (
     <View
-      style={
-        styles.container
-      }
+      style={styles.container}
     >
-     
-     <View style={styles.header}>
-  <View>
-    <Text style={styles.title}>
-      Restaurants
-    </Text>
 
-    <Text style={styles.subtitle}>
-      Find food near you
-    </Text>
-  </View>
+      {/* =================================================
+          HEADER
+      ================================================= */}
 
-  <View style={styles.headerRight}>
-    <TouchableOpacity
-      style={styles.ordersIconButton}
-      onPress={() => router.push("/restaurants/orders")}
-    >
-      <Ionicons
-        name="receipt-outline"
-        size={25}
-        color="#DC2626"
-      />
-    </TouchableOpacity>
-
-    <View style={styles.headerIcon}>
-      <Ionicons
-        name="restaurant"
-        size={25}
-        color="#DC2626"
-      />
-    </View>
-  </View>
-</View>
-      
       <View
-        style={
-          styles.searchBox
-        }
+        style={styles.header}
       >
-        <Ionicons
-          name="search"
-          size={20}
-          color="#9CA3AF"
-        />
 
-        <TextInput
-          value={searchText}
-          onChangeText={
-            setSearchText
-          }
-          placeholder="Search restaurants..."
-          placeholderTextColor="#9CA3AF"
-          style={
-            styles.searchInput
-          }
-        />
-
-        {searchText.length >
-          0 && (
-          <TouchableOpacity
-            onPress={() =>
-              setSearchText("")
+        <View
+          style={styles.headerLeft}
+        >
+          <Text
+            style={
+              styles.headerTitle
             }
           >
-            <Ionicons
-              name="close-circle"
-              size={20}
-              color="#9CA3AF"
-            />
-          </TouchableOpacity>
-        )}
+            Restaurants
+          </Text>
+
+          <Text
+            style={
+              styles.headerSubtitle
+            }
+          >
+            Discover food near you
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={
+            styles.ordersButton
+          }
+          onPress={
+            openOrders
+          }
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name="receipt-outline"
+            size={21}
+            color="#ffffff"
+          />
+
+          <Text
+            style={
+              styles.ordersButtonText
+            }
+          >
+            My Orders
+          </Text>
+        </TouchableOpacity>
+
       </View>
 
-      
+      {/* =================================================
+          LOCATION BUTTONS
+      ================================================= */}
+
       <View
         style={
-          styles.locationActions
+          styles.actionContainer
         }
       >
+
         <TouchableOpacity
           style={[
             styles.nearbyButton,
-            (locating ||
-              loading) &&
+            findingNearby &&
               styles.disabledButton,
           ]}
           onPress={
             handleFindNearby
           }
           disabled={
-            locating || loading
+            findingNearby
           }
+          activeOpacity={0.85}
         >
-          {locating ? (
+          {findingNearby ? (
             <ActivityIndicator
               size="small"
-              color="#fff"
+              color="#ffffff"
             />
           ) : (
             <Ionicons
               name="location"
-              size={19}
-              color="#fff"
+              size={20}
+              color="#ffffff"
             />
           )}
 
@@ -1044,658 +893,963 @@ export default function RestaurantDiscovery() {
               styles.nearbyButtonText
             }
           >
-            {locating
-              ? "Finding You..."
-              : nearbyMode
-              ? "Update Nearby"
-              : "Find Near Me"}
+            {findingNearby
+              ? "Finding nearby..."
+              : "Find Nearby"}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[
             styles.allButton,
-            !nearbyMode &&
+            showingAll &&
               styles.allButtonActive,
           ]}
           onPress={
             handleShowAll
           }
-          disabled={loading}
+          activeOpacity={0.85}
         >
           <Ionicons
-            name="grid"
-            size={18}
+            name="grid-outline"
+            size={19}
             color={
-              !nearbyMode
-                ? "#fff"
-                : "#374151"
+              showingAll
+                ? "#ffffff"
+                : "#d71920"
             }
           />
 
           <Text
             style={[
               styles.allButtonText,
-              !nearbyMode &&
+              showingAll &&
                 styles.allButtonTextActive,
             ]}
           >
-            All
+            All Restaurants
           </Text>
         </TouchableOpacity>
+
       </View>
 
-      {customerLocation &&
-        nearbyMode && (
+      {/* =================================================
+          LIST
+      ================================================= */}
+
+      <ScrollView
+        contentContainerStyle={
+          restaurants.length === 0
+            ? styles.emptyContent
+            : styles.listContent
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              refreshing
+            }
+            onRefresh={
+              handleRefresh
+            }
+          />
+        }
+        showsVerticalScrollIndicator={
+          false
+        }
+      >
+
+        {/* =================================================
+            EMPTY
+        ================================================= */}
+
+        {restaurants.length === 0 ? (
           <View
             style={
-              styles.locationStatus
+              styles.emptyContainer
             }
           >
-            <Ionicons
-              name="checkmark-circle"
-              size={18}
-              color="#16A34A"
-            />
+
+            <View
+              style={
+                styles.emptyIcon
+              }
+            >
+              <Ionicons
+                name="restaurant-outline"
+                size={48}
+                color="#d71920"
+              />
+            </View>
 
             <Text
               style={
-                styles.locationStatusText
+                styles.emptyTitle
               }
             >
-              Restaurants sorted by your
-              current location
+              No Restaurants Found
             </Text>
-          </View>
-        )}
 
-      
-      {loading ? (
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <ActivityIndicator
-            size="large"
-            color="#DC2626"
-          />
-
-          <Text
-            style={
-              styles.loadingText
-            }
-          >
-            {nearbyMode
-              ? "Finding restaurants near you..."
-              : "Loading restaurants..."}
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={
-            filteredRestaurants
-          }
-          keyExtractor={(
-            item
-          ) => item.id}
-          renderItem={
-            renderRestaurant
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={
-                refreshing
-              }
-              onRefresh={
-                onRefresh
-              }
-            />
-          }
-          contentContainerStyle={
-            styles.listContent
-          }
-          showsVerticalScrollIndicator={
-            false
-          }
-          ListHeaderComponent={
-            filteredRestaurants.length >
-            0 ? (
-              <View
-                style={
-                  styles.resultsHeader
-                }
-              >
-                <Text
-                  style={
-                    styles.resultsTitle
-                  }
-                >
-                  {nearbyMode
-                    ? "Restaurants Near You"
-                    : "Available Restaurants"}
-                </Text>
-
-                <Text
-                  style={
-                    styles.resultsCount
-                  }
-                >
-                  {
-                    filteredRestaurants.length
-                  }{" "}
-                  restaurant
-                  {filteredRestaurants.length ===
-                  1
-                    ? ""
-                    : "s"}
-                </Text>
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View
+            <Text
               style={
-                styles.emptyCard
+                styles.emptyText
               }
             >
-              <View
-                style={
-                  styles.emptyIcon
-                }
-              >
-                <Ionicons
-                  name="restaurant-outline"
-                  size={50}
-                  color="#DC2626"
-                />
-              </View>
+              Try finding restaurants near
+              your current location or view
+              all available restaurants.
+            </Text>
+
+            <TouchableOpacity
+              style={
+                styles.emptyButton
+              }
+              onPress={
+                handleFindNearby
+              }
+              activeOpacity={0.85}
+            >
+              <Ionicons
+                name="location"
+                size={19}
+                color="#ffffff"
+              />
 
               <Text
                 style={
-                  styles.emptyTitle
+                  styles.emptyButtonText
                 }
               >
-                {searchText.trim()
-                  ? "No Restaurants Found"
-                  : "No Restaurants Available"}
+                Find Nearby Restaurants
               </Text>
+            </TouchableOpacity>
 
-              <Text
-                style={
-                  styles.emptyText
-                }
-              >
-                {searchText.trim()
-                  ? "Try searching for another restaurant or location."
-                  : "There are currently no active restaurants available."}
-              </Text>
+          </View>
+        ) : (
 
-              {!searchText.trim() && (
+          restaurants.map(
+            (
+              restaurant,
+              index
+            ) => {
+
+              const isNearest =
+                !showingAll &&
+                index === 0 &&
+                restaurant.distance_km !==
+                  null;
+
+              return (
                 <TouchableOpacity
+                  key={
+                    restaurant.id
+                  }
                   style={
-                    styles.emptyNearbyButton
+                    styles.restaurantCard
                   }
-                  onPress={
-                    handleFindNearby
+                  onPress={() =>
+                    openRestaurant(
+                      restaurant.id
+                    )
                   }
+                  activeOpacity={0.92}
                 >
-                  <Ionicons
-                    name="location"
-                    size={18}
-                    color="#fff"
-                  />
 
-                  <Text
+                  {/* =================================================
+                      COVER
+                  ================================================= */}
+
+                  <View
                     style={
-                      styles.emptyNearbyText
+                      styles.coverContainer
                     }
                   >
-                    Find Restaurants Near Me
-                  </Text>
+
+                    {restaurant.cover_image_url ? (
+                      <Image
+                        source={{
+                          uri:
+                            restaurant.cover_image_url,
+                        }}
+                        style={
+                          styles.coverImage
+                        }
+                      />
+                    ) : (
+                      <View
+                        style={
+                          styles.coverPlaceholder
+                        }
+                      >
+                        <Ionicons
+                          name="restaurant"
+                          size={40}
+                          color="#999999"
+                        />
+                      </View>
+                    )}
+
+                    {/* OPEN STATUS */}
+
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        restaurant.is_open
+                          ? styles.openBadge
+                          : styles.closedBadge,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.statusDot,
+                          restaurant.is_open
+                            ? styles.openDot
+                            : styles.closedDot,
+                        ]}
+                      />
+
+                      <Text
+                        style={[
+                          styles.statusText,
+                          restaurant.is_open
+                            ? styles.openText
+                            : styles.closedText,
+                        ]}
+                      >
+                        {restaurant.is_open
+                          ? "Open"
+                          : "Closed"}
+                      </Text>
+                    </View>
+
+                    {/* NEAREST */}
+
+                    {isNearest && (
+                      <View
+                        style={
+                          styles.nearestBadge
+                        }
+                      >
+                        <Ionicons
+                          name="location"
+                          size={14}
+                          color="#ffffff"
+                        />
+
+                        <Text
+                          style={
+                            styles.nearestText
+                          }
+                        >
+                          Nearest
+                        </Text>
+                      </View>
+                    )}
+
+                  </View>
+
+                  {/* =================================================
+                      CONTENT
+                  ================================================= */}
+
+                  <View
+                    style={
+                      styles.restaurantContent
+                    }
+                  >
+
+                    <View
+                      style={
+                        styles.restaurantTopRow
+                      }
+                    >
+
+                      {/* LOGO */}
+
+                      {restaurant.logo_url ? (
+                        <Image
+                          source={{
+                            uri:
+                              restaurant.logo_url,
+                          }}
+                          style={
+                            styles.logo
+                          }
+                        />
+                      ) : (
+                        <View
+                          style={
+                            styles.logoPlaceholder
+                          }
+                        >
+                          <Ionicons
+                            name="restaurant"
+                            size={25}
+                            color="#d71920"
+                          />
+                        </View>
+                      )}
+
+                      <View
+                        style={
+                          styles.nameContainer
+                        }
+                      >
+
+                        <Text
+                          style={
+                            styles.restaurantName
+                          }
+                          numberOfLines={1}
+                        >
+                          {
+                            restaurant.name
+                          }
+                        </Text>
+
+                        <View
+                          style={
+                            styles.addressRow
+                          }
+                        >
+                          <Ionicons
+                            name="location-outline"
+                            size={15}
+                            color="#777777"
+                          />
+
+                          <Text
+                            style={
+                              styles.addressText
+                            }
+                            numberOfLines={1}
+                          >
+                            {
+                              restaurant.address
+                            }
+                          </Text>
+                        </View>
+
+                      </View>
+
+                    </View>
+
+                    {/* DESCRIPTION */}
+
+                    {restaurant.description ? (
+                      <Text
+                        style={
+                          styles.description
+                        }
+                        numberOfLines={2}
+                      >
+                        {
+                          restaurant.description
+                        }
+                      </Text>
+                    ) : null}
+
+                    {/* =================================================
+                        DISTANCE
+                    ================================================= */}
+
+                    <View
+                      style={
+                        styles.infoRow
+                      }
+                    >
+
+                      {restaurant.distance_km !==
+                      null ? (
+                        <View
+                          style={
+                            styles.infoItem
+                          }
+                        >
+                          <Ionicons
+                            name="navigate-outline"
+                            size={17}
+                            color="#d71920"
+                          />
+
+                          <Text
+                            style={
+                              styles.distanceText
+                            }
+                          >
+                            {Number(
+                              restaurant.distance_km
+                            ).toFixed(2)}{" "}
+                            km away
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {restaurant.opening_time &&
+                      restaurant.closing_time ? (
+                        <View
+                          style={
+                            styles.infoItem
+                          }
+                        >
+                          <Ionicons
+                            name="time-outline"
+                            size={17}
+                            color="#777777"
+                          />
+
+                          <Text
+                            style={
+                              styles.timeText
+                            }
+                          >
+                            {
+                              restaurant.opening_time
+                            }{" "}
+                            -{" "}
+                            {
+                              restaurant.closing_time
+                            }
+                          </Text>
+                        </View>
+                      ) : null}
+
+                    </View>
+
+                    {/* =================================================
+                        BOTTOM ACTIONS
+                    ================================================= */}
+
+                    <View
+                      style={
+                        styles.bottomRow
+                      }
+                    >
+
+                      <View
+                        style={
+                          styles.paymentRow
+                        }
+                      >
+
+                        {restaurant.accepts_momo && (
+                          <View
+                            style={
+                              styles.paymentBadge
+                            }
+                          >
+                            <Text
+                              style={
+                                styles.paymentBadgeText
+                              }
+                            >
+                              MoMo
+                            </Text>
+                          </View>
+                        )}
+
+                        {restaurant.accepts_cash && (
+                          <View
+                            style={
+                              styles.paymentBadge
+                            }
+                          >
+                            <Text
+                              style={
+                                styles.paymentBadgeText
+                              }
+                            >
+                              Cash
+                            </Text>
+                          </View>
+                        )}
+
+                        {restaurant.accepts_card && (
+                          <View
+                            style={
+                              styles.paymentBadge
+                            }
+                          >
+                            <Text
+                              style={
+                                styles.paymentBadgeText
+                              }
+                            >
+                              Card
+                            </Text>
+                          </View>
+                        )}
+
+                      </View>
+
+                      <TouchableOpacity
+                        style={
+                          styles.directionButton
+                        }
+                        onPress={(
+                          event
+                        ) => {
+                          event.stopPropagation();
+
+                          openDirections(
+                            restaurant
+                          );
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons
+                          name="navigate"
+                          size={17}
+                          color="#d71920"
+                        />
+
+                        <Text
+                          style={
+                            styles.directionText
+                          }
+                        >
+                          Directions
+                        </Text>
+                      </TouchableOpacity>
+
+                    </View>
+
+                  </View>
+
                 </TouchableOpacity>
-              )}
-            </View>
-          }
-        />
-      )}
+              );
+            }
+          )
+        )}
+
+      </ScrollView>
+
     </View>
   );
 }
 
-/*
- * =========================================================
- * STYLES
- * =========================================================
- */
+/* =========================================================
+   STYLES
+========================================================= */
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F7FA",
-    paddingHorizontal: 16,
-  },
+const styles =
+  StyleSheet.create({
 
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 18,
-    paddingBottom: 14,
-  },
-
-  title: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: "#111827",
-  },
-
-  subtitle: {
-    marginTop: 3,
-    fontSize: 14,
-    color: "#6B7280",
-  },
-
-  headerIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#FEE2E2",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  searchBox: {
-    height: 50,
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    marginBottom: 12,
-  },
-
-  searchInput: {
-    flex: 1,
-    marginLeft: 9,
-    fontSize: 15,
-    color: "#111827",
-  },
-
-  locationActions: {
-    flexDirection: "row",
-    marginBottom: 10,
-  },
-
-  nearbyButton: {
-    flex: 1,
-    backgroundColor: "#2563EB",
-    borderRadius: 13,
-    paddingVertical: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 6,
-  },
-
-  nearbyButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
-    marginLeft: 7,
-  },
-
-  allButton: {
-    width: 78,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 13,
-    paddingVertical: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 6,
-  },
-
-  allButtonActive: {
-    backgroundColor: "#374151",
-    borderColor: "#374151",
-  },
-
-  allButtonText: {
-    marginLeft: 5,
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#374151",
-  },
-
-  allButtonTextActive: {
-    color: "#fff",
-  },
-
-  disabledButton: {
-    opacity: 0.7,
-  },
-
-  locationStatus: {
-    backgroundColor: "#DCFCE7",
-    borderRadius: 11,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-
-  locationStatusText: {
-    marginLeft: 7,
-    color: "#166534",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  loadingContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 100,
-  },
-
-  loadingText: {
-    marginTop: 12,
-    color: "#6B7280",
-    fontSize: 15,
-    textAlign: "center",
-  },
-
-  listContent: {
-    paddingTop: 5,
-    paddingBottom: 40,
-  },
-
-  resultsHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-
-  resultsTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#111827",
-  },
-
-  resultsCount: {
-    fontSize: 13,
-    color: "#6B7280",
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    shadowOffset: {
-      width: 0,
-      height: 3,
+    container: {
+      flex: 1,
+      backgroundColor: "#f7f7f7",
     },
-    elevation: 2,
-  },
 
-  restaurantHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: "#f7f7f7",
+    },
 
-  restaurantIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#FEE2E2",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+    loadingText: {
+      marginTop: 12,
+      fontSize: 15,
+      color: "#666666",
+    },
 
-  restaurantInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
+    /* ================= HEADER ================= */
 
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
+    header: {
+      backgroundColor: "#ffffff",
+      paddingHorizontal: 18,
+      paddingTop: 18,
+      paddingBottom: 15,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      borderBottomWidth: 1,
+      borderBottomColor: "#eeeeee",
+    },
 
-  name: {
-    flex: 1,
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#111827",
-  },
+    headerLeft: {
+      flex: 1,
+      paddingRight: 12,
+    },
 
-  nearestBadge: {
-    backgroundColor: "#DCFCE7",
-    borderRadius: 7,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    marginLeft: 7,
-  },
+    headerTitle: {
+      fontSize: 25,
+      fontWeight: "800",
+      color: "#151515",
+    },
 
-  nearestBadgeText: {
-    color: "#15803D",
-    fontSize: 9,
-    fontWeight: "900",
-  },
+    headerSubtitle: {
+      marginTop: 3,
+      fontSize: 13,
+      color: "#777777",
+    },
 
-  address: {
-    marginTop: 5,
-    fontSize: 13,
-    color: "#6B7280",
-    lineHeight: 19,
-  },
+    ordersButton: {
+      backgroundColor: "#d71920",
+      paddingHorizontal: 13,
+      paddingVertical: 10,
+      borderRadius: 11,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
 
-  distanceBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EFF6FF",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginTop: 13,
-    alignSelf: "flex-start",
-  },
+    ordersButtonText: {
+      color: "#ffffff",
+      fontSize: 13,
+      fontWeight: "700",
+    },
 
-  distanceText: {
-    marginLeft: 6,
-    color: "#2563EB",
-    fontSize: 14,
-    fontWeight: "800",
-  },
+    /* ================= ACTIONS ================= */
 
-  description: {
-    marginTop: 11,
-    color: "#4B5563",
-    fontSize: 14,
-    lineHeight: 20,
-  },
+    actionContainer: {
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+      backgroundColor: "#ffffff",
+      flexDirection: "row",
+      gap: 10,
+    },
 
-  statusRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 13,
-  },
+    nearbyButton: {
+      flex: 1,
+      minHeight: 46,
+      backgroundColor: "#d71920",
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: 8,
+    },
 
-  openStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
+    disabledButton: {
+      opacity: 0.7,
+    },
 
-  openStatusOpen: {
-    backgroundColor: "#DCFCE7",
-  },
+    nearbyButtonText: {
+      color: "#ffffff",
+      fontSize: 14,
+      fontWeight: "800",
+    },
 
-  openStatusClosed: {
-    backgroundColor: "#F3F4F6",
-  },
+    allButton: {
+      flex: 1,
+      minHeight: 46,
+      borderWidth: 1,
+      borderColor: "#d71920",
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row",
+      gap: 8,
+      backgroundColor: "#ffffff",
+    },
 
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 6,
-  },
+    allButtonActive: {
+      backgroundColor: "#d71920",
+    },
 
-  statusDotOpen: {
-    backgroundColor: "#16A34A",
-  },
+    allButtonText: {
+      color: "#d71920",
+      fontSize: 14,
+      fontWeight: "800",
+    },
 
-  statusDotClosed: {
-    backgroundColor: "#9CA3AF",
-  },
+    allButtonTextActive: {
+      color: "#ffffff",
+    },
 
-  openStatusText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
+    /* ================= LIST ================= */
 
-  openStatusTextOpen: {
-    color: "#15803D",
-  },
+    listContent: {
+      padding: 15,
+      paddingBottom: 35,
+    },
 
-  openStatusTextClosed: {
-    color: "#6B7280",
-  },
+    emptyContent: {
+      flexGrow: 1,
+      justifyContent: "center",
+      padding: 25,
+    },
 
-  hoursText: {
-    marginLeft: 10,
-    fontSize: 12,
-    color: "#6B7280",
-  },
+    /* ================= CARD ================= */
 
-  buttonRow: {
-    flexDirection: "row",
-    marginTop: 15,
-  },
+    restaurantCard: {
+      backgroundColor: "#ffffff",
+      borderRadius: 16,
+      marginBottom: 16,
+      overflow: "hidden",
+      borderWidth: 1,
+      borderColor: "#eeeeee",
+    },
 
-  orderButton: {
-    flex: 1,
-    backgroundColor: "#DC2626",
-    borderRadius: 12,
-    paddingVertical: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 5,
-  },
+    coverContainer: {
+      width: "100%",
+      height: 175,
+      position: "relative",
+      backgroundColor: "#eeeeee",
+    },
 
-  orderButtonDisabled: {
-    backgroundColor: "#6B7280",
-  },
+    coverImage: {
+      width: "100%",
+      height: "100%",
+      resizeMode: "cover",
+    },
 
-  orderButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
-    marginLeft: 6,
-  },
+    coverPlaceholder: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#eeeeee",
+    },
 
-  directionButton: {
-    flex: 1,
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderRadius: 12,
-    paddingVertical: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 5,
-  },
+    statusBadge: {
+      position: "absolute",
+      top: 12,
+      right: 12,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
 
-  directionButtonText: {
-    color: "#2563EB",
-    fontSize: 14,
-    fontWeight: "800",
-    marginLeft: 6,
-  },
+    openBadge: {
+      backgroundColor: "#ffffff",
+    },
 
-  emptyCard: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 30,
-    alignItems: "center",
-    marginTop: 35,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
+    closedBadge: {
+      backgroundColor: "#ffffff",
+    },
 
-  emptyIcon: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
+    statusDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
 
-  emptyTitle: {
-    marginTop: 17,
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#111827",
-    textAlign: "center",
-  },
+    openDot: {
+      backgroundColor: "#1f9d55",
+    },
 
-  emptyText: {
-    marginTop: 9,
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 21,
-  },
+    closedDot: {
+      backgroundColor: "#888888",
+    },
 
-  emptyNearbyButton: {
-    marginTop: 18,
-    backgroundColor: "#2563EB",
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    flexDirection: "row",
-    alignItems: "center",
-  },
+    statusText: {
+      fontSize: 12,
+      fontWeight: "800",
+    },
 
-  emptyNearbyText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
-    marginLeft: 7,
-  },
-  headerRight: {
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 8,
-},
+    openText: {
+      color: "#1f9d55",
+    },
 
-ordersIconButton: {
-  width: 48,
-  height: 48,
-  borderRadius: 24,
-  backgroundColor: "#FFFFFF",
-  borderWidth: 1,
-  borderColor: "#E5E7EB",
-  justifyContent: "center",
-  alignItems: "center",
-},
-});
+    closedText: {
+      color: "#777777",
+    },
+
+    nearestBadge: {
+      position: "absolute",
+      bottom: 12,
+      left: 12,
+      backgroundColor: "#d71920",
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
+
+    nearestText: {
+      color: "#ffffff",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+
+    /* ================= CONTENT ================= */
+
+    restaurantContent: {
+      padding: 14,
+    },
+
+    restaurantTopRow: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+
+    logo: {
+      width: 55,
+      height: 55,
+      borderRadius: 12,
+      backgroundColor: "#eeeeee",
+    },
+
+    logoPlaceholder: {
+      width: 55,
+      height: 55,
+      borderRadius: 12,
+      backgroundColor: "#fff0f0",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    nameContainer: {
+      flex: 1,
+      marginLeft: 12,
+    },
+
+    restaurantName: {
+      fontSize: 19,
+      fontWeight: "800",
+      color: "#151515",
+    },
+
+    addressRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 5,
+      gap: 4,
+    },
+
+    addressText: {
+      flex: 1,
+      fontSize: 13,
+      color: "#777777",
+    },
+
+    description: {
+      marginTop: 12,
+      fontSize: 14,
+      lineHeight: 20,
+      color: "#555555",
+    },
+
+    /* ================= INFO ================= */
+
+    infoRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      marginTop: 13,
+      gap: 12,
+    },
+
+    infoItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
+
+    distanceText: {
+      color: "#d71920",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
+    timeText: {
+      color: "#666666",
+      fontSize: 13,
+    },
+
+    /* ================= BOTTOM ================= */
+
+    bottomRow: {
+      marginTop: 14,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: "#eeeeee",
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+
+    paymentRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+      flex: 1,
+    },
+
+    paymentBadge: {
+      backgroundColor: "#f4f4f4",
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+      borderRadius: 7,
+    },
+
+    paymentBadgeText: {
+      fontSize: 11,
+      color: "#555555",
+      fontWeight: "700",
+    },
+
+    directionButton: {
+      borderWidth: 1,
+      borderColor: "#d71920",
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 9,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+    },
+
+    directionText: {
+      color: "#d71920",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+
+    /* ================= EMPTY ================= */
+
+    emptyContainer: {
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    emptyIcon: {
+      width: 90,
+      height: 90,
+      borderRadius: 45,
+      backgroundColor: "#fff0f0",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 18,
+    },
+
+    emptyTitle: {
+      fontSize: 21,
+      fontWeight: "800",
+      color: "#222222",
+      textAlign: "center",
+    },
+
+    emptyText: {
+      marginTop: 8,
+      fontSize: 14,
+      lineHeight: 21,
+      color: "#777777",
+      textAlign: "center",
+      maxWidth: 350,
+    },
+
+    emptyButton: {
+      marginTop: 20,
+      backgroundColor: "#d71920",
+      paddingHorizontal: 18,
+      paddingVertical: 12,
+      borderRadius: 11,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 7,
+    },
+
+    emptyButtonText: {
+      color: "#ffffff",
+      fontSize: 14,
+      fontWeight: "800",
+    },
+
+  });

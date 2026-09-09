@@ -153,7 +153,6 @@ export default function RestaurantOwnerMenu() {
         router.replace("/(restaurant-owner)/dashboard");
         return;
       }
-
       setRestaurantId(resolvedRestaurantId);
 
       await Promise.all([

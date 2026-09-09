@@ -4,22 +4,22 @@ import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 
 const SERVER_URL = "https://nasara-upload-server.onrender.com";
 
 type RestaurantStatus =
-  | "approved"
+  | "active"
   | "suspended"
   | "closed";
 
@@ -245,7 +245,7 @@ export default function CreateRestaurantScreen() {
    * is immediately approved/active.
    */
   const [status, setStatus] =
-    useState<RestaurantStatus>("approved");
+    useState<RestaurantStatus>("active");
 
   const [logoUri, setLogoUri] =
     useState<string | null>(null);
@@ -394,7 +394,7 @@ export default function CreateRestaurantScreen() {
         /*
          * New restaurant is approved immediately.
          */
-        setStatus("approved");
+        setStatus("active");
 
         return;
       }
@@ -531,7 +531,7 @@ export default function CreateRestaurantScreen() {
          * contains pending/rejected, treat it as
          * approved instead of showing pending.
          */
-        setStatus("approved");
+        setStatus("active");
       }
 
       setLogoUrl(
@@ -1141,7 +1141,7 @@ export default function CreateRestaurantScreen() {
 
         if (
           updatedRestaurant.status ===
-            "approved" ||
+            "active" ||
           updatedRestaurant.status ===
             "suspended" ||
           updatedRestaurant.status ===
@@ -1151,7 +1151,7 @@ export default function CreateRestaurantScreen() {
             updatedRestaurant.status
           );
         } else {
-          setStatus("approved");
+          setStatus("active");
         }
       } else {
         /*
@@ -1244,7 +1244,7 @@ export default function CreateRestaurantScreen() {
         /*
          * New restaurant is always approved.
          */
-        setStatus("approved");
+        setStatus("active");
       }
 
       if (!savedRestaurantId) {
@@ -1354,7 +1354,7 @@ export default function CreateRestaurantScreen() {
   ): string {
     if (
       restaurantStatus ===
-      "approved"
+      "active"
     ) {
       return "ACTIVE";
     }
@@ -2300,7 +2300,7 @@ export default function CreateRestaurantScreen() {
                 style={[
                   styles.statusBadge,
                   status ===
-                    "approved" &&
+                    "active" &&
                     styles.statusApproved,
                   status ===
                     "suspended" &&
@@ -2309,11 +2309,11 @@ export default function CreateRestaurantScreen() {
                     styles.statusClosed,
                 ]}
               >
-                <Text
+                 <Text
                   style={[
                     styles.statusBadgeText,
                     status ===
-                      "approved" &&
+                      "active" &&
                       styles.statusApprovedText,
                     status ===
                       "suspended" &&
@@ -2368,8 +2368,7 @@ export default function CreateRestaurantScreen() {
                 size="small"
                 color="#FFFFFF"
               />
-
-              <Text
+            <Text
                 style={
                   styles.saveButtonText
                 }
