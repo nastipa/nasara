@@ -31,12 +31,13 @@ export default {
     /* ✅ PLUGINS */
     /* ===================================================== */
     plugins: [
-      "expo-router",
-      "expo-video",
-      "expo-asset",
-      "expo-audio",
-      "expo-font",
-      "@react-native-community/datetimepicker",
+  "expo-router",
+  "expo-video",
+  "expo-asset",
+  "expo-audio",
+  "expo-font",
+  "expo-notifications",
+  "@react-native-community/datetimepicker",
 
       [
         "expo-camera",

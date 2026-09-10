@@ -1162,27 +1162,7 @@ onPress={followUser}
           </View>
         </>
       )}
-      {isUtilityAdmin && (
-  <>
-    <Text style={styles.sectionTitle}>
-      ⚡ Utilities
-    </Text>
-
-    <View style={{ flexDirection: "row" }}>
-      <ActionTile
-        label="Utilities Admin"
-        bg="#0f172a"
-        onPress={() => {
-          setShowActionsModal(false);
-
-          router.push(
-            "/(utilities-admin)"
-          );
-        }}
-      />
-    </View>
-  </>
-)}
+     
 {isHospitalAdmin && (
   <>
     <Text style={styles.sectionTitle}>

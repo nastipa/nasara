@@ -5,6 +5,7 @@ import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   View,
 } from "react-native";
 
@@ -32,6 +33,116 @@ Notifications.setNotificationHandler({
 });
 export default function RootLayout() {
   const router = useRouter();
+  /* ================= 🌐 WEB NOTIFICATION SOUND ================= */
+
+  const playWebNotificationSound = () => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    try {
+      const audio = new window.Audio(
+        "/assets/sounds/message.mp3"
+      );
+
+      audio.volume = 1.0;
+
+      audio.currentTime = 0;
+
+      audio.play().catch((error) => {
+        console.log(
+          "Web notification sound blocked:",
+          error
+        );
+      });
+    } catch (error) {
+      console.log(
+        "Web notification sound error:",
+        error
+      );
+    }
+  };
+
+  /* ================= 🌐 UNLOCK WEB AUDIO ================= */
+
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    const unlockAudio = () => {
+      try {
+        const audio = new window.Audio(
+          "/assets/sounds/message.mp3"
+        );
+
+        audio.volume = 0;
+
+        const promise = audio.play();
+
+        if (promise) {
+          promise
+            .then(() => {
+              audio.pause();
+              audio.currentTime = 0;
+            })
+            .catch(() => {});
+        }
+      } catch (error) {
+        console.log(
+          "Web audio unlock error:",
+          error
+        );
+      }
+
+      window.removeEventListener(
+        "click",
+        unlockAudio
+      );
+
+      window.removeEventListener(
+        "touchstart",
+        unlockAudio
+      );
+
+      window.removeEventListener(
+        "keydown",
+        unlockAudio
+      );
+    };
+
+    window.addEventListener(
+      "click",
+      unlockAudio
+    );
+
+    window.addEventListener(
+      "touchstart",
+      unlockAudio
+    );
+
+    window.addEventListener(
+      "keydown",
+      unlockAudio
+    );
+
+    return () => {
+      window.removeEventListener(
+        "click",
+        unlockAudio
+      );
+
+      window.removeEventListener(
+        "touchstart",
+        unlockAudio
+      );
+
+      window.removeEventListener(
+        "keydown",
+        unlockAudio
+      );
+    };
+  }, []);
 
   const pathname =
     usePathname();
@@ -139,6 +250,21 @@ export default function RootLayout() {
               "/chat"
             );
           }
+          if (
+  data?.type ===
+  "food_order"
+) {
+  router.push({
+    pathname:
+      "/(restaurant-owner)/orders",
+    params: {
+      orderId:
+        String(data?.id || ""),
+    },
+  });
+
+  return;
+}
         }
       );
 
@@ -148,214 +274,260 @@ export default function RootLayout() {
 
   /* ================= 🔥 GLOBAL REALTIME BROADCAST ================= */
 
-useEffect(() => {
-  if (!session?.user?.id) return;
+  useEffect(() => {
+    if (!session?.user?.id) return;
 
-  /* ================= ITEMS ================= */
+    /* ================= ITEMS ================= */
 
-  const itemsChannel = supabase
-    .channel("global-items")
+    const itemsChannel = supabase
+      .channel("global-items")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "items_live",
+        },
+        async (payload) => {
+          const item = payload.new as any;
 
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "items_live",
-      },
+          /* DON'T NOTIFY OWNER */
+          if (item.user_id === session.user.id) {
+            return;
+          }
 
-      async (payload) => {
-        const item = payload.new as any;
-
-        /* DON'T NOTIFY OWNER */
-
-        if (
-          item.user_id ===
-          session.user.id
-        ) {
-          return;
-        }
-
-        /* SOUND */
-
-        playSound("post");
-
-        /* POPUP */
-
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: "🛒 New Item Posted",
-            body:
-              item.title ||
-              "New item available",
-
-            sound: "default",
-
-            data: {
-              type: "item",
-              id: item.id,
-            },
-          },
-
-          trigger: null,
-        });
-      }
-    )
-
-    .subscribe();
-
-  /* ================= NOTIFICATIONS ================= */
-
-  const notifChannel = supabase
-    .channel(
-      "global-notifications"
-    )
-
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "notifications",
-      },
-
-      async (payload) => {
-        const notif =
-          payload.new as any;
-
-        /* ONLY CURRENT USER */
-
-        if (
-          notif.user_id !==
-          session.user.id
-        ) {
-          return;
-        }
-
-        /* ===== MESSAGE ===== */
-
-        if (
-          notif.type ===
-          "message"
-        ) {
-          playSound("message");
-
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title:
-                notif.title ||
-                "💬 New Message",
-
-              body:
-                notif.body ||
-                "Someone sent a message",
-
-              sound: "default",
-
-              data: {
-                type: "chat",
-              },
-            },
-
-            trigger: null,
-          });
-        }
-
-        /* ===== LIKE ===== */
-
-        if (
-          notif.type ===
-          "like"
-        ) {
-          playSound("like");
-
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title:
-                notif.title ||
-                "❤️ New Like",
-
-              body:
-                notif.body ||
-                "Someone liked your post",
-
-              sound: "default",
-            },
-
-            trigger: null,
-          });
-        }
-
-        /* ===== REEL ===== */
-
-        if (
-          notif.type ===
-          "reel"
-        ) {
+          /* 🔊 SOUND */
           playSound("post");
+          playWebNotificationSound();
 
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title:
-                "🎬 New Reel",
+          /* 📱 NATIVE NOTIFICATION ONLY */
+          if (Platform.OS !== "web") {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: "🛒 New Item Posted",
+                body:
+                  item.title ||
+                  "New item available",
 
-              body:
-                notif.body ||
-                "New reel uploaded",
+                sound: "default",
 
-              sound: "default",
-
-              data: {
-                type: "reel",
+                data: {
+                  type: "item",
+                  id: item.id,
+                },
               },
-            },
 
-            trigger: null,
-          });
+              trigger: null,
+            });
+          }
         }
+      )
+      .subscribe();
 
-        /* ===== BATTLE ===== */
+    /* ================= NOTIFICATIONS ================= */
 
-        if (
-          notif.type ===
-          "battle"
-        ) {
-          playSound("post");
+    const notifChannel = supabase
+      .channel("global-notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+        },
+        async (payload) => {
+          const notif = payload.new as any;
 
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title:
-                "⚔️ New Battle",
+          /* ONLY CURRENT USER */
+          if (
+            notif.user_id !==
+            session.user.id
+          ) {
+            return;
+          }
 
-              body:
-                notif.body ||
-                "New battle started",
+          /* ===== FOOD ORDER ===== */
 
-              sound: "default",
+          if (
+            notif.type ===
+            "food_order"
+          ) {
+            /* 🔔 RESTAURANT ORDER SOUND */
 
-              data: {
-                type: "battle",
-              },
-            },
+            playSound("message");
+            playWebNotificationSound();
 
-            trigger: null,
-          });
+            /* 📱 NATIVE NOTIFICATION ONLY */
+
+            if (Platform.OS !== "web") {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title:
+                    notif.title ||
+                    "🔔 New Restaurant Order",
+
+                  body:
+                    notif.body ||
+                    "A new restaurant order has been received.",
+
+                  sound: "default",
+
+                  data: {
+                    type: "food_order",
+                    id: notif.ref_id,
+                  },
+                },
+
+                trigger: null,
+              });
+            }
+
+            return;
+          }
+
+          /* ===== MESSAGE ===== */
+
+          if (
+            notif.type ===
+            "message"
+          ) {
+            playSound("message");
+            playWebNotificationSound();
+
+            if (Platform.OS !== "web") {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title:
+                    notif.title ||
+                    "💬 New Message",
+
+                  body:
+                    notif.body ||
+                    "Someone sent a message",
+
+                  sound: "default",
+
+                  data: {
+                    type: "chat",
+                  },
+                },
+
+                trigger: null,
+              });
+            }
+
+            return;
+          }
+
+          /* ===== LIKE ===== */
+
+          if (
+            notif.type ===
+            "like"
+          ) {
+            playSound("like");
+            playWebNotificationSound();
+
+            if (Platform.OS !== "web") {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title:
+                    notif.title ||
+                    "❤️ New Like",
+
+                  body:
+                    notif.body ||
+                    "Someone liked your post",
+
+                  sound: "default",
+                },
+
+                trigger: null,
+              });
+            }
+
+            return;
+          }
+
+          /* ===== REEL ===== */
+
+          if (
+            notif.type ===
+            "reel"
+          ) {
+            playSound("post");
+            playWebNotificationSound();
+
+            if (Platform.OS !== "web") {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title:
+                    "🎬 New Reel",
+
+                  body:
+                    notif.body ||
+                    "New reel uploaded",
+
+                  sound: "default",
+
+                  data: {
+                    type: "reel",
+                  },
+                },
+
+                trigger: null,
+              });
+            }
+
+            return;
+          }
+
+          /* ===== BATTLE ===== */
+
+          if (
+            notif.type ===
+            "battle"
+          ) {
+            playSound("post");
+            playWebNotificationSound();
+
+            if (Platform.OS !== "web") {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title:
+                    "⚔️ New Battle",
+
+                  body:
+                    notif.body ||
+                    "New battle started",
+
+                  sound: "default",
+
+                  data: {
+                    type: "battle",
+                  },
+                },
+
+                trigger: null,
+              });
+            }
+
+            return;
+          }
         }
-      }
-    )
+      )
+      .subscribe();
 
-    .subscribe();
+    return () => {
+      supabase.removeChannel(
+        itemsChannel
+      );
 
-  return () => {
-    supabase.removeChannel(
-      itemsChannel
-    );
-
-    supabase.removeChannel(
-      notifChannel
-    );
-  };
-}, [session?.user?.id]);
+      supabase.removeChannel(
+        notifChannel
+      );
+    };
+  }, [session?.user?.id]);
   /* ================= MOUNT ================= */
 
   useEffect(() => {

@@ -1,6 +1,6 @@
+import { useAudioPlayer } from "expo-audio";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-
 import {
   FlatList,
   Text,
@@ -12,7 +12,20 @@ import { supabase } from "../lib/supabase";
 
 export default function NotificationsScreen() {
   const router = useRouter();
-
+  const notificationSoundPlayer = useAudioPlayer(
+  require("../assets/sounds/message.mp3")
+);
+const playNotificationSound = () => {
+  try {
+    notificationSoundPlayer.seekTo(0);
+    notificationSoundPlayer.play();
+  } catch (error) {
+    console.log(
+      "Notification sound error:",
+      error
+    );
+  }
+};
   const [notifications, setNotifications] =
     useState<any[]>([]);
 
@@ -94,14 +107,15 @@ export default function NotificationsScreen() {
               filter: `user_id=eq.${user.id}`,
             },
 
-            (payload: any) => {
-              setNotifications(
-                (prev) => [
-                  payload.new,
-                  ...prev,
-                ]
-              );
-            }
+           (payload: any) => {
+  setNotifications((prev) => [
+    payload.new,
+    ...prev,
+  ]);
+
+  playNotificationSound();
+}
+            
           );
 
         await channel.subscribe();
@@ -139,7 +153,7 @@ export default function NotificationsScreen() {
             "notifications"
           )
           .update({
-            read: true,
+            is_read: true,
           })
           .eq(
             "id",
@@ -155,15 +169,26 @@ export default function NotificationsScreen() {
               notification.id
                 ? {
                     ...n,
-                    read: true,
+                    is_read: true,
                   }
                 : n
             )
         );
 
         /* ================= NAVIGATION ================= */
+       if (notification.type === "food_order") {
+  router.push({
+    pathname: "/(restaurant-owner)/orders",
+    params: {
+      orderId: notification.ref_id,
+    },
+  });
 
-        if (
+  return;
+}
+       
+   
+      if (
           notification.type ===
           "chat"
         ) {
@@ -249,7 +274,7 @@ export default function NotificationsScreen() {
             }
             style={{
               backgroundColor:
-                item.read
+                item.is_read
                   ? "#1e293b"
                   : "#1d4ed8",
 
@@ -262,7 +287,7 @@ export default function NotificationsScreen() {
               borderWidth: 1,
 
               borderColor:
-                item.read
+                item.is_read
                   ? "#334155"
                   : "#2563eb",
             }}

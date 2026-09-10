@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useAudioPlayer } from "expo-audio";
+import * as Print from "expo-print";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -153,6 +155,16 @@ function formatMoney(value: number) {
   return `GH₵${Number(value || 0).toFixed(2)}`;
 }
 
+const escapeHtml = (value: unknown): string => {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+
 function formatDate(dateString: string) {
   try {
     return new Date(dateString).toLocaleString("en-GH", {
@@ -233,6 +245,22 @@ function getPaymentStatusLabel(status: PaymentStatus) {
 
 export default function RestaurantOrdersScreen() {
   const router = useRouter();
+const orderAlertPlayer = useAudioPlayer(
+  require("../../assets/sounds/message.mp3")
+);
+
+const playNewOrderSound = () => {
+  try {
+    orderAlertPlayer.seekTo(0);
+    orderAlertPlayer.play();
+  } catch (error) {
+    console.log(
+      "New order sound error:",
+      error
+    );
+  }
+};
+
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -668,55 +696,68 @@ export default function RestaurantOrdersScreen() {
   }, [loadOrders]);
 
   useEffect(() => {
-    if (!restaurant?.id) {
-      return;
-    }
-    const channel = supabase
-      .channel(
-        `restaurant-food-orders-${restaurant.id}`
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "food_orders",
-          filter: `restaurant_id=eq.${restaurant.id}`,
-        },
-        () => {
-          loadOrders(false);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "food_payments",
-          filter: `restaurant_id=eq.${restaurant.id}`,
-        },
-        () => {
-          loadOrders(false);
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "food_order_items",
-        },
-        () => {
-          loadOrders(false);
-        }
-      )
-      .subscribe();
+  if (!restaurant?.id) {
+    return;
+  }
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurant?.id, loadOrders]);
+  const channel = supabase
+    .channel(
+      `restaurant-food-orders-${restaurant.id}`
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "food_orders",
+        filter: `restaurant_id=eq.${restaurant.id}`,
+      },
+     (payload: any) => {
+        console.log(
+          "🔔 New restaurant order received:",
+          payload.new
+        );
 
+      showNewOrderAlert(
+  payload.new?.order_number ?? "",
+  Number(payload.new?.total_amount ?? 0),
+  payload.new?.id ?? ""
+);
+
+playNewOrderSound();
+
+loadOrders(false);
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "food_payments",
+        filter: `restaurant_id=eq.${restaurant.id}`,
+      },
+      () => {
+        loadOrders(false);
+      }
+    )
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "food_order_items",
+      },
+      () => {
+        loadOrders(false);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [restaurant?.id, loadOrders]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadOrders(false);
@@ -1095,6 +1136,364 @@ export default function RestaurantOrdersScreen() {
     setRestaurantNote("");
   };
 
+  const buildOrderPrintHtml = (
+  order: FoodOrder,
+  restaurant: Restaurant | null,
+  items: FoodOrderItem[]
+): string => {
+  const restaurantName =
+    restaurant?.name || "Nasara Restaurant";
+
+  const foodSubtotal = Number(
+    order.food_subtotal || 0
+  );
+
+  const foodRows = items
+    .map(
+      (food) => `
+        <tr>
+          <td>${escapeHtml(food.item_name)}</td>
+          <td class="price">
+            ${escapeHtml(
+              formatMoney(
+                Number(food.total_price || 0)
+              )
+            )}
+          </td>
+        </tr>
+      `
+    )
+    .join("");
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1.0"
+        />
+
+        <title>
+          ${escapeHtml(order.order_number)}
+        </title>
+
+        <style>
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            padding: 20px;
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif;
+            color: #111827;
+            background: #ffffff;
+          }
+
+          .receipt {
+            width: 100%;
+            max-width: 420px;
+            margin: 0 auto;
+          }
+
+          .restaurant {
+            text-align: center;
+            font-size: 22px;
+            font-weight: 800;
+            margin-bottom: 5px;
+          }
+
+          .title {
+            text-align: center;
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 16px;
+          }
+
+          .divider {
+            border-top: 1px dashed #9ca3af;
+            margin: 12px 0;
+          }
+
+          .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+            margin-bottom: 8px;
+            font-size: 13px;
+          }
+
+          .label {
+            color: #6b7280;
+          }
+
+          .value {
+            font-weight: 700;
+            text-align: right;
+          }
+
+          .section-title {
+            font-size: 14px;
+            font-weight: 800;
+            margin: 14px 0 8px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          th {
+            text-align: left;
+            font-size: 12px;
+            color: #6b7280;
+            padding: 7px 0;
+            border-bottom:
+              1px solid #d1d5db;
+          }
+
+          td {
+            font-size: 13px;
+            padding: 9px 0;
+            border-bottom:
+              1px solid #f3f4f6;
+          }
+
+          .price {
+            text-align: right;
+            font-weight: 700;
+          }
+
+          .total {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 12px;
+            font-size: 18px;
+            font-weight: 900;
+          }
+
+          .payment {
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            background: #f3f4f6;
+            font-size: 13px;
+          }
+
+          .note {
+            margin-top: 12px;
+            padding: 10px;
+            border:
+              1px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 19px;
+          }
+
+          .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 11px;
+            color: #9ca3af;
+          }
+
+          @media print {
+            body {
+              padding: 8px;
+            }
+
+            .receipt {
+              max-width: 100%;
+            }
+          }
+        </style>
+      </head>
+
+      <body>
+        <div class="receipt">
+
+          <div class="restaurant">
+            ${escapeHtml(restaurantName)}
+          </div>
+
+          <div class="title">
+            FOOD ORDER
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="row">
+            <span class="label">
+              Order Number
+            </span>
+
+            <span class="value">
+              ${escapeHtml(order.order_number)}
+            </span>
+          </div>
+
+          <div class="row">
+            <span class="label">
+              Date / Time
+            </span>
+
+            <span class="value">
+              ${escapeHtml(
+                formatDate(order.created_at)
+              )}
+            </span>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">
+            Customer
+          </div>
+
+          <div class="row">
+            <span class="label">
+              Name
+            </span>
+
+            <span class="value">
+              ${escapeHtml(
+                order.customer_name ||
+                  "Customer"
+              )}
+            </span>
+          </div>
+
+          <div class="row">
+            <span class="label">
+              Phone
+            </span>
+
+            <span class="value">
+              ${escapeHtml(
+                order.customer_phone
+              )}
+            </span>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="section-title">
+            Food Ordered
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>
+                  Food
+                </th>
+
+                <th style="text-align:right">
+                  Price
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              ${foodRows}
+            </tbody>
+          </table>
+
+          <div class="total">
+            <span>
+              Total
+            </span>
+
+            <span>
+              ${escapeHtml(
+                formatMoney(foodSubtotal)
+              )}
+            </span>
+          </div>
+
+          <div class="payment">
+            <strong>
+              Payment Status:
+            </strong>
+
+            ${escapeHtml(
+              getPaymentStatusLabel(
+                order.payment_status
+              )
+            )}
+          </div>
+
+          ${
+            order.customer_note
+              ? `
+                <div class="note">
+                  <strong>
+                    Customer Note
+                  </strong>
+                  <br />
+
+                  ${escapeHtml(
+                    order.customer_note
+                  )}
+                </div>
+              `
+              : ""
+          }
+
+          <div class="footer">
+            Nasara Restaurant Order
+          </div>
+
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+const printOrder = async (
+  order: FoodOrder
+): Promise<void> => {
+  try {
+    const items =
+      orderItems[order.id] || [];
+
+    if (!items.length) {
+      showMessage(
+        "Cannot Print",
+        "The food items for this order have not loaded yet."
+      );
+
+      return;
+    }
+
+    const html =
+      buildOrderPrintHtml(
+        order,
+        restaurant,
+        items
+      );
+
+    await Print.printAsync({
+      html,
+    });
+  } catch (error) {
+    console.log(
+      "Print order error:",
+      error
+    );
+
+    showMessage(
+      "Print Error",
+      "The order could not be sent to the printer."
+    );
+  }
+};
+
   const openOrder = (
     order: FoodOrder
   ) => {
@@ -1111,6 +1510,123 @@ export default function RestaurantOrdersScreen() {
     setShowOrderModal(true);
   };
 
+  const openNewOrderById = async (
+  orderId: string
+) => {
+  try {
+    const { data, error } = await supabase
+      .from("food_orders")
+      .select(
+        `
+        id,
+        order_number,
+        customer_id,
+        restaurant_id,
+        customer_name,
+        customer_phone,
+        food_subtotal,
+        service_fee,
+        total_amount,
+        payment_status,
+        order_status,
+        customer_note,
+        restaurant_note,
+        rejection_reason,
+        cancellation_reason,
+        paid_at,
+        accepted_at,
+        preparing_at,
+        ready_at,
+        picked_up_at,
+        completed_at,
+        cancelled_at,
+        created_at,
+        updated_at
+        `
+      )
+      .eq("id", orderId)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      showMessage(
+        "Order Not Found",
+        "The new order could not be found."
+      );
+      return;
+    }
+
+    openOrder(data as FoodOrder);
+  } catch (error) {
+    console.log(
+      "Open new order error:",
+      error
+    );
+
+    showMessage(
+      "Order Error",
+      "Unable to open the new order."
+    );
+  }
+};
+
+
+  const showNewOrderAlert = (
+  orderNumber: string,
+  totalAmount: number,
+  orderId: string
+) => {
+  const title = "🔔 New Restaurant Order";
+
+  const message =
+    `Order #${orderNumber} received — GH₵${Number(
+      totalAmount
+    ).toFixed(2)}`;
+
+  if (Platform.OS === "web") {
+    const openOrderNow = window.confirm(
+      `${title}\n\n${message}\n\nOpen this order?`
+    );
+
+    if (openOrderNow) {
+      const newOrder = orders.find(
+        (order) => order.id === orderId
+      );
+
+      if (openOrderNow) {
+  openNewOrderById(orderId);
+}
+    }
+
+    return;
+  }
+
+  Alert.alert(
+    title,
+    message,
+    [
+      {
+        text: "Later",
+        style: "cancel",
+      },
+      {
+        text: "Open Order",
+        onPress: () => {
+          const newOrder = orders.find(
+            (order) => order.id === orderId
+          );
+
+          if (newOrder) {
+            openOrder(newOrder);
+          }
+        },
+      },
+    ]
+  );
+};
   const closeOrder = () => {
     setShowOrderModal(false);
     setSelectedOrder(null);
@@ -1459,45 +1975,69 @@ export default function RestaurantOrdersScreen() {
             )}
           </Text>
         </View>
+         
+       <TouchableOpacity
+  style={styles.cardPrintButton}
+  onPress={(event) => {
+    event.stopPropagation();
 
-        {primaryAction && (
-          <TouchableOpacity
-            style={
-              styles.primaryButton
-            }
-            disabled={isProcessing}
-            onPress={(event) => {
-              event.stopPropagation();
+    printOrder(order);
+  }}
+>
+  <Ionicons
+    name="print-outline"
+    size={18}
+    color="#111827"
+  />
 
-              primaryAction.action();
-            }}
-          >
-            {isProcessing ? (
-              <ActivityIndicator
-                color="#FFFFFF"
-                size="small"
-              />
-            ) : (
-              <>
-                <Ionicons
-                  name={
-                    primaryAction.icon
-                  }
-                  size={18}
-                  color="#FFFFFF"
-                />
+  <Text
+    style={
+      styles.cardPrintButtonText
+    }
+  >
+    Print Order
+  </Text>
+</TouchableOpacity>
 
-                <Text
-                  style={
-                    styles.primaryButtonText
-                  }
-                >
-                  {primaryAction.label}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
+{primaryAction && (
+  <TouchableOpacity
+    style={
+      styles.primaryButton
+    }
+    disabled={isProcessing}
+    onPress={(event) => {
+      event.stopPropagation();
+
+      primaryAction.action();
+    }}
+  >
+    {isProcessing ? (
+      <ActivityIndicator
+        color="#FFFFFF"
+        size="small"
+      />
+    ) : (
+      <>
+        <Ionicons
+          name={
+            primaryAction.icon
+          }
+          size={18}
+          color="#FFFFFF"
+        />
+
+        <Text
+          style={
+            styles.primaryButtonText
+          }
+        >
+          {primaryAction.label}
+        </Text>
+      </>
+    )}
+  </TouchableOpacity>
+)}
+        
 
         {(order.order_status ===
           "paid" ||
@@ -1680,96 +2220,99 @@ export default function RestaurantOrdersScreen() {
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={
-          false
-        }
-        contentContainerStyle={
-          styles.filterContainer
-        }
-      >
-        {(
-          [
-            ["all", "All", counts.all],
-            ["new", "New", counts.new],
-            [
-              "preparing",
-              "Preparing",
-              counts.preparing,
-            ],
-            [
-              "ready",
-              "Ready",
-              counts.ready,
-            ],
-            [
-              "completed",
-              "Completed",
-              counts.completed,
-            ],
-          ] as [
-            FilterType,
-            string,
-            number
-          ][]
-        ).map(
-          ([key, label, count]) => (
-            <TouchableOpacity
-              key={key}
+     <View style={styles.filterWrapper}>
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={
+      false
+    }
+    contentContainerStyle={
+      styles.filterContainer
+    }
+  >
+    {(
+      [
+        ["all", "All", counts.all],
+        ["new", "New", counts.new],
+        [
+          "preparing",
+          "Preparing",
+          counts.preparing,
+        ],
+        [
+          "ready",
+          "Ready",
+          counts.ready,
+        ],
+        [
+          "completed",
+          "Completed",
+          counts.completed,
+        ],
+      ] as [
+        FilterType,
+        string,
+        number
+      ][]
+    ).map(
+      ([key, label, count]) => (
+        <TouchableOpacity
+          key={key}
+          style={[
+            styles.filterButton,
+            filter === key &&
+              styles.filterButtonActive,
+          ]}
+          onPress={() =>
+            setFilter(key)
+          }
+        >
+          <Text
+            style={[
+              styles.filterText,
+              filter === key &&
+                styles.filterTextActive,
+            ]}
+          >
+            {label}
+          </Text>
+
+          <View
+            style={[
+              styles.filterCount,
+              filter === key &&
+                styles.filterCountActive,
+            ]}
+          >
+            <Text
               style={[
-                styles.filterButton,
+                styles.filterCountText,
                 filter === key &&
-                  styles.filterButtonActive,
+                  styles.filterCountTextActive,
               ]}
-              onPress={() =>
-                setFilter(key)
-              }
             >
-              <Text
-                style={[
-                  styles.filterText,
-                  filter === key &&
-                    styles.filterTextActive,
-                ]}
-              >
-                {label}
-              </Text>
-
-              <View
-                style={[
-                  styles.filterCount,
-                  filter === key &&
-                    styles.filterCountActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterCountText,
-                    filter === key &&
-                      styles.filterCountTextActive,
-                  ]}
-                >
-                  {count}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          )
-        )}
-      </ScrollView>
-
+              {count}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      )
+    )}
+  </ScrollView>
+</View>
       <FlatList
         data={filteredOrders}
         keyExtractor={(item) =>
           item.id
         }
         renderItem={renderOrder}
-        contentContainerStyle={[
-          styles.listContent,
-          filteredOrders.length ===
-            0 &&
-            styles.emptyListContent,
-        ]}
+       contentContainerStyle={[
+  styles.listContent,
+  filter === "all" &&
+    styles.allOrdersListContent,
+  filteredOrders.length ===
+    0 &&
+    styles.emptyListContent,
+]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -2400,6 +2943,26 @@ export default function RestaurantOrdersScreen() {
                     )}
                   </View>
                 </View>
+                <TouchableOpacity
+  style={styles.printOrderButton}
+  onPress={() =>
+    printOrder(selectedOrder)
+  }
+>
+  <Ionicons
+    name="print-outline"
+    size={21}
+    color="#111827"
+  />
+
+  <Text
+    style={
+      styles.printOrderButtonText
+    }
+  >
+    Print Order
+  </Text>
+</TouchableOpacity>
                 <View
                   style={styles.section}
                 >
@@ -3706,4 +4269,51 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
   },
+  printOrderButton: {
+  marginTop: 14,
+  minHeight: 48,
+  borderRadius: 14,
+  alignItems: "center",
+  justifyContent: "center",
+  flexDirection: "row",
+  gap: 8,
+  backgroundColor: "#FFFFFF",
+  borderWidth: 1,
+  borderColor: "#D1D5DB",
+},
+
+printOrderButtonText: {
+  fontSize: 14,
+  fontWeight: "800",
+  color: "#111827",
+},
+
+cardPrintButton: {
+  marginTop: 10,
+  minHeight: 43,
+  borderRadius: 13,
+  alignItems: "center",
+  justifyContent: "center",
+  flexDirection: "row",
+  gap: 7,
+  backgroundColor: "#FFFFFF",
+  borderWidth: 1,
+  borderColor: "#D1D5DB",
+},
+
+cardPrintButtonText: {
+  fontSize: 13,
+  fontWeight: "800",
+  color: "#111827",
+},
+allOrdersListContent: {
+  paddingTop: 10,
+},
+filterWrapper: {
+  paddingTop: 10,
+  paddingBottom: 6,
+  backgroundColor: "#FFFFFF",
+  zIndex: 20,
+  elevation: 8,
+},
 });
