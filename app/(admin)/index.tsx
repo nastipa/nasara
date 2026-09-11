@@ -56,6 +56,7 @@ export default function AdminDashboard() {
       <Tile label="Add Admin" route="/(admin)/add-admin" />
       <Tile label="Remove Admin" route="/(admin)/remove-admin" />
       <Tile label="Add Restaurant Owner" route="/(admin)/add-restaurant-owner" />
+      <Tile label="Subscriptions" route="/(admin)/subscriptions" />
 
 
       

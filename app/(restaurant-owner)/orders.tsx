@@ -300,6 +300,12 @@ const playNewOrderSound = () => {
 
   const [restaurantNote, setRestaurantNote] =
     useState("");
+    
+    const [newOrderNotification, setNewOrderNotification] = useState<{
+  orderNumber: string;
+  totalAmount: number;
+  orderId: string;
+} | null>(null);
 
   const loadOrders = useCallback(
     async (showLoader = true) => {
@@ -718,11 +724,11 @@ const playNewOrderSound = () => {
           payload.new
         );
 
-      showNewOrderAlert(
-  payload.new?.order_number ?? "",
-  Number(payload.new?.total_amount ?? 0),
-  payload.new?.id ?? ""
-);
+     setNewOrderNotification({
+  orderNumber: payload.new?.order_number ?? "",
+  totalAmount: Number(payload.new?.total_amount ?? 0),
+  orderId: payload.new?.id ?? "",
+});
 
 playNewOrderSound();
 
@@ -1574,17 +1580,17 @@ const printOrder = async (
 };
 
 
-  const showNewOrderAlert = (
+ const showNewOrderAlert = (
   orderNumber: string,
   totalAmount: number,
   orderId: string
 ) => {
-  const title = "🔔 New Restaurant Order";
+  const title = "🔔 New Order";
 
   const message =
-    `Order #${orderNumber} received — GH₵${Number(
-      totalAmount
-    ).toFixed(2)}`;
+    `You have received a new order.\n\n` +
+    `Order #${orderNumber || "New Order"}\n` +
+    `Amount: ${formatMoney(totalAmount)}`;
 
   if (Platform.OS === "web") {
     const openOrderNow = window.confirm(
@@ -1592,13 +1598,7 @@ const printOrder = async (
     );
 
     if (openOrderNow) {
-      const newOrder = orders.find(
-        (order) => order.id === orderId
-      );
-
-      if (openOrderNow) {
-  openNewOrderById(orderId);
-}
+      openNewOrderById(orderId);
     }
 
     return;
@@ -1615,16 +1615,13 @@ const printOrder = async (
       {
         text: "Open Order",
         onPress: () => {
-          const newOrder = orders.find(
-            (order) => order.id === orderId
-          );
-
-          if (newOrder) {
-            openOrder(newOrder);
-          }
+          openNewOrderById(orderId);
         },
       },
-    ]
+    ],
+    {
+      cancelable: true,
+    }
   );
 };
   const closeOrder = () => {
@@ -2071,12 +2068,70 @@ const printOrder = async (
       </TouchableOpacity>
     );
   };
-
+ 
   if (loading) {
     return (
       <SafeAreaView
         style={styles.container}
       >
+        {newOrderNotification && (
+  <View style={styles.newOrderNotification}>
+    <View style={styles.newOrderNotificationIcon}>
+      <Ionicons
+        name="notifications"
+        size={24}
+        color="#FFFFFF"
+      />
+    </View>
+
+    <View style={styles.newOrderNotificationContent}>
+      <Text style={styles.newOrderNotificationTitle}>
+        New Order
+      </Text>
+
+      <Text style={styles.newOrderNotificationMessage}>
+        You have received a new order.
+      </Text>
+
+      <Text style={styles.newOrderNotificationDetails}>
+        Order #
+        {newOrderNotification.orderNumber || "New Order"}
+        {" • "}
+        {formatMoney(
+          newOrderNotification.totalAmount
+        )}
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => {
+          const orderId =
+            newOrderNotification.orderId;
+
+          setNewOrderNotification(null);
+
+          openNewOrderById(orderId);
+        }}
+      >
+        <Text style={styles.newOrderNotificationButton}>
+          View Order
+        </Text>
+      </TouchableOpacity>
+    </View>
+
+    <TouchableOpacity
+      style={styles.newOrderNotificationClose}
+      onPress={() => {
+        setNewOrderNotification(null);
+      }}
+    >
+      <Ionicons
+        name="close"
+        size={20}
+        color="#FFFFFF"
+      />
+    </TouchableOpacity>
+  </View>
+)}
         <View
           style={styles.loadingContainer}
         >
@@ -4315,5 +4370,72 @@ filterWrapper: {
   backgroundColor: "#FFFFFF",
   zIndex: 20,
   elevation: 8,
+},
+newOrderNotification: {
+  marginHorizontal: 16,
+  marginTop: 12,
+  padding: 14,
+  borderRadius: 18,
+  backgroundColor: "#E11D48",
+  flexDirection: "row",
+  alignItems: "flex-start",
+  shadowColor: "#000000",
+  shadowOffset: {
+    width: 0,
+    height: 5,
+  },
+  shadowOpacity: 0.2,
+  shadowRadius: 10,
+  elevation: 8,
+  zIndex: 100,
+},
+
+newOrderNotificationIcon: {
+  width: 44,
+  height: 44,
+  borderRadius: 14,
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: "rgba(255,255,255,0.18)",
+},
+
+newOrderNotificationContent: {
+  flex: 1,
+  marginLeft: 11,
+},
+
+newOrderNotificationTitle: {
+  fontSize: 16,
+  fontWeight: "900",
+  color: "#FFFFFF",
+},
+
+newOrderNotificationMessage: {
+  marginTop: 3,
+  fontSize: 13,
+  fontWeight: "600",
+  color: "#FFFFFF",
+},
+
+newOrderNotificationDetails: {
+  marginTop: 5,
+  fontSize: 12,
+  fontWeight: "700",
+  color: "rgba(255,255,255,0.85)",
+},
+
+newOrderNotificationButton: {
+  marginTop: 9,
+  fontSize: 13,
+  fontWeight: "900",
+  color: "#FFFFFF",
+  textDecorationLine: "underline",
+},
+
+newOrderNotificationClose: {
+  width: 30,
+  height: 30,
+  alignItems: "center",
+  justifyContent: "center",
 },
 });

@@ -96,7 +96,8 @@ useState<DashboardData>({
   const [loading, setLoading] =
     useState(true);
 
-
+const [hospitalId, setHospitalId] =
+  useState<string | null>(null);
 
   const [refreshing, setRefreshing] =
     useState(false);
@@ -358,7 +359,7 @@ try {
   .from("hospital_admins")
 
   .select(
-    "role,status"
+    "role,status, hospital_id"
   )
 
   .eq(
@@ -396,8 +397,6 @@ try {
 
 
 
-
-
   if(!data){
 
 
@@ -412,10 +411,6 @@ try {
 
 
   }
-
-
-
-
 
 
   const userRole =
@@ -438,43 +433,30 @@ try {
 
   // ONLY HOSPITAL ADMIN LOADS HOSPITAL DATA
 
-  if(
-    userRole === "hospital_admin"
-  ){
+  if (
+  userRole === "hospital_admin"
+) {
+  setHospitalId(
+    data.hospital_id
+  );
 
+  loadDashboard(
+    userRole
+  );
 
-    loadDashboard(
-      userRole
-    );
-
-
-
-    const interval =
-      setInterval(()=>{
-
-
-        loadDashboard(
-          userRole
-        );
-
-
-      },15000);
-
-
-
-
-    return ()=>{
-
-
-      clearInterval(
-        interval
+  const interval =
+    setInterval(() => {
+      loadDashboard(
+        userRole
       );
+    }, 15000);
 
-
-    };
-
-
-  } else {
+  return () => {
+    clearInterval(
+      interval
+    );
+  };
+} else {
 
 
     // SUPER ADMIN STOP LOADING
@@ -637,9 +619,6 @@ const QuickAction = ({
 
 
 
-
-
-
 const goToQueue = () => {
 
   router.push(
@@ -650,9 +629,6 @@ const goToQueue = () => {
 
 
 
-
-
-
 const goToDepartments = () => {
 
   router.push(
@@ -660,9 +636,6 @@ const goToDepartments = () => {
   );
 
 };
-
-
-
 
 
 
@@ -693,9 +666,6 @@ const goToVoiceBoard = () => {
 
 
 
-
-
-
 const goToAnalytics = () => {
 
   router.push(
@@ -703,9 +673,6 @@ const goToAnalytics = () => {
   );
 
 };
-
-
-
 
 
 
@@ -750,9 +717,6 @@ const goToCreateHospitalAdmin = () => {
 
 
 
-
-
-
 const goToCreateHospital = () => {
 
   router.push(
@@ -760,9 +724,6 @@ const goToCreateHospital = () => {
   );
 
 };
-
-
-
 
 
 
@@ -776,9 +737,6 @@ const goToManageHospitals = () => {
 
 
 
-
-
-
 const goToManageHospitalAdmins = () => {
 
   router.push(
@@ -786,9 +744,6 @@ const goToManageHospitalAdmins = () => {
   );
 
 };
-
-
-
 
 
 
@@ -800,10 +755,23 @@ const goToHospitalSettings = () => {
 
 };
 
+const goToSubscription = () => {
+  if (!hospitalId) {
+    showMessage(
+      "Subscription",
+      "Hospital information is not available yet. Please try again."
+    );
+    return;
+  }
 
-
-
-
+  router.push({
+    pathname: "/subscriptions",
+    params: {
+      organizationType: "hospital",
+      organizationId: hospitalId,
+    },
+  });
+};
 
 if(loading){
 
@@ -876,10 +844,6 @@ return (
 
 
 </View>
-
-
-
-
 
 {
 role === "hospital_admin" && (
@@ -967,8 +931,6 @@ role === "hospital_admin" && (
 Department Utilisation
 
 </Text>
-
-
 
 
 {
@@ -1131,7 +1093,17 @@ onPress={goToAnalytics}
 
 />
 
+<QuickAction
 
+title="Subscription"
+
+icon="card-outline"
+
+color="#0F766E"
+
+onPress={goToSubscription}
+
+/>
 
 <QuickAction
 

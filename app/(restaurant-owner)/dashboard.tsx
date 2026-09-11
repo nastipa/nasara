@@ -492,6 +492,23 @@ export default function RestaurantOwnerDashboard() {
       "/(restaurant-owner)/create-restaurant"
     );
   };
+ const handleSubscription = () => {
+  if (!restaurant?.id) {
+    showMessage(
+      "Subscription",
+      "Restaurant information is not available yet. Please try again."
+    );
+    return;
+  }
+
+  router.push({
+    pathname: "/subscriptions",
+    params: {
+      organizationType: "restaurant",
+      organizationId: restaurant.id,
+    },
+  });
+};
 
   const handleMenu = () => {
     if (!restaurant) {
@@ -1248,7 +1265,13 @@ export default function RestaurantOwnerDashboard() {
             onPress={handleSettings}
           />
 
-         
+          <ActionCard
+            icon="card-outline"
+            title="Subscription"
+            subtitle="View subscription and expiry"
+            onPress={handleSubscription}
+          />
+
 
           <ActionCard
             icon="location-outline"

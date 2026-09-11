@@ -30,15 +30,24 @@ export default {
     /* ===================================================== */
     /* ✅ PLUGINS */
     /* ===================================================== */
-    plugins: [
+   plugins: [
   "expo-router",
   "expo-video",
   "expo-asset",
   "expo-audio",
   "expo-font",
-  "expo-notifications",
-  "@react-native-community/datetimepicker",
 
+  [
+    "expo-notifications",
+    {
+      sounds: [
+        "./assets/sounds/message.mp3",
+      ],
+      enableBackgroundRemoteNotifications: true,
+    },
+  ],
+
+  "@react-native-community/datetimepicker",
       [
         "expo-camera",
         {
@@ -108,10 +117,10 @@ export default {
 
         NSLocationWhenInUseUsageDescription:
           "Nasara needs your location to help locate your property for utility services.",
-
-        UIBackgroundModes: [
-          "audio",
-        ],
+    UIBackgroundModes: [
+      "audio",
+      "remote-notification",
+      ],
       },
     },
 
