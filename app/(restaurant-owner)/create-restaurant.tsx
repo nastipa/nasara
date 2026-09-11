@@ -716,168 +716,297 @@ export default function CreateRestaurantScreen() {
   }
 
   async function uploadLogoIfNeeded(): Promise<
-    string | null
-  > {
-    if (!logoUri) {
-      return logoUrl;
-    }
-
-    try {
-      setUploadingLogo(true);
-
-      const compressedUri: string =
-        await compressImage(
-          logoUri,
-          1200
-        );
-
-      const uploadedUrl: string =
-        await uploadImageToRender(
-          compressedUri,
-          "restaurant-logo.jpg"
-        );
-
-      setLogoUrl(uploadedUrl);
-
-      return uploadedUrl;
-    } finally {
-      setUploadingLogo(false);
-    }
+  string | null
+> {
+  if (!logoUri) {
+    return logoUrl;
   }
 
-  async function uploadCoverIfNeeded(): Promise<
-    string | null
-  > {
-    if (!coverUri) {
-      return coverImageUrl;
-    }
+  try {
+    setUploadingLogo(true);
 
-    try {
-      setUploadingCover(true);
+    const compressedUri: string =
+      await compressImage(
+        logoUri,
+        1200
+      );
 
-      const compressedUri: string =
-        await compressImage(
-          coverUri,
-          1600
-        );
+    /*
+     * IMPORTANT:
+     * Use a unique filename every time the
+     * restaurant logo is replaced.
+     *
+     * This prevents the old logo from being
+     * returned from Render/Cloudflare/browser
+     * cache.
+     */
+    const uniqueFileName =
+      `restaurant-logo-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 10)}.jpg`;
 
-      const uploadedUrl: string =
-        await uploadImageToRender(
-          compressedUri,
-          "restaurant-cover.jpg"
-        );
+    const uploadedUrl: string =
+      await uploadImageToRender(
+        compressedUri,
+        uniqueFileName
+      );
 
-      setCoverImageUrl(uploadedUrl);
+    /*
+     * Add a cache-busting value to the URL.
+     *
+     * This makes sure the app does not continue
+     * displaying the previous cached image.
+     */
+    const cacheBustedUrl =
+      `${uploadedUrl}${
+        uploadedUrl.includes("?")
+          ? "&"
+          : "?"
+      }v=${Date.now()}`;
 
-      return uploadedUrl;
-    } finally {
-      setUploadingCover(false);
-    }
+    setLogoUrl(
+      cacheBustedUrl
+    );
+
+    /*
+     * Clear the selected local image after
+     * successful upload.
+     *
+     * The database URL will now be used.
+     */
+    setLogoUri(null);
+
+    return cacheBustedUrl;
+  } finally {
+    setUploadingLogo(false);
+  }
+}
+
+async function uploadCoverIfNeeded(): Promise<
+  string | null
+> {
+  if (!coverUri) {
+    return coverImageUrl;
   }
 
-  async function saveRestaurant(): Promise<void> {
-    if (saving) {
-      return;
+  try {
+    setUploadingCover(true);
+
+    const compressedUri: string =
+      await compressImage(
+        coverUri,
+        1600
+      );
+
+    /*
+     * IMPORTANT:
+     * Use a unique filename every time the
+     * restaurant cover is replaced.
+     */
+    const uniqueFileName =
+      `restaurant-cover-${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 10)}.jpg`;
+
+    const uploadedUrl: string =
+      await uploadImageToRender(
+        compressedUri,
+        uniqueFileName
+      );
+
+    /*
+     * Add a cache-busting value so the app
+     * immediately displays the new cover.
+     */
+    const cacheBustedUrl =
+      `${uploadedUrl}${
+        uploadedUrl.includes("?")
+          ? "&"
+          : "?"
+      }v=${Date.now()}`;
+
+    setCoverImageUrl(
+      cacheBustedUrl
+    );
+
+    /*
+     * Clear the local selected image after
+     * successful upload.
+     */
+    setCoverUri(null);
+
+    return cacheBustedUrl;
+  } finally {
+    setUploadingCover(false);
+  }
+}
+
+async function saveRestaurant(): Promise<void> {
+  if (saving) {
+    return;
+  }
+
+  if (!userId) {
+    showMessage(
+      "Error",
+      "Your account could not be identified."
+    );
+
+    return;
+  }
+
+  const cleanName: string =
+    name.trim();
+
+  const cleanDescription: string =
+    description.trim();
+
+  const cleanPhone: string =
+    phone.trim();
+
+  const cleanAddress: string =
+    address.trim();
+
+  if (!cleanName) {
+    showMessage(
+      "Restaurant Name Required",
+      "Enter your restaurant name."
+    );
+
+    return;
+  }
+
+  if (!cleanPhone) {
+    showMessage(
+      "Phone Required",
+      "Enter the restaurant phone number."
+    );
+
+    return;
+  }
+
+  if (!cleanAddress) {
+    showMessage(
+      "Address Required",
+      "Enter the restaurant address."
+    );
+
+    return;
+  }
+
+  try {
+    setSaving(true);
+
+    /*
+     * Re-check owner access before saving.
+     */
+    const {
+      data: latestOwner,
+      error: latestOwnerError,
+    } = await (supabase as any)
+      .from("restaurant_owners")
+      .select(
+        "id, user_id, restaurant_id, status"
+      )
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (latestOwnerError) {
+      throw latestOwnerError;
     }
 
-    if (!userId) {
+    if (!latestOwner) {
+      throw new Error(
+        "You do not have restaurant owner access."
+      );
+    }
+
+    if (
+      latestOwner.status !==
+      "active"
+    ) {
+      throw new Error(
+        `Your restaurant owner access is ${latestOwner.status}.`
+      );
+    }
+
+    /*
+     * If the owner already has a linked
+     * restaurant, never create another one.
+     */
+    if (
+      latestOwner.restaurant_id &&
+      latestOwner.restaurant_id !==
+        restaurantId
+    ) {
+      setRestaurantId(
+        latestOwner.restaurant_id
+      );
+
+      setRestaurantExists(true);
+
       showMessage(
-        "Error",
-        "Your account could not be identified."
+        "Restaurant Already Exists",
+        "You already have a restaurant. Opening your restaurant dashboard."
+      );
+
+      router.replace(
+        "/(restaurant-owner)/dashboard"
       );
 
       return;
     }
 
-    const cleanName: string =
-      name.trim();
+    /*
+     * Direct duplicate protection using
+     * restaurants.owner_id.
+     */
+    const {
+      data: existingRestaurants,
+      error: existingError,
+    } = await (supabase as any)
+      .from("restaurants")
+      .select("id")
+      .eq("owner_id", userId)
+      .limit(2);
 
-    const cleanDescription: string =
-      description.trim();
-
-    const cleanPhone: string =
-      phone.trim();
-
-    const cleanAddress: string =
-      address.trim();
-
-    if (!cleanName) {
-      showMessage(
-        "Restaurant Name Required",
-        "Enter your restaurant name."
-      );
-
-      return;
+    if (existingError) {
+      throw existingError;
     }
 
-    if (!cleanPhone) {
-      showMessage(
-        "Phone Required",
-        "Enter the restaurant phone number."
-      );
+    if (
+      existingRestaurants &&
+      existingRestaurants.length > 0
+    ) {
+      const existingId: string =
+        existingRestaurants[0].id;
 
-      return;
-    }
-
-    if (!cleanAddress) {
-      showMessage(
-        "Address Required",
-        "Enter the restaurant address."
-      );
-
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      /*
-       * Re-check owner access before saving.
-       */
-      const {
-        data: latestOwner,
-        error: latestOwnerError,
-      } = await (supabase as any)
-        .from("restaurant_owners")
-        .select(
-          "id, user_id, restaurant_id, status"
-        )
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (latestOwnerError) {
-        throw latestOwnerError;
-      }
-
-      if (!latestOwner) {
-        throw new Error(
-          "You do not have restaurant owner access."
-        );
-      }
-
-      if (
-        latestOwner.status !==
-        "active"
-      ) {
-        throw new Error(
-          `Your restaurant owner access is ${latestOwner.status}.`
-        );
-      }
-
-      /*
-       * If the owner already has a linked
-       * restaurant, never create another one.
-       */
-      if (
-        latestOwner.restaurant_id &&
-        latestOwner.restaurant_id !==
-          restaurantId
-      ) {
+      if (!restaurantId) {
         setRestaurantId(
-          latestOwner.restaurant_id
+          existingId
         );
 
         setRestaurantExists(true);
+
+        const {
+          error: linkError,
+        } = await (supabase as any)
+          .from("restaurant_owners")
+          .update({
+            restaurant_id:
+              existingId,
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", latestOwner.id)
+          .eq("user_id", userId);
+
+        if (linkError) {
+          console.error(
+            "Restaurant owner link repair failed:",
+            linkError
+          );
+        }
 
         showMessage(
           "Restaurant Already Exists",
@@ -891,64 +1020,301 @@ export default function CreateRestaurantScreen() {
         return;
       }
 
+      if (
+        existingId !==
+        restaurantId
+      ) {
+        throw new Error(
+          "Multiple restaurant records were detected for this owner. Please contact the administrator."
+        );
+      }
+    }
+
+    /*
+     * Upload only when a NEW image was selected.
+     *
+     * If no new image was selected, these
+     * functions return the existing database URL.
+     */
+    const uploadedLogoUrl:
+      | string
+      | null =
+      await uploadLogoIfNeeded();
+
+    const uploadedCoverUrl:
+      | string
+      | null =
+      await uploadCoverIfNeeded();
+
+    const parsedLatitude:
+      | number
+      | null =
+      latitude.trim() !== ""
+        ? Number(latitude.trim())
+        : null;
+
+    const parsedLongitude:
+      | number
+      | null =
+      longitude.trim() !== ""
+        ? Number(
+            longitude.trim()
+          )
+        : null;
+
+    if (
+      parsedLatitude !== null &&
+      (!Number.isFinite(
+        parsedLatitude
+      ) ||
+        parsedLatitude < -90 ||
+        parsedLatitude > 90)
+    ) {
+      throw new Error(
+        "Latitude must be between -90 and 90."
+      );
+    }
+
+    if (
+      parsedLongitude !== null &&
+      (!Number.isFinite(
+        parsedLongitude
+      ) ||
+        parsedLongitude < -180 ||
+        parsedLongitude > 180)
+    ) {
+      throw new Error(
+        "Longitude must be between -180 and 180."
+      );
+    }
+
+    const restaurantPayload = {
+      owner_id: userId,
+
+      name: cleanName,
+
+      description:
+        cleanDescription || null,
+
+      phone: cleanPhone,
+
+      address: cleanAddress,
+
+      latitude:
+        parsedLatitude,
+
+      longitude:
+        parsedLongitude,
+
       /*
-       * Direct duplicate protection using
-       * restaurants.owner_id.
+       * These now contain either:
+       *
+       * 1. The newly uploaded unique URL, or
+       * 2. The existing URL if no replacement
+       *    was selected.
+       */
+      logo_url:
+        uploadedLogoUrl,
+
+      cover_image_url:
+        uploadedCoverUrl,
+
+      opening_time:
+        openingTime.trim() ||
+        null,
+
+      closing_time:
+        closingTime.trim() ||
+        null,
+
+      momo_provider:
+        momoProvider.trim() ||
+        null,
+
+      momo_number:
+        momoNumber.trim() ||
+        null,
+
+      momo_account_name:
+        momoAccountName.trim() ||
+        null,
+
+      accepts_momo:
+        acceptsMomo,
+
+      accepts_cash:
+        acceptsCash,
+
+      accepts_card:
+        acceptsCard,
+    };
+
+    let savedRestaurantId:
+      | string
+      | null =
+      restaurantId;
+
+    if (restaurantId) {
+      /*
+       * EXISTING RESTAURANT
+       *
+       * Update the existing restaurant,
+       * including the NEW logo and/or cover URL.
        */
       const {
-        data: existingRestaurants,
-        error: existingError,
+        data: updatedRestaurant,
+        error: updateError,
       } = await (supabase as any)
         .from("restaurants")
-        .select("id")
+        .update({
+          ...restaurantPayload,
+        })
+        .eq("id", restaurantId)
         .eq("owner_id", userId)
-        .limit(2);
+        .select(
+          `
+          id,
+          owner_id,
+          name,
+          description,
+          phone,
+          address,
+          latitude,
+          longitude,
+          logo_url,
+          cover_image_url,
+          opening_time,
+          closing_time,
+          is_open,
+          status,
+          momo_provider,
+          momo_number,
+          momo_account_name,
+          accepts_momo,
+          accepts_cash,
+          accepts_card
+        `
+        )
+        .single();
 
-      if (existingError) {
-        throw existingError;
+      if (updateError) {
+        throw updateError;
+      }
+
+      /*
+       * IMPORTANT:
+       * Verify that the database actually contains
+       * the newly uploaded image URLs.
+       */
+      if (
+        logoUri === null &&
+        uploadedLogoUrl !==
+          updatedRestaurant.logo_url
+      ) {
+        throw new Error(
+          "The restaurant logo URL could not be verified after the update."
+        );
       }
 
       if (
-        existingRestaurants &&
-        existingRestaurants.length > 0
+        coverUri === null &&
+        uploadedCoverUrl !==
+          updatedRestaurant.cover_image_url
       ) {
-        const existingId: string =
-          existingRestaurants[0].id;
+        throw new Error(
+          "The restaurant cover URL could not be verified after the update."
+        );
+      }
 
-        if (!restaurantId) {
-          setRestaurantId(
-            existingId
-          );
+      /*
+       * Update the local state with exactly what
+       * Supabase returned.
+       */
+      setLogoUrl(
+        updatedRestaurant.logo_url ||
+          null
+      );
 
-          setRestaurantExists(true);
+      setCoverImageUrl(
+        updatedRestaurant.cover_image_url ||
+          null
+      );
 
-          /*
-           * Repair owner link.
-           */
-          const {
-            error: linkError,
-          } = await (supabase as any)
-            .from("restaurant_owners")
-            .update({
-              restaurant_id:
-                existingId,
-              updated_at:
-                new Date().toISOString(),
-            })
-            .eq("id", latestOwner.id)
-            .eq("user_id", userId);
+      setLogoUri(null);
+      setCoverUri(null);
 
-          if (linkError) {
-            console.error(
-              "Restaurant owner link repair failed:",
-              linkError
-            );
-          }
+      savedRestaurantId =
+        updatedRestaurant.id;
 
+      if (
+        updatedRestaurant.status ===
+          "active" ||
+        updatedRestaurant.status ===
+          "suspended" ||
+        updatedRestaurant.status ===
+          "closed"
+      ) {
+        setStatus(
+          updatedRestaurant.status
+        );
+      } else {
+        setStatus("active");
+      }
+    } else {
+      /*
+       * NEW RESTAURANT
+       *
+       * This part remains the same.
+       */
+      const {
+        data: newRestaurant,
+        error: insertError,
+      } = await (supabase as any)
+        .from("restaurants")
+        .insert({
+          ...restaurantPayload,
+
+          status: "active",
+
+          is_open: true,
+        })
+        .select(
+          `
+          id,
+          owner_id,
+          name,
+          description,
+          phone,
+          address,
+          latitude,
+          longitude,
+          logo_url,
+          cover_image_url,
+          opening_time,
+          closing_time,
+          is_open,
+          status,
+          momo_provider,
+          momo_number,
+          momo_account_name,
+          accepts_momo,
+          accepts_cash,
+          accepts_card
+        `
+        )
+        .single();
+
+      if (insertError) {
+        if (
+          insertError.code ===
+          "23505"
+        ) {
           showMessage(
             "Restaurant Already Exists",
-            "You already have a restaurant. Opening your restaurant dashboard."
+            "This account already has a restaurant. Opening your dashboard."
           );
+
+          await loadOwner();
 
           router.replace(
             "/(restaurant-owner)/dashboard"
@@ -957,383 +1323,122 @@ export default function CreateRestaurantScreen() {
           return;
         }
 
-        if (
-          existingId !==
-          restaurantId
-        ) {
-          throw new Error(
-            "Multiple restaurant records were detected for this owner. Please contact the administrator."
-          );
-        }
+        throw insertError;
       }
 
-      /*
-       * Upload images through Render → Cloudflare.
-       */
-      const uploadedLogoUrl:
-        | string
-        | null =
-        await uploadLogoIfNeeded();
-
-      const uploadedCoverUrl:
-        | string
-        | null =
-        await uploadCoverIfNeeded();
-
-      const parsedLatitude:
-        | number
-        | null =
-        latitude.trim() !== ""
-          ? Number(latitude.trim())
-          : null;
-
-      const parsedLongitude:
-        | number
-        | null =
-        longitude.trim() !== ""
-          ? Number(
-              longitude.trim()
-            )
-          : null;
-
-      if (
-        parsedLatitude !== null &&
-        (!Number.isFinite(
-          parsedLatitude
-        ) ||
-          parsedLatitude < -90 ||
-          parsedLatitude > 90)
-      ) {
-        throw new Error(
-          "Latitude must be between -90 and 90."
-        );
-      }
-
-      if (
-        parsedLongitude !== null &&
-        (!Number.isFinite(
-          parsedLongitude
-        ) ||
-          parsedLongitude < -180 ||
-          parsedLongitude > 180)
-      ) {
-        throw new Error(
-          "Longitude must be between -180 and 180."
-        );
-      }
-
-      const restaurantPayload = {
-        owner_id: userId,
-
-        name: cleanName,
-
-        description:
-          cleanDescription || null,
-
-        phone: cleanPhone,
-
-        address: cleanAddress,
-
-        latitude:
-          parsedLatitude,
-
-        longitude:
-          parsedLongitude,
-
-        logo_url:
-          uploadedLogoUrl,
-
-        cover_image_url:
-          uploadedCoverUrl,
-
-        opening_time:
-          openingTime.trim() ||
-          null,
-
-        closing_time:
-          closingTime.trim() ||
-          null,
-
-        momo_provider:
-          momoProvider.trim() ||
-          null,
-
-        momo_number:
-          momoNumber.trim() ||
-          null,
-
-        momo_account_name:
-          momoAccountName.trim() ||
-          null,
-
-        accepts_momo:
-          acceptsMomo,
-
-        accepts_cash:
-          acceptsCash,
-
-        accepts_card:
-          acceptsCard,
-      };
-
-      let savedRestaurantId:
-        | string
-        | null =
-        restaurantId;
-
-      if (restaurantId) {
-        /*
-         * EXISTING RESTAURANT
-         *
-         * Update only.
-         */
-        const {
-          data: updatedRestaurant,
-          error: updateError,
-        } = await (supabase as any)
-          .from("restaurants")
-          .update({
-            ...restaurantPayload,
-
-            /*
-             * Never turn an existing restaurant
-             * into pending.
-             *
-             * Existing status is preserved by
-             * the database update because status
-             * is not included here.
-             */
-          })
-          .eq("id", restaurantId)
-          .eq("owner_id", userId)
-          .select(
-            `
-            id,
-            owner_id,
-            name,
-            description,
-            phone,
-            address,
-            latitude,
-            longitude,
-            logo_url,
-            cover_image_url,
-            opening_time,
-            closing_time,
-            is_open,
-            status,
-            momo_provider,
-            momo_number,
-            momo_account_name,
-            accepts_momo,
-            accepts_cash,
-            accepts_card
-          `
-          )
-          .single();
-
-        if (updateError) {
-          throw updateError;
-        }
-
-        savedRestaurantId =
-          updatedRestaurant.id;
-
-        if (
-          updatedRestaurant.status ===
-            "active" ||
-          updatedRestaurant.status ===
-            "suspended" ||
-          updatedRestaurant.status ===
-            "closed"
-        ) {
-          setStatus(
-            updatedRestaurant.status
-          );
-        } else {
-          setStatus("active");
-        }
-      } else {
-        /*
-         * NEW RESTAURANT
-         *
-         * IMPORTANT:
-         * There is NO pending approval.
-         *
-         * The Super Admin already created/granted
-         * the restaurant owner account.
-         *
-         * Therefore the restaurant is immediately
-         * approved and active.
-         */
-        const {
-          data: newRestaurant,
-          error: insertError,
-        } = await (supabase as any)
-          .from("restaurants")
-          .insert({
-            ...restaurantPayload,
-
-            /*
-             * THIS IS THE IMPORTANT CORRECTION.
-             */
-            status: "active",
-
-            is_open: true,
-          })
-          .select(
-            `
-            id,
-            owner_id,
-            name,
-            description,
-            phone,
-            address,
-            latitude,
-            longitude,
-            logo_url,
-            cover_image_url,
-            opening_time,
-            closing_time,
-            is_open,
-            status,
-            momo_provider,
-            momo_number,
-            momo_account_name,
-            accepts_momo,
-            accepts_cash,
-            accepts_card
-          `
-          )
-          .single();
-
-        if (insertError) {
-          /*
-           * PostgreSQL unique violation.
-           */
-          if (
-            insertError.code ===
-            "23505"
-          ) {
-            showMessage(
-              "Restaurant Already Exists",
-              "This account already has a restaurant. Opening your dashboard."
-            );
-
-            await loadOwner();
-
-            router.replace(
-              "/(restaurant-owner)/dashboard"
-            );
-
-            return;
-          }
-
-          throw insertError;
-        }
-
-        savedRestaurantId =
-          newRestaurant.id;
-
-        setRestaurantId(
-          newRestaurant.id
-        );
-
-        setRestaurantExists(true);
-
-        /*
-         * New restaurant is always approved.
-         */
-        setStatus("active");
-      }
-
-      if (!savedRestaurantId) {
-        throw new Error(
-          "Restaurant ID was not returned after saving."
-        );
-      }
-
-      /*
-       * Link restaurant to restaurant_owners.
-       */
-      const {
-        error: ownerLinkError,
-      } = await (supabase as any)
-        .from("restaurant_owners")
-        .update({
-          restaurant_id:
-            savedRestaurantId,
-
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", latestOwner.id)
-        .eq("user_id", userId);
-
-      if (ownerLinkError) {
-        throw ownerLinkError;
-      }
-
-      /*
-       * Verify the owner → restaurant relationship.
-       */
-      const {
-        data: verifiedOwner,
-        error: verifyError,
-      } = await (supabase as any)
-        .from("restaurant_owners")
-        .select("restaurant_id")
-        .eq("id", latestOwner.id)
-        .eq("user_id", userId)
-        .single();
-
-      if (verifyError) {
-        throw verifyError;
-      }
-
-      if (
-        verifiedOwner.restaurant_id !==
-        savedRestaurantId
-      ) {
-        throw new Error(
-          "Restaurant was saved, but the restaurant owner link could not be verified."
-        );
-      }
+      savedRestaurantId =
+        newRestaurant.id;
 
       setRestaurantId(
-        savedRestaurantId
+        newRestaurant.id
       );
 
       setRestaurantExists(true);
 
-      showMessage(
-        restaurantId
-          ? "Restaurant Updated"
-          : "Restaurant Created",
-        restaurantId
-          ? "Your restaurant information has been updated."
-          : "Your restaurant is now active on Nasara."
+      setStatus("active");
+
+      setLogoUrl(
+        newRestaurant.logo_url ||
+          null
       );
 
-      router.replace(
-        "/(restaurant-owner)/dashboard"
-      );
-    } catch (error: any) {
-      console.error(
-        "Save restaurant error:",
-        error
+      setCoverImageUrl(
+        newRestaurant.cover_image_url ||
+          null
       );
 
-      showMessage(
-        "Unable to Save Restaurant",
-        error?.message ||
-          "Something went wrong while saving the restaurant."
-      );
-    } finally {
-      setSaving(false);
+      setLogoUri(null);
+      setCoverUri(null);
     }
-  }
 
+    if (!savedRestaurantId) {
+      throw new Error(
+        "Restaurant ID was not returned after saving."
+      );
+    }
+
+    /*
+     * Link restaurant to restaurant_owners.
+     */
+    const {
+      error: ownerLinkError,
+    } = await (supabase as any)
+      .from("restaurant_owners")
+      .update({
+        restaurant_id:
+          savedRestaurantId,
+
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", latestOwner.id)
+      .eq("user_id", userId);
+
+    if (ownerLinkError) {
+      throw ownerLinkError;
+    }
+
+    /*
+     * Verify the owner → restaurant relationship.
+     */
+    const {
+      data: verifiedOwner,
+      error: verifyError,
+    } = await (supabase as any)
+      .from("restaurant_owners")
+      .select(
+        "restaurant_id"
+      )
+      .eq("id", latestOwner.id)
+      .eq("user_id", userId)
+      .single();
+
+    if (verifyError) {
+      throw verifyError;
+    }
+
+    if (
+      verifiedOwner.restaurant_id !==
+      savedRestaurantId
+    ) {
+      throw new Error(
+        "Restaurant was saved, but the restaurant owner link could not be verified."
+      );
+    }
+
+    setRestaurantId(
+      savedRestaurantId
+    );
+
+    setRestaurantExists(true);
+
+    showMessage(
+      restaurantId
+        ? "Restaurant Updated"
+        : "Restaurant Created",
+      restaurantId
+        ? "Your restaurant information has been updated, including any new images."
+        : "Your restaurant is now active on Nasara."
+    );
+
+    router.replace(
+      "/(restaurant-owner)/dashboard"
+    );
+  } catch (error: any) {
+    console.error(
+      "Save restaurant error:",
+      error
+    );
+
+    showMessage(
+      "Unable to Save Restaurant",
+      error?.message ||
+        "Something went wrong while saving the restaurant."
+    );
+  } finally {
+    setSaving(false);
+  }
+}
   function goToDashboard(): void {
     router.replace(
       "/(restaurant-owner)/dashboard"
