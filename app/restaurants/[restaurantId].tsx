@@ -526,14 +526,7 @@ export default function RestaurantDetails() {
     return;
   }
 
-  router.push({
-    pathname: "/chat",
-    params: {
-      restaurantId: restaurant.id,
-      restaurantName: restaurant.name,
-      ownerId: restaurant.owner_id,
-    },
-  });
+ 
 };
   /*
    * =========================================================
@@ -543,29 +536,27 @@ export default function RestaurantDetails() {
    * This opens the restaurant menu.
    */
   const startOrder = () => {
-    if (!restaurant) {
-      return;
-    }
+  if (!restaurant) {
+    return;
+  }
 
-    if (!restaurant.is_open) {
-      showMessage(
-        "Restaurant Closed",
-        "This restaurant is currently closed. You can view the restaurant, but ordering is not currently available."
-      );
+  if (!restaurant.is_open) {
+    showMessage(
+      "Restaurant Closed",
+      "This restaurant is currently closed. You can view the restaurant, but ordering is not currently available."
+    );
 
-      return;
-    }
+    return;
+  }
 
-   
-    router.push({
-      pathname:
-        "/restaurants/[restaurantId]/menu",
-      params: {
-        restaurantId:
-          restaurant.id,
-      },
-    });
-  };
+  router.push({
+    pathname:
+      "/restaurants/[restaurantId]/order-mode",
+    params: {
+      restaurantId: restaurant.id,
+    },
+  });
+};
 
   /*
    * =========================================================
@@ -1222,20 +1213,7 @@ export default function RestaurantDetails() {
                 Call Restaurant
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-  style={styles.chatButton}
-  onPress={openRestaurantChat}
->
-  <Ionicons
-    name="chatbubble-ellipses"
-    size={21}
-    color="#7C3AED"
-  />
-
-  <Text style={styles.chatButtonText}>
-    Chat with Restaurant
-  </Text>
-</TouchableOpacity>
+            
           </View>
 
           <View

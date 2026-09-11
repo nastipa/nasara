@@ -58,26 +58,12 @@ export default function EmergencyHospitals() {
     useState<Hospital[]>([]);
   const [patientLocation, setPatientLocation] =
     useState<PatientLocation | null>(null);
-  /*
-   * =========================================================
-   * GET PATIENT CURRENT LOCATION
-   * =========================================================
-   *
-   * IMPORTANT:
-   * This function is ONLY called when the user
-   * presses "Get My Current Location".
-   *
-   * We do NOT call it automatically when the
-   * screen opens.
-   */
+ 
   const getPatientLocation =
     useCallback(async (): Promise<PatientLocation | null> => {
       try {
         setLocating(true);
-        /*
-         * Request permission only when the user
-         * explicitly asks to get their location.
-         */
+       
         const permission =
           await Location.requestForegroundPermissionsAsync();
         if (permission.status !== "granted") {
@@ -87,9 +73,7 @@ export default function EmergencyHospitals() {
           );
           return null;
         }
-        /*
-         * Get a fresh GPS position.
-         */
+       
         const location =
           await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Highest,
@@ -98,9 +82,7 @@ export default function EmergencyHospitals() {
           location.coords.latitude;
         const longitude =
           location.coords.longitude;
-        /*
-         * Validate coordinates.
-         */
+       
         if (
           !Number.isFinite(latitude) ||
           !Number.isFinite(longitude)
@@ -138,24 +120,7 @@ export default function EmergencyHospitals() {
         setLocating(false);
       }
     }, []);
-  /*
-   * =========================================================
-   * LOAD EMERGENCY HOSPITALS USING PATIENT LOCATION
-   * =========================================================
-   *
-   * This function requires a location.
-   *
-   * The hospital latitude/longitude are already
-   * saved in the database.
-   *
-   * Backend calculates:
-   *
-   * USER GPS
-   *    ↓
-   * HOSPITAL SAVED GPS
-   *    ↓
-   * DISTANCE
-   */
+  
   const loadHospitals = useCallback(
     async (
       location: PatientLocation
@@ -192,9 +157,7 @@ export default function EmergencyHospitals() {
           Array.isArray(json.hospitals)
             ? json.hospitals
             : [];
-        /*
-         * Sort nearest hospital first.
-         */
+       
         hospitalList.sort(
           (
             a: Hospital,
@@ -236,45 +199,24 @@ export default function EmergencyHospitals() {
     },
     []
   );
-  /*
-   * =========================================================
-   * USER CLICKS "GET MY CURRENT LOCATION"
-   * =========================================================
-   */
+  
   const handleGetCurrentLocation =
     async () => {
       if (locating || loading) {
         return;
       }
-      /*
-       * First capture the user's current GPS.
-       */
+      
       const location =
         await getPatientLocation();
       if (!location) {
         return;
       }
-      /*
-       * Then use that exact location to
-       * calculate hospital distances.
-       */
+     
       await loadHospitals(
         location
       );
     };
-  /*
-   * =========================================================
-   * REFRESH
-   * =========================================================
-   *
-   * Refresh does NOT silently request GPS.
-   *
-   * If we already have a location, use the
-   * existing location.
-   *
-   * Otherwise the user must press
-   * "Get My Current Location".
-   */
+ 
   const onRefresh = async () => {
     if (!patientLocation) {
       setRefreshing(false);
@@ -289,11 +231,7 @@ export default function EmergencyHospitals() {
       patientLocation
     );
   };
-  /*
-   * =========================================================
-   * CALL HOSPITAL
-   * =========================================================
-   */
+ 
   const callHospital = (
     phone?: string | null
   ) => {
@@ -313,19 +251,7 @@ export default function EmergencyHospitals() {
       );
     });
   };
-  /*
-   * =========================================================
-   * OPEN DIRECTIONS
-   * =========================================================
-   *
-   * START:
-   * User's captured current GPS location
-   *
-   * DESTINATION:
-   * Hospital's saved latitude/longitude
-   *
-   * No Google Maps API key is required.
-   */
+ 
   const openDirections = (
     hospital: Hospital
   ) => {
@@ -385,11 +311,7 @@ export default function EmergencyHospitals() {
       );
     });
   };
-  /*
-   * =========================================================
-   * HOSPITAL CARD
-   * =========================================================
-   */
+ 
   const renderHospital = ({
     item,
     index,
@@ -490,11 +412,7 @@ export default function EmergencyHospitals() {
       </View>
     </View>
   );
-  /*
-   * =========================================================
-   * SCREEN
-   * =========================================================
-   */
+ 
   return (
     <View style={styles.container}>
       <Text style={styles.header}>
@@ -506,11 +424,7 @@ export default function EmergencyHospitals() {
         current GPS location and calculate
         the distance to each hospital.
       </Text>
-      /*
-       * =====================================================
-       * GET CURRENT LOCATION BUTTON
-       * =====================================================
-       */
+      
       <TouchableOpacity
         style={[
           styles.locationButton,
@@ -548,11 +462,7 @@ export default function EmergencyHospitals() {
             : "Get My Current Location"}
         </Text>
       </TouchableOpacity>
-      /*
-       * =====================================================
-       * LOCATION STATUS
-       * =====================================================
-       */
+      
       {patientLocation && (
         <View
           style={
@@ -588,11 +498,7 @@ export default function EmergencyHospitals() {
           </View>
         </View>
       )}
-      /*
-       * =====================================================
-       * LOADING
-       * =====================================================
-       */
+      
       {loading && (
         <View
           style={
@@ -613,11 +519,7 @@ export default function EmergencyHospitals() {
           </Text>
         </View>
       )}
-      /*
-       * =====================================================
-       * HOSPITAL LIST
-       * =====================================================
-       */
+      
       {!loading && (
         <FlatList
           data={hospitals}
@@ -676,11 +578,7 @@ export default function EmergencyHospitals() {
     </View>
   );
 }
-/*
- * =========================================================
- * STYLES
- * =========================================================
- */
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,

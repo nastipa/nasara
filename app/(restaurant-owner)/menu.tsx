@@ -37,6 +37,7 @@ type MenuItem = {
   name: string;
   description: string | null;
   price: number;
+  menu_type: "fixed_plate" | "custom_plate";
   image_url: string | null;
   preparation_time_minutes: number | null;
   is_available: boolean;
@@ -77,6 +78,11 @@ export default function RestaurantOwnerMenu() {
   const [foodPreparationTime, setFoodPreparationTime] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] =
     useState<string | null>(null);
+
+  const [foodMenuType, setFoodMenuType] = useState<
+    "fixed_plate" | "custom_plate"
+  >("fixed_plate");
+
   const [foodAvailable, setFoodAvailable] = useState(true);
   const [foodFeatured, setFoodFeatured] = useState(false);
 
@@ -133,14 +139,16 @@ export default function RestaurantOwnerMenu() {
         if (restaurant?.id) {
           resolvedRestaurantId = restaurant.id;
 
-          await (supabase as any)
-            .from("restaurant_owners")
-            .update({
-              restaurant_id: restaurant.id,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", owner.id)
-            .eq("user_id", session.user.id);
+          if (owner?.id) {
+            await (supabase as any)
+              .from("restaurant_owners")
+              .update({
+                restaurant_id: restaurant.id,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", owner.id)
+              .eq("user_id", session.user.id);
+          }
         }
       }
 
@@ -153,6 +161,7 @@ export default function RestaurantOwnerMenu() {
         router.replace("/(restaurant-owner)/dashboard");
         return;
       }
+
       setRestaurantId(resolvedRestaurantId);
 
       await Promise.all([
@@ -187,7 +196,7 @@ export default function RestaurantOwnerMenu() {
   };
 
   const loadMenuItems = async (id: string) => {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("restaurant_menu_items")
       .select("*")
       .eq("restaurant_id", id)
@@ -197,7 +206,17 @@ export default function RestaurantOwnerMenu() {
       throw error;
     }
 
-    setMenuItems((data || []) as MenuItem[]);
+    const normalizedItems: MenuItem[] = (data || []).map(
+      (item: any) => ({
+        ...item,
+        menu_type:
+          item.menu_type === "custom_plate"
+            ? "custom_plate"
+            : "fixed_plate",
+      })
+    );
+
+    setMenuItems(normalizedItems);
   };
 
   const onRefresh = () => {
@@ -216,6 +235,7 @@ export default function RestaurantOwnerMenu() {
     setFoodPrice("");
     setFoodPreparationTime("");
     setSelectedCategoryId(null);
+    setFoodMenuType("fixed_plate");
     setFoodAvailable(true);
     setFoodFeatured(false);
     setFoodImageUri(null);
@@ -419,18 +439,26 @@ export default function RestaurantOwnerMenu() {
       return;
     }
 
-    const numericPrice = Number(foodPrice);
+    let numericPrice = 0;
 
-    if (
-      !foodPrice.trim() ||
-      !Number.isFinite(numericPrice) ||
-      numericPrice <= 0
-    ) {
-      showMessage(
-        "Food Price",
-        "Please enter a valid food price."
-      );
-      return;
+    if (foodMenuType === "fixed_plate") {
+      numericPrice = Number(foodPrice);
+
+      if (
+        !foodPrice.trim() ||
+        !Number.isFinite(numericPrice) ||
+        numericPrice <= 0
+      ) {
+        showMessage(
+          "Food Price",
+          "Please enter a valid fixed food price."
+        );
+        return;
+      }
+
+      numericPrice = Math.round(numericPrice * 100) / 100;
+    } else {
+      numericPrice = 0;
     }
 
     let preparationTime: number | null = null;
@@ -474,6 +502,7 @@ export default function RestaurantOwnerMenu() {
           name: foodName.trim(),
           description: foodDescription.trim() || null,
           price: numericPrice,
+          menu_type: foodMenuType,
           image_url: uploadedImageUrl || null,
           preparation_time_minutes: preparationTime,
           is_available: foodAvailable,
@@ -486,18 +515,33 @@ export default function RestaurantOwnerMenu() {
         throw error;
       }
 
+      const normalizedItem: MenuItem = {
+        ...(data as MenuItem),
+        menu_type:
+          data?.menu_type === "custom_plate"
+            ? "custom_plate"
+            : "fixed_plate",
+      };
+
       setMenuItems((current) => [
-        data as MenuItem,
+        normalizedItem,
         ...current,
       ]);
 
       resetFoodForm();
       setShowFoodModal(false);
 
-      showMessage(
-        "Food Added",
-        "The food item and its image have been added to your menu."
-      );
+      if (foodMenuType === "custom_plate") {
+        showMessage(
+          "Custom Plate Component Added",
+          "This food component is now available for customers who choose Prepare My Own Plate."
+        );
+      } else {
+        showMessage(
+          "Fixed Plate Food Added",
+          "The fixed-price food item and its image have been added to your menu."
+        );
+      }
     } catch (error: any) {
       console.error("Create food error:", error);
 
@@ -661,6 +705,14 @@ export default function RestaurantOwnerMenu() {
     setShowFoodModal(true);
   };
 
+  const fixedPlateCount = menuItems.filter(
+    (food) => food.menu_type === "fixed_plate"
+  ).length;
+
+  const customPlateCount = menuItems.filter(
+    (food) => food.menu_type === "custom_plate"
+  ).length;
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -720,7 +772,7 @@ export default function RestaurantOwnerMenu() {
             </Text>
 
             <Text style={styles.subtitle}>
-              Manage your categories, food, prices and availability.
+              Manage your fixed-price foods and foods available for Prepare My Own Plate.
             </Text>
           </View>
 
@@ -761,6 +813,29 @@ export default function RestaurantOwnerMenu() {
                 ? "food item"
                 : "food items"}
             </Text>
+
+            <View style={styles.summaryModeRow}>
+              <View style={styles.summaryModeBadge}>
+                <View style={styles.summaryModeDot} />
+
+                <Text style={styles.summaryModeText}>
+                  {fixedPlateCount} Fixed Plate
+                </Text>
+              </View>
+
+              <View style={styles.summaryModeBadge}>
+                <View
+                  style={[
+                    styles.summaryModeDot,
+                    styles.customSummaryDot,
+                  ]}
+                />
+
+                <Text style={styles.summaryModeText}>
+                  {customPlateCount} Custom Plate
+                </Text>
+              </View>
+            </View>
           </View>
 
           <View style={styles.summaryStats}>
@@ -945,7 +1020,7 @@ export default function RestaurantOwnerMenu() {
                 </Text>
 
                 <Text style={styles.sectionSubtitle}>
-                  Add food with pictures, prices and availability.
+                  Add fixed-price foods or components customers can use to prepare their own plate.
                 </Text>
               </View>
             </View>
@@ -981,7 +1056,7 @@ export default function RestaurantOwnerMenu() {
               </Text>
 
               <Text style={styles.emptyText}>
-                Add your first food item with a beautiful food photo.
+                Add your first fixed-price food or custom plate component.
               </Text>
 
               <Pressable
@@ -995,184 +1070,242 @@ export default function RestaurantOwnerMenu() {
             </View>
           ) : (
             <View style={styles.foodList}>
-              {menuItems.map((food) => (
-                <View
-                  key={food.id}
-                  style={styles.foodCard}
-                >
-                  {/* FOOD IMAGE */}
-                  <View style={styles.foodImageWrapper}>
-                    {food.image_url ? (
-                      <Image
-                        source={{
-                          uri: food.image_url,
-                        }}
-                        style={styles.foodImage}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={styles.noFoodImage}>
-                        <Ionicons
-                          name="fast-food-outline"
-                          size={34}
-                          color="#d1d5db"
+              {menuItems.map((food) => {
+                const isCustomPlate =
+                  food.menu_type === "custom_plate";
+
+                return (
+                  <View
+                    key={food.id}
+                    style={styles.foodCard}
+                  >
+                    {/* FOOD IMAGE */}
+                    <View style={styles.foodImageWrapper}>
+                      {food.image_url ? (
+                        <Image
+                          source={{
+                            uri: food.image_url,
+                          }}
+                          style={styles.foodImage}
+                          resizeMode="cover"
                         />
-
-                        <Text style={styles.noImageText}>
-                          No image
-                        </Text>
-                      </View>
-                    )}
-
-                    {food.is_featured && (
-                      <View style={styles.featuredOverlay}>
-                        <Ionicons
-                          name="star"
-                          size={12}
-                          color="#fff"
-                        />
-
-                        <Text style={styles.featuredOverlayText}>
-                          Featured
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.foodContent}>
-                    <View style={styles.foodTitleRow}>
-                      <Text
-                        style={styles.foodName}
-                        numberOfLines={2}
-                      >
-                        {food.name}
-                      </Text>
-                    </View>
-
-                    <Text style={styles.foodCategory}>
-                      {getCategoryName(
-                        food.category_id
-                      )}
-                    </Text>
-
-                    {food.description ? (
-                      <Text
-                        style={styles.foodDescription}
-                        numberOfLines={2}
-                      >
-                        {food.description}
-                      </Text>
-                    ) : null}
-
-                    <View style={styles.foodBottomRow}>
-                      <Text style={styles.foodPrice}>
-                        GH₵ {Number(food.price).toFixed(2)}
-                      </Text>
-
-                      {food.preparation_time_minutes !==
-                        null && (
-                        <View style={styles.timeBadge}>
+                      ) : (
+                        <View style={styles.noFoodImage}>
                           <Ionicons
-                            name="time-outline"
-                            size={13}
-                            color="#666"
+                            name="fast-food-outline"
+                            size={34}
+                            color="#d1d5db"
                           />
 
-                          <Text style={styles.timeText}>
-                            {
-                              food.preparation_time_minutes
-                            }{" "}
-                            min
+                          <Text style={styles.noImageText}>
+                            No image
+                          </Text>
+                        </View>
+                      )}
+
+                      {food.is_featured && (
+                        <View style={styles.featuredOverlay}>
+                          <Ionicons
+                            name="star"
+                            size={12}
+                            color="#fff"
+                          />
+
+                          <Text style={styles.featuredOverlayText}>
+                            Featured
                           </Text>
                         </View>
                       )}
                     </View>
 
-                    <View style={styles.foodStatusRow}>
-                      <View
-                        style={[
-                          styles.availabilityBadge,
-                          food.is_available
-                            ? styles.availableBadge
-                            : styles.unavailableBadge,
-                        ]}
-                      >
+                    <View style={styles.foodContent}>
+                      <View style={styles.foodTitleRow}>
+                        <Text
+                          style={styles.foodName}
+                          numberOfLines={2}
+                        >
+                          {food.name}
+                        </Text>
+                      </View>
+
+                      <View style={styles.foodMetaRow}>
+                        <Text style={styles.foodCategory}>
+                          {getCategoryName(
+                            food.category_id
+                          )}
+                        </Text>
+
                         <View
                           style={[
-                            styles.smallDot,
-                            {
-                              backgroundColor:
-                                food.is_available
-                                  ? "#16a34a"
-                                  : "#9ca3af",
-                            },
-                          ]}
-                        />
-
-                        <Text
-                          style={[
-                            styles.availabilityText,
-                            !food.is_available &&
-                              styles.inactiveText,
+                            styles.menuTypeBadge,
+                            isCustomPlate
+                              ? styles.customMenuTypeBadge
+                              : styles.fixedMenuTypeBadge,
                           ]}
                         >
-                          {food.is_available
-                            ? "Available"
-                            : "Unavailable"}
+                          <Ionicons
+                            name={
+                              isCustomPlate
+                                ? "create-outline"
+                                : "pricetag-outline"
+                            }
+                            size={11}
+                            color={
+                              isCustomPlate
+                                ? "#7c3aed"
+                                : "#dc2626"
+                            }
+                          />
+
+                          <Text
+                            style={[
+                              styles.menuTypeBadgeText,
+                              isCustomPlate
+                                ? styles.customMenuTypeBadgeText
+                                : styles.fixedMenuTypeBadgeText,
+                            ]}
+                          >
+                            {isCustomPlate
+                              ? "Custom Plate"
+                              : "Fixed Plate"}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {food.description ? (
+                        <Text
+                          style={styles.foodDescription}
+                          numberOfLines={2}
+                        >
+                          {food.description}
                         </Text>
+                      ) : null}
+
+                      <View style={styles.foodBottomRow}>
+                        {isCustomPlate ? (
+                          <View style={styles.customAmountInfo}>
+                            <Ionicons
+                              name="create-outline"
+                              size={16}
+                              color="#7c3aed"
+                            />
+
+                            <Text style={styles.customFoodPrice}>
+                              Customer enters amount
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.foodPrice}>
+                            GH₵{" "}
+                            {Number(food.price).toFixed(2)}
+                          </Text>
+                        )}
+
+                        {food.preparation_time_minutes !==
+                          null && (
+                          <View style={styles.timeBadge}>
+                            <Ionicons
+                              name="time-outline"
+                              size={13}
+                              color="#666"
+                            />
+
+                            <Text style={styles.timeText}>
+                              {
+                                food.preparation_time_minutes
+                              }{" "}
+                              min
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.foodStatusRow}>
+                        <View
+                          style={[
+                            styles.availabilityBadge,
+                            food.is_available
+                              ? styles.availableBadge
+                              : styles.unavailableBadge,
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.smallDot,
+                              {
+                                backgroundColor:
+                                  food.is_available
+                                    ? "#16a34a"
+                                    : "#9ca3af",
+                              },
+                            ]}
+                          />
+
+                          <Text
+                            style={[
+                              styles.availabilityText,
+                              !food.is_available &&
+                                styles.inactiveText,
+                            ]}
+                          >
+                            {food.is_available
+                              ? "Available"
+                              : "Unavailable"}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.foodActions}>
+                      <View style={styles.actionBlock}>
+                        <Text style={styles.actionLabel}>
+                          Available
+                        </Text>
+
+                        <Switch
+                          value={food.is_available}
+                          onValueChange={() =>
+                            toggleFoodAvailability(food)
+                          }
+                          trackColor={{
+                            false: "#d1d5db",
+                            true: "#fecaca",
+                          }}
+                          thumbColor={
+                            food.is_available
+                              ? "#dc2626"
+                              : "#f4f4f5"
+                          }
+                        />
+                      </View>
+
+                      <View style={styles.actionDivider} />
+
+                      <View style={styles.actionBlock}>
+                        <Text style={styles.actionLabel}>
+                          Featured
+                        </Text>
+
+                        <Switch
+                          value={food.is_featured}
+                          onValueChange={() =>
+                            toggleFeatured(food)
+                          }
+                          trackColor={{
+                            false: "#d1d5db",
+                            true: "#fde68a",
+                          }}
+                          thumbColor={
+                            food.is_featured
+                              ? "#f59e0b"
+                              : "#f4f4f5"
+                          }
+                        />
                       </View>
                     </View>
                   </View>
-
-                  <View style={styles.foodActions}>
-                    <View style={styles.actionBlock}>
-                      <Text style={styles.actionLabel}>
-                        Available
-                      </Text>
-
-                      <Switch
-                        value={food.is_available}
-                        onValueChange={() =>
-                          toggleFoodAvailability(food)
-                        }
-                        trackColor={{
-                          false: "#d1d5db",
-                          true: "#fecaca",
-                        }}
-                        thumbColor={
-                          food.is_available
-                            ? "#dc2626"
-                            : "#f4f4f5"
-                        }
-                      />
-                    </View>
-
-                    <View style={styles.actionDivider} />
-
-                    <View style={styles.actionBlock}>
-                      <Text style={styles.actionLabel}>
-                        Featured
-                      </Text>
-
-                      <Switch
-                        value={food.is_featured}
-                        onValueChange={() =>
-                          toggleFeatured(food)
-                        }
-                        trackColor={{
-                          false: "#d1d5db",
-                          true: "#fde68a",
-                        }}
-                        thumbColor={
-                          food.is_featured
-                            ? "#f59e0b"
-                            : "#f4f4f5"
-                        }
-                      />
-                    </View>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
@@ -1317,13 +1450,13 @@ export default function RestaurantOwnerMenu() {
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.modalHeader}>
-                <View>
+                <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={styles.modalTitle}>
                     Add Food Item
                   </Text>
 
                   <Text style={styles.modalSubtitle}>
-                    Add the food customers will see and order.
+                    Choose whether this item is a fixed-price food or a component for Prepare My Own Plate.
                   </Text>
                 </View>
 
@@ -1426,18 +1559,168 @@ export default function RestaurantOwnerMenu() {
                 textAlignVertical="top"
               />
 
+              {/* MENU TYPE */}
               <Text style={styles.label}>
-                Price (GH₵) *
+                Menu Type *
               </Text>
 
-              <TextInput
-                style={styles.input}
-                value={foodPrice}
-                onChangeText={setFoodPrice}
-                placeholder="25.00"
-                placeholderTextColor="#999"
-                keyboardType="decimal-pad"
-              />
+              <View style={styles.menuTypeSelector}>
+                <Pressable
+                  style={[
+                    styles.menuTypeOption,
+                    foodMenuType === "fixed_plate" &&
+                      styles.menuTypeOptionSelected,
+                  ]}
+                  onPress={() =>
+                    setFoodMenuType("fixed_plate")
+                  }
+                >
+                  <View
+                    style={[
+                      styles.menuTypeIcon,
+                      foodMenuType === "fixed_plate" &&
+                        styles.menuTypeIconSelected,
+                    ]}
+                  >
+                    <Ionicons
+                      name="pricetag-outline"
+                      size={22}
+                      color={
+                        foodMenuType === "fixed_plate"
+                          ? "#fff"
+                          : "#dc2626"
+                      }
+                    />
+                  </View>
+
+                  <View style={styles.menuTypeOptionText}>
+                    <Text
+                      style={[
+                        styles.menuTypeOptionTitle,
+                        foodMenuType === "fixed_plate" &&
+                          styles.menuTypeOptionTitleSelected,
+                      ]}
+                    >
+                      Fixed Plate
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.menuTypeOptionSubtitle,
+                        foodMenuType === "fixed_plate" &&
+                          styles.menuTypeOptionSubtitleSelected,
+                      ]}
+                    >
+                      Customer pays your set price
+                    </Text>
+                  </View>
+
+                  {foodMenuType === "fixed_plate" && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={22}
+                      color="#dc2626"
+                    />
+                  )}
+                </Pressable>
+
+                <Pressable
+                  style={[
+                    styles.menuTypeOption,
+                    foodMenuType === "custom_plate" &&
+                      styles.customMenuTypeOptionSelected,
+                  ]}
+                  onPress={() =>
+                    setFoodMenuType("custom_plate")
+                  }
+                >
+                  <View
+                    style={[
+                      styles.menuTypeIcon,
+                      foodMenuType === "custom_plate" &&
+                        styles.customMenuTypeIconSelected,
+                    ]}
+                  >
+                    <Ionicons
+                      name="create-outline"
+                      size={22}
+                      color={
+                        foodMenuType === "custom_plate"
+                          ? "#fff"
+                          : "#7c3aed"
+                      }
+                    />
+                  </View>
+
+                  <View style={styles.menuTypeOptionText}>
+                    <Text
+                      style={[
+                        styles.menuTypeOptionTitle,
+                        foodMenuType === "custom_plate" &&
+                          styles.customMenuTypeOptionTitleSelected,
+                      ]}
+                    >
+                      Prepare My Own Plate
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.menuTypeOptionSubtitle,
+                        foodMenuType === "custom_plate" &&
+                          styles.customMenuTypeOptionSubtitleSelected,
+                      ]}
+                    >
+                      Customer enters the amount
+                    </Text>
+                  </View>
+
+                  {foodMenuType === "custom_plate" && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={22}
+                      color="#7c3aed"
+                    />
+                  )}
+                </Pressable>
+              </View>
+
+              {/* PRICE FOR FIXED PLATE ONLY */}
+              {foodMenuType === "fixed_plate" ? (
+                <>
+                  <Text style={styles.label}>
+                    Price (GH₵) *
+                  </Text>
+
+                  <TextInput
+                    style={styles.input}
+                    value={foodPrice}
+                    onChangeText={setFoodPrice}
+                    placeholder="25.00"
+                    placeholderTextColor="#999"
+                    keyboardType="decimal-pad"
+                  />
+                </>
+              ) : (
+                <View style={styles.customPriceNotice}>
+                  <View style={styles.customPriceNoticeIcon}>
+                    <Ionicons
+                      name="information-circle"
+                      size={21}
+                      color="#7c3aed"
+                    />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.customPriceNoticeTitle}>
+                      Customer-entered amount
+                    </Text>
+
+                    <Text style={styles.customPriceNoticeText}>
+                      You do not set a customer price for this item. Customers will enter how much they want to pay for this component when preparing their own plate.
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               <Text style={styles.label}>
                 Preparation Time (minutes)
@@ -1644,7 +1927,9 @@ export default function RestaurantOwnerMenu() {
                           styles.confirmButtonText
                         }
                       >
-                        Add Food
+                        {foodMenuType === "custom_plate"
+                          ? "Add Custom Component"
+                          : "Add Food"}
                       </Text>
                     </View>
                   )}
@@ -1659,7 +1944,6 @@ export default function RestaurantOwnerMenu() {
     </View>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1785,6 +2069,40 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.82)",
     fontSize: 12,
     marginTop: 4,
+  },
+
+  summaryModeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 7,
+    gap: 6,
+  },
+
+  summaryModeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+
+  summaryModeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#fecaca",
+    marginRight: 4,
+  },
+
+  customSummaryDot: {
+    backgroundColor: "#ddd6fe",
+  },
+
+  summaryModeText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
   },
 
   summaryStats: {
@@ -2061,11 +2379,48 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  foodCategory: {
+  foodMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
     marginTop: 4,
+    gap: 6,
+  },
+
+  foodCategory: {
     fontSize: 11,
     color: "#dc2626",
     fontWeight: "800",
+  },
+
+  menuTypeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+
+  fixedMenuTypeBadge: {
+    backgroundColor: "#fff1f2",
+  },
+
+  customMenuTypeBadge: {
+    backgroundColor: "#f5f3ff",
+  },
+
+  menuTypeBadgeText: {
+    marginLeft: 3,
+    fontSize: 9,
+    fontWeight: "900",
+  },
+
+  fixedMenuTypeBadgeText: {
+    color: "#dc2626",
+  },
+
+  customMenuTypeBadgeText: {
+    color: "#7c3aed",
   },
 
   foodDescription: {
@@ -2086,6 +2441,22 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "900",
     color: "#dc2626",
+  },
+
+  customAmountInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f5f3ff",
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+  },
+
+  customFoodPrice: {
+    marginLeft: 5,
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#7c3aed",
   },
 
   timeBadge: {
@@ -2226,6 +2597,7 @@ const styles = StyleSheet.create({
     marginTop: 3,
     fontSize: 12,
     color: "#777",
+    lineHeight: 17,
   },
 
   modalClose: {
@@ -2331,6 +2703,116 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 6,
     lineHeight: 15,
+  },
+
+  menuTypeSelector: {
+    gap: 10,
+  },
+
+  menuTypeOption: {
+    minHeight: 76,
+    borderWidth: 1.5,
+    borderColor: "#e1e1e1",
+    borderRadius: 15,
+    padding: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+
+  menuTypeOptionSelected: {
+    borderColor: "#dc2626",
+    backgroundColor: "#fff7f7",
+  },
+
+  customMenuTypeOptionSelected: {
+    borderColor: "#7c3aed",
+    backgroundColor: "#faf7ff",
+  },
+
+  menuTypeIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 13,
+    backgroundColor: "#fff1f2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 11,
+  },
+
+  menuTypeIconSelected: {
+    backgroundColor: "#dc2626",
+  },
+
+  customMenuTypeIconSelected: {
+    backgroundColor: "#7c3aed",
+  },
+
+  menuTypeOptionText: {
+    flex: 1,
+  },
+
+  menuTypeOptionTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#222",
+  },
+
+  menuTypeOptionTitleSelected: {
+    color: "#dc2626",
+  },
+
+  customMenuTypeOptionTitleSelected: {
+    color: "#7c3aed",
+  },
+
+  menuTypeOptionSubtitle: {
+    marginTop: 3,
+    fontSize: 11,
+    color: "#777",
+    lineHeight: 16,
+  },
+
+  menuTypeOptionSubtitleSelected: {
+    color: "#b91c1c",
+  },
+
+  customMenuTypeOptionSubtitleSelected: {
+    color: "#6d28d9",
+  },
+
+  customPriceNotice: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 13,
+    backgroundColor: "#f5f3ff",
+    borderWidth: 1,
+    borderColor: "#ddd6fe",
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+
+  customPriceNoticeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "#ede9fe",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 9,
+  },
+
+  customPriceNoticeTitle: {
+    fontSize: 12,
+    fontWeight: "900",
+    color: "#6d28d9",
+  },
+
+  customPriceNoticeText: {
+    marginTop: 3,
+    fontSize: 11,
+    color: "#6b5b95",
+    lineHeight: 16,
   },
 
   categorySelector: {
@@ -2456,4 +2938,4 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.6,
   },
-});
+})

@@ -518,7 +518,7 @@ export default function CreateRestaurantScreen() {
        * No pending or rejected status is supported.
        */
       if (
-        restaurant.status === "approved" ||
+        restaurant.status === "active" ||
         restaurant.status === "suspended" ||
         restaurant.status === "closed"
       ) {
@@ -1177,7 +1177,7 @@ export default function CreateRestaurantScreen() {
             /*
              * THIS IS THE IMPORTANT CORRECTION.
              */
-            status: "approved",
+            status: "active",
 
             is_open: true,
           })

@@ -535,9 +535,6 @@ export default function RestaurantOwnerDashboard() {
     );
   };
 
-  const handleChat = () => {
-    router.push("/chat");
-  };
 
   const formatTime = (
     time: string | null
@@ -1251,12 +1248,7 @@ export default function RestaurantOwnerDashboard() {
             onPress={handleSettings}
           />
 
-          <ActionCard
-            icon="chatbubbles-outline"
-            title="Nasara Chat"
-            subtitle="Talk to customers"
-            onPress={handleChat}
-          />
+         
 
           <ActionCard
             icon="location-outline"
@@ -1768,46 +1760,6 @@ export default function RestaurantOwnerDashboard() {
           subtitle="Stay connected with customers"
         />
 
-        <TouchableOpacity
-          style={styles.chatCard}
-          onPress={handleChat}
-          activeOpacity={0.8}
-        >
-          <View
-            style={styles.chatIcon}
-          >
-            <Ionicons
-              name="chatbubbles"
-              size={26}
-            />
-          </View>
-
-          <View
-            style={styles.chatContent}
-          >
-            <Text
-              style={styles.chatTitle}
-            >
-              Nasara Chat
-            </Text>
-
-            <Text
-              style={styles.chatText}
-            >
-              Communicate with customers using
-              the existing Nasara Chat system.
-            </Text>
-          </View>
-
-          <View
-            style={styles.arrowCircle}
-          >
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-            />
-          </View>
-        </TouchableOpacity>
 
         {/* MANAGEMENT */}
 
