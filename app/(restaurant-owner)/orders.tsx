@@ -85,8 +85,10 @@ type FoodOrder = {
   service_fee: number;
   total_amount: number;
   payment_status: PaymentStatus;
-  order_status: OrderStatus;
-  customer_note: string | null;
+order_status: OrderStatus;
+order_type: "immediate" | "scheduled";
+scheduled_for: string | null;
+customer_note: string | null;
   restaurant_note: string | null;
   rejection_reason: string | null;
   cancellation_reason: string | null;
@@ -110,6 +112,7 @@ type FoodOrderItem = {
   quantity: number;
   unit_price: number;
   total_price: number;
+  plate_group: string | null;
   created_at: string;
 };
 
@@ -175,6 +178,54 @@ function formatDate(dateString: string) {
     return dateString;
   }
 }
+const isScheduledOrder = (order: FoodOrder): boolean => {
+  return (
+    order.order_type === "scheduled" &&
+    !!order.scheduled_for
+  );
+};
+
+const isScheduledOrderWaiting = (order: FoodOrder): boolean => {
+  if (!isScheduledOrder(order)) {
+    return false;
+  }
+
+  const scheduledTime = new Date(
+    order.scheduled_for as string
+  ).getTime();
+
+  return scheduledTime > Date.now();
+};
+
+const isScheduledOrderReady = (order: FoodOrder): boolean => {
+  if (!isScheduledOrder(order)) {
+    return true;
+  }
+
+  const scheduledTime = new Date(
+    order.scheduled_for as string
+  ).getTime();
+
+  return scheduledTime <= Date.now();
+};
+
+const getOrderTypeLabel = (order: FoodOrder): string => {
+  return order.order_type === "scheduled"
+    ? "Scheduled Order"
+    : "Order Now";
+};
+
+const getScheduleStatus = (order: FoodOrder): string => {
+  if (!isScheduledOrder(order)) {
+    return "";
+  }
+
+  if (isScheduledOrderWaiting(order)) {
+    return "Waiting for scheduled time";
+  }
+
+  return "Scheduled time reached";
+};
 
 function getStatusLabel(status: OrderStatus) {
   switch (status) {
@@ -273,7 +324,8 @@ const playNewOrderSound = () => {
     useState<Restaurant | null>(null);
 
   const [orders, setOrders] = useState<FoodOrder[]>([]);
-
+const [currentTime, setCurrentTime] =
+  useState<number>(Date.now());
   const [orderItems, setOrderItems] = useState<
     Record<string, FoodOrderItem[]>
   >({});
@@ -497,7 +549,9 @@ const playNewOrderSound = () => {
             total_amount,
             payment_status,
             order_status,
-            customer_note,
+order_type,
+scheduled_for,
+customer_note,
             restaurant_note,
             rejection_reason,
             cancellation_reason,
@@ -555,6 +609,7 @@ const playNewOrderSound = () => {
             quantity,
             unit_price,
             total_price,
+            plate_group,
             created_at
             `
           )
@@ -701,7 +756,17 @@ const playNewOrderSound = () => {
     loadOrders(true);
   }, [loadOrders]);
 
-  useEffect(() => {
+ useEffect(() => {
+  const timer = setInterval(() => {
+    setCurrentTime(Date.now());
+  }, 30000);
+
+  return () => {
+    clearInterval(timer);
+  };
+}, []);
+
+useEffect(() => {
   if (!restaurant?.id) {
     return;
   }
@@ -1011,28 +1076,39 @@ loadOrders(false);
     }
   };
 
-  const acceptOrder = async (
-    order: FoodOrder
-  ) => {
-    if (order.payment_status !== "paid") {
-      showMessage(
-        "Payment Required",
-        "Approve the customer's payment before accepting the order."
-      );
-
-      return;
-    }
-
-    await updateOrder(
-      order,
-      {
-        order_status: "accepted",
-        accepted_at:
-          new Date().toISOString(),
-      },
-      "The order has been accepted."
+ const acceptOrder = async (
+  order: FoodOrder
+) => {
+  if (order.payment_status !== "paid") {
+    showMessage(
+      "Payment Required",
+      "Approve the customer's payment before accepting the order."
     );
-  };
+
+    return;
+  }
+
+  if (isScheduledOrderWaiting(order)) {
+    showMessage(
+      "Scheduled Order",
+      `This order is scheduled for ${formatDate(
+        order.scheduled_for as string
+      )}. It cannot be accepted before the scheduled time.`
+    );
+
+    return;
+  }
+
+  await updateOrder(
+    order,
+    {
+      order_status: "accepted",
+      accepted_at:
+        new Date().toISOString(),
+    },
+    "The order has been accepted."
+  );
+};
 
   const startPreparing = async (
     order: FoodOrder
@@ -1534,8 +1610,10 @@ const printOrder = async (
         service_fee,
         total_amount,
         payment_status,
-        order_status,
-        customer_note,
+       order_status,
+order_type,
+scheduled_for,
+customer_note,
         restaurant_note,
         rejection_reason,
         cancellation_reason,
@@ -1649,16 +1727,20 @@ const printOrder = async (
     }
 
     if (
-      order.payment_status === "paid" &&
-      order.order_status === "paid"
-    ) {
-      return {
-        label: "Accept Order",
-        icon: "checkmark-done-outline" as const,
-        action: () =>
-          acceptOrder(order),
-      };
-    }
+  order.payment_status === "paid" &&
+  order.order_status === "paid"
+) {
+  if (isScheduledOrderWaiting(order)) {
+    return null;
+  }
+
+  return {
+    label: "Accept Order",
+    icon: "checkmark-done-outline" as const,
+    action: () =>
+      acceptOrder(order),
+  };
+}
 
     if (
       order.order_status === "accepted"
@@ -1780,6 +1862,8 @@ const printOrder = async (
                 order.order_status ===
                   "cancelled") &&
                 styles.dangerBadge,
+                isScheduledOrderWaiting(order) &&
+                styles.scheduledBadge,
             ]}
           >
             <Ionicons
@@ -1793,12 +1877,23 @@ const printOrder = async (
             />
 
             <Text
-              style={styles.statusText}
-            >
-              {getStatusLabel(
-                order.order_status
-              )}
-            </Text>
+  style={[
+    styles.statusText,
+    isScheduledOrderWaiting(order) &&
+      styles.scheduledStatusText,
+  ]}
+>
+  {isScheduledOrderWaiting(order)
+    ? "Scheduled"
+    : getStatusLabel(order.order_status)}
+    {isScheduledOrderWaiting(order) && (
+  <Ionicons
+    name="time-outline"
+    size={14}
+    color="#1D4ED8"
+  />
+)}
+</Text>
           </View>
         </View>
 
@@ -1832,6 +1927,31 @@ const printOrder = async (
             </Text>
           </View>
         </View>
+        {isScheduledOrder(order) && (
+  <View style={styles.scheduleInfo}>
+    <Ionicons
+      name="time-outline"
+      size={18}
+      color="#2563eb"
+    />
+
+    <View style={styles.scheduleInfoText}>
+      <Text style={styles.scheduleInfoTitle}>
+        Scheduled Order
+      </Text>
+
+      <Text style={styles.scheduleInfoTime}>
+        {formatDate(order.scheduled_for as string)}
+      </Text>
+
+      <Text style={styles.scheduleInfoStatus}>
+        {isScheduledOrderWaiting(order)
+          ? "Waiting for scheduled time"
+          : "Scheduled time reached"}
+      </Text>
+    </View>
+  </View>
+)}
 
         <View
           style={styles.itemsPreview}
@@ -2505,6 +2625,33 @@ const printOrder = async (
                         selectedOrder.created_at
                       )}
                     </Text>
+                    {isScheduledOrder(selectedOrder) && (
+  <View style={styles.modalScheduleInfo}>
+    <Ionicons
+      name="time-outline"
+      size={17}
+      color="#2563EB"
+    />
+
+    <View style={styles.modalScheduleText}>
+      <Text style={styles.modalScheduleTitle}>
+        Scheduled Order
+      </Text>
+
+      <Text style={styles.modalScheduleTime}>
+        {formatDate(
+          selectedOrder.scheduled_for as string
+        )}
+      </Text>
+
+      <Text style={styles.modalScheduleStatus}>
+        {isScheduledOrderWaiting(selectedOrder)
+          ? "Waiting for scheduled time"
+          : "Scheduled time reached"}
+      </Text>
+    </View>
+  </View>
+)}
                   </View>
                 </View>
 
@@ -3256,7 +3403,10 @@ const printOrder = async (
                 )}
 
                 {selectedOrder.order_status ===
-                  "paid" && (
+                 "paid" &&
+                 !isScheduledOrderWaiting(
+                  selectedOrder
+                   ) && (
                   <TouchableOpacity
                     style={
                       styles.modalPrimaryButton
@@ -3622,6 +3772,17 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: "#F3F4F6",
   },
+  scheduledBadge: {
+  backgroundColor: "#DBEAFE",
+  borderWidth: 1,
+  borderColor: "#93C5FD",
+  paddingHorizontal: 10,
+  paddingVertical: 7,
+  borderRadius: 10,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 5,
+},
 
   pendingBadge: {
     backgroundColor: "#FEF3C7",
@@ -3660,6 +3821,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#111827",
   },
+  scheduledStatusText: {
+  color: "#1D4ED8",
+},
 
   customerRow: {
     marginTop: 16,
@@ -3692,7 +3856,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
   },
+  scheduleInfo: {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 14,
+  backgroundColor: "#EFF6FF",
+  borderWidth: 1,
+  borderColor: "#BFDBFE",
+  flexDirection: "row",
+  alignItems: "flex-start",
+},
 
+scheduleInfoText: {
+  flex: 1,
+  marginLeft: 9,
+},
+
+scheduleInfoTitle: {
+  fontSize: 13,
+  fontWeight: "800",
+  color: "#1D4ED8",
+},
+
+scheduleInfoTime: {
+  marginTop: 3,
+  fontSize: 13,
+  fontWeight: "700",
+  color: "#1E3A8A",
+},
+
+scheduleInfoStatus: {
+  marginTop: 3,
+  fontSize: 11,
+  fontWeight: "600",
+  color: "#2563EB",
+},
   itemsPreview: {
     marginTop: 14,
     paddingTop: 14,
@@ -3992,6 +4190,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
   },
+  modalScheduleInfo: {
+  marginTop: 10,
+  padding: 10,
+  borderRadius: 12,
+  backgroundColor: "#EFF6FF",
+  borderWidth: 1,
+  borderColor: "#BFDBFE",
+  flexDirection: "row",
+  alignItems: "flex-start",
+},
+
+modalScheduleText: {
+  flex: 1,
+  marginLeft: 8,
+},
+
+modalScheduleTitle: {
+  fontSize: 12,
+  fontWeight: "800",
+  color: "#1D4ED8",
+},
+
+modalScheduleTime: {
+  marginTop: 2,
+  fontSize: 12,
+  fontWeight: "700",
+  color: "#1E3A8A",
+},
+
+modalScheduleStatus: {
+  marginTop: 2,
+  fontSize: 11,
+  fontWeight: "600",
+  color: "#2563EB",
+},
 
   section: {
     marginTop: 20,

@@ -538,6 +538,20 @@ export default function RestaurantOwnerDashboard() {
     );
   };
 
+  const handleAnalytics = () => {
+  if (!restaurant) {
+    showMessage(
+      "Restaurant Required",
+      "Create your restaurant before viewing analytics."
+    );
+    return;
+  }
+
+  router.push(
+    "/(restaurant-owner)/analytics"
+  );
+};
+
   const handleSettings = () => {
     if (!restaurant) {
       showMessage(
@@ -1257,7 +1271,17 @@ export default function RestaurantOwnerDashboard() {
             }
             onPress={handleOrders}
           />
-
+          
+          <ActionCard
+  icon="analytics-outline"
+  title="Analytics"
+  subtitle={
+    restaurant
+      ? "Sales and performance"
+      : "Restaurant analytics"
+  }
+  onPress={handleAnalytics}
+/>
           <ActionCard
             icon="settings-outline"
             title="Settings"

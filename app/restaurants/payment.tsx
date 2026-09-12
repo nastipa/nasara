@@ -1,7 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -114,6 +115,7 @@ type StoredCustomPlateCart = {
   restaurantName?: string;
   customPlates?: StoredCustomPlate[];
 };
+type OrderType = "immediate" | "scheduled";
 
 function showMessage(title: string, message?: string) {
   if (Platform.OS === "web") {
@@ -329,6 +331,50 @@ function normalizeCustomPlate(
   };
 }
 
+function formatDateInputValue(
+  value: Date | null
+) {
+  if (!value) {
+    return "";
+  }
+
+  const year =
+    value.getFullYear();
+
+  const month = String(
+    value.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    value.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatTimeInputValue(
+  value: Date | null
+) {
+  if (!value) {
+    return "";
+  }
+
+  const hours = String(
+    value.getHours()
+  ).padStart(2, "0");
+
+  const minutes = String(
+    value.getMinutes()
+  ).padStart(2, "0");
+
+  return `${hours}:${minutes}`;
+}
+
+function getMinimumScheduledDate() {
+  return new Date(
+    Date.now() + 5 * 60 * 1000
+  );
+}
 export default function RestaurantPaymentScreen() {
   const router = useRouter();
 
@@ -391,6 +437,17 @@ export default function RestaurantPaymentScreen() {
 
   const [paymentNote, setPaymentNote] =
     useState("");
+    const [orderType, setOrderType] =
+  useState<OrderType>("immediate");
+
+const [scheduledFor, setScheduledFor] =
+  useState<Date | null>(null);
+
+const [showDatePicker, setShowDatePicker] =
+  useState(false);
+
+const [showTimePicker, setShowTimePicker] =
+  useState(false);
 
   const loadRestaurant =
     useCallback(async () => {
@@ -771,6 +828,176 @@ export default function RestaurantPaymentScreen() {
         ? "Prepare My Own Plate"
         : "Fixed Plate";
 
+const openSchedulePicker = () => {
+  const minimumTime =
+    getMinimumScheduledDate();
+
+  if (!scheduledFor) {
+    setScheduledFor(
+      minimumTime
+    );
+  }
+
+  if (Platform.OS !== "web") {
+    setShowDatePicker(true);
+  }
+};
+
+const handleWebDateChange = (
+  event: ChangeEvent<HTMLInputElement>
+) => {
+  const value =
+    event.target.value;
+
+  if (!value) {
+    return;
+  }
+
+  const [
+    year,
+    month,
+    day,
+  ] = value
+    .split("-")
+    .map(Number);
+
+  if (
+    !year ||
+    !month ||
+    !day
+  ) {
+    return;
+  }
+
+  const current =
+    scheduledFor ??
+    getMinimumScheduledDate();
+
+  const updated =
+    new Date(current);
+
+  updated.setFullYear(
+    year
+  );
+
+  updated.setMonth(
+    month - 1
+  );
+
+  updated.setDate(
+    day
+  );
+
+  setScheduledFor(
+    updated
+  );
+};
+
+const handleWebTimeChange = (
+  event: ChangeEvent<HTMLInputElement>
+) => {
+  const value =
+    event.target.value;
+
+  if (!value) {
+    return;
+  }
+
+  const [
+    hours,
+    minutes,
+  ] = value
+    .split(":")
+    .map(Number);
+
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes)
+  ) {
+    return;
+  }
+
+  const current =
+    scheduledFor ??
+    getMinimumScheduledDate();
+
+  const updated =
+    new Date(current);
+
+  updated.setHours(
+    hours,
+    minutes,
+    0,
+    0
+  );
+
+  setScheduledFor(
+    updated
+  );
+};
+
+const handleNativeDateChange = (
+  event: any,
+  selectedDate?: Date
+) => {
+  setShowDatePicker(false);
+
+  if (!selectedDate) {
+    return;
+  }
+
+  const current =
+    scheduledFor ??
+    getMinimumScheduledDate();
+
+  const updated =
+    new Date(selectedDate);
+
+  updated.setHours(
+    current.getHours(),
+    current.getMinutes(),
+    0,
+    0
+  );
+
+  setScheduledFor(
+    updated
+  );
+
+  setTimeout(() => {
+    setShowTimePicker(true);
+  }, 150);
+};
+
+const handleNativeTimeChange = (
+  event: any,
+  selectedTime?: Date
+) => {
+  setShowTimePicker(false);
+
+  if (!selectedTime) {
+    return;
+  }
+
+  const current =
+    scheduledFor ??
+    getMinimumScheduledDate();
+
+  const updated =
+    new Date(current);
+
+  updated.setHours(
+    selectedTime.getHours(),
+    selectedTime.getMinutes(),
+    0,
+    0
+  );
+
+  setScheduledFor(
+    updated
+  );
+};
+
   const validatePayment =
     () => {
       if (!restaurant) {
@@ -905,7 +1132,32 @@ export default function RestaurantPaymentScreen() {
           }
         }
       }
+      
+      if (orderType === "scheduled") {
+  if (!scheduledFor) {
+    showMessage(
+      "Schedule required",
+      "Please select the date and time for your order."
+    );
 
+    return false;
+  }
+
+  const minimumTime =
+    getMinimumScheduledDate();
+
+  if (
+    scheduledFor.getTime() <
+    minimumTime.getTime()
+  ) {
+    showMessage(
+      "Invalid schedule",
+      "Please choose a time at least 5 minutes from now."
+    );
+
+    return false;
+  }
+}
       if (
         !customerName.trim()
       ) {
@@ -1037,10 +1289,24 @@ export default function RestaurantPaymentScreen() {
         const paymentReference =
           createPaymentReference();
 
-        const customerNoteParts =
-          [
-            `Order Mode: ${orderModeLabel}`,
-          ];
+       const customerNoteParts = [
+  `Order Mode: ${orderModeLabel}`,
+
+  `Order Type: ${
+    orderType === "scheduled"
+      ? "Scheduled"
+      : "Immediate"
+  }`,
+];
+
+if (
+  orderType === "scheduled" &&
+  scheduledFor
+) {
+  customerNoteParts.push(
+    `Scheduled For: ${scheduledFor.toLocaleString()}`
+  );
+}
 
         if (
           paymentNote.trim()
@@ -1059,42 +1325,52 @@ export default function RestaurantPaymentScreen() {
             .from(
               "food_orders"
             )
-            .insert({
-              order_number:
-                orderNumber,
+           .insert({
+  order_number:
+    orderNumber,
 
-              customer_id:
-                user.id,
+  customer_id:
+    user.id,
 
-              restaurant_id:
-                restaurant.id,
+  restaurant_id:
+    restaurant.id,
 
-              customer_name:
-                customerName.trim(),
+  customer_name:
+    customerName.trim(),
 
-              customer_phone:
-                customerPhone.trim(),
+  customer_phone:
+    customerPhone.trim(),
 
-              food_subtotal:
-                foodSubtotal,
+  food_subtotal:
+    foodSubtotal,
 
-              service_fee:
-                0,
+  service_fee:
+    0,
 
-              total_amount:
-                totalAmount,
+  total_amount:
+    totalAmount,
 
-              payment_status:
-                "pending",
+  payment_status:
+    "pending",
 
-              order_status:
-                "pending_payment",
+  order_status:
+    "pending_payment",
 
-              customer_note:
-                customerNoteParts.join(
-                  "\n"
-                ),
-            })
+  order_type:
+    orderType,
+
+  scheduled_for:
+    orderType === "scheduled" &&
+    scheduledFor
+      ? scheduledFor.toISOString()
+      : null,
+
+  customer_note:
+    customerNoteParts.join(
+      "\n"
+    ),
+})
+          
             .select(
               "id"
             )
@@ -1589,7 +1865,307 @@ export default function RestaurantPaymentScreen() {
                 MoMo account, then tap "I Have Paid".
               </Text>
             </View>
+            
+            <View style={styles.section}>
+  <Text style={styles.sectionTitle}>
+    When Should We Prepare Your Order?
+  </Text>
 
+  <View style={styles.orderTypeContainer}>
+    <Pressable
+      style={[
+        styles.orderTypeButton,
+        orderType === "immediate" &&
+          styles.orderTypeButtonActive,
+      ]}
+      onPress={() => {
+        setOrderType("immediate");
+        setShowDatePicker(false);
+        setShowTimePicker(false);
+      }}
+      disabled={paying}
+    >
+      <Ionicons
+        name="flash-outline"
+        size={22}
+        color={
+          orderType === "immediate"
+            ? "#fff"
+            : "#111"
+        }
+      />
+
+      <View style={styles.orderTypeContent}>
+        <Text
+          style={[
+            styles.orderTypeTitle,
+            orderType === "immediate" &&
+              styles.orderTypeTitleActive,
+          ]}
+        >
+          Order Now
+        </Text>
+
+        <Text
+          style={[
+            styles.orderTypeDescription,
+            orderType === "immediate" &&
+              styles.orderTypeDescriptionActive,
+          ]}
+        >
+          Restaurant prepares your order as soon as possible.
+        </Text>
+      </View>
+    </Pressable>
+
+    <Pressable
+      style={[
+        styles.orderTypeButton,
+        orderType === "scheduled" &&
+          styles.orderTypeButtonActive,
+      ]}
+      onPress={() => {
+        setOrderType("scheduled");
+        openSchedulePicker();
+      }}
+      disabled={paying}
+    >
+      <Ionicons
+        name="calendar-outline"
+        size={22}
+        color={
+          orderType === "scheduled"
+            ? "#fff"
+            : "#111"
+        }
+      />
+
+      <View style={styles.orderTypeContent}>
+        <Text
+          style={[
+            styles.orderTypeTitle,
+            orderType === "scheduled" &&
+              styles.orderTypeTitleActive,
+          ]}
+        >
+          Schedule for Later
+        </Text>
+
+        <Text
+          style={[
+            styles.orderTypeDescription,
+            orderType === "scheduled" &&
+              styles.orderTypeDescriptionActive,
+          ]}
+        >
+          Choose when you want the restaurant to prepare it.
+        </Text>
+      </View>
+    </Pressable>
+  </View>
+
+  {orderType === "scheduled" && (
+    <View style={styles.scheduleCard}>
+      <View style={styles.scheduleHeader}>
+        <Ionicons
+          name="calendar-outline"
+          size={21}
+          color="#111"
+        />
+
+        <Text style={styles.scheduleHeaderText}>
+          Select Date & Time
+        </Text>
+      </View>
+
+      {Platform.OS === "web" ? (
+        <View style={styles.webScheduleContainer}>
+          <View style={styles.webScheduleField}>
+            <Text style={styles.webScheduleLabel}>
+              Date
+            </Text>
+
+            <input
+              type="date"
+              value={formatDateInputValue(
+                scheduledFor
+              )}
+              min={formatDateInputValue(
+                new Date()
+              )}
+              onChange={
+                handleWebDateChange
+              }
+              disabled={paying}
+              style={
+                styles.webScheduleInput as any
+              }
+            />
+          </View>
+
+          <View style={styles.webScheduleField}>
+            <Text style={styles.webScheduleLabel}>
+              Time
+            </Text>
+
+            <input
+              type="time"
+              value={formatTimeInputValue(
+                scheduledFor
+              )}
+              onChange={
+                handleWebTimeChange
+              }
+              disabled={paying}
+              style={
+                styles.webScheduleInput as any
+              }
+            />
+          </View>
+        </View>
+      ) : (
+        <>
+          <Pressable
+            style={styles.schedulePickerButton}
+            onPress={() =>
+              setShowDatePicker(true)
+            }
+            disabled={paying}
+          >
+            <Ionicons
+              name="calendar-outline"
+              size={22}
+              color="#111"
+            />
+
+            <View style={styles.schedulePickerContent}>
+              <Text style={styles.schedulePickerLabel}>
+                Date
+              </Text>
+
+              <Text style={styles.schedulePickerValue}>
+                {scheduledFor
+                  ? scheduledFor.toLocaleDateString(
+                      undefined,
+                      {
+                        weekday: "short",
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      }
+                    )
+                  : "Select date"}
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color="#777"
+            />
+          </Pressable>
+
+          <Pressable
+            style={styles.schedulePickerButton}
+            onPress={() =>
+              setShowTimePicker(true)
+            }
+            disabled={paying}
+          >
+            <Ionicons
+              name="time-outline"
+              size={22}
+              color="#111"
+            />
+
+            <View style={styles.schedulePickerContent}>
+              <Text style={styles.schedulePickerLabel}>
+                Time
+              </Text>
+
+              <Text style={styles.schedulePickerValue}>
+                {scheduledFor
+                  ? scheduledFor.toLocaleTimeString(
+                      undefined,
+                      {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }
+                    )
+                  : "Select time"}
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color="#777"
+            />
+          </Pressable>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={
+                scheduledFor ??
+                getMinimumScheduledDate()
+              }
+              mode="date"
+              minimumDate={
+                new Date()
+              }
+              onChange={
+                handleNativeDateChange
+              }
+            />
+          )}
+
+          {showTimePicker && (
+            <DateTimePicker
+              value={
+                scheduledFor ??
+                getMinimumScheduledDate()
+              }
+              mode="time"
+              onChange={
+                handleNativeTimeChange
+              }
+            />
+          )}
+        </>
+      )}
+
+      {scheduledFor && (
+        <View style={styles.selectedSchedule}>
+          <Ionicons
+            name="checkmark-circle"
+            size={20}
+            color="#15803d"
+          />
+
+          <Text style={styles.selectedScheduleText}>
+            Scheduled for{" "}
+            {scheduledFor.toLocaleString(
+              undefined,
+              {
+                weekday: "short",
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }
+            )}
+          </Text>
+        </View>
+      )}
+
+      <Text style={styles.scheduleHint}>
+        Scheduled orders must be at least 5 minutes from the
+        current time.
+      </Text>
+    </View>
+  )}
+</View>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
                 Your Details
@@ -2505,4 +3081,152 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#fff",
   },
+  orderTypeContainer: {
+  gap: 10,
+},
+
+orderTypeButton: {
+  flexDirection: "row",
+  alignItems: "center",
+  padding: 14,
+  borderWidth: 1,
+  borderColor: "#ddd",
+  borderRadius: 13,
+  backgroundColor: "#fff",
+},
+
+orderTypeButtonActive: {
+  backgroundColor: "#111",
+  borderColor: "#111",
+},
+
+orderTypeContent: {
+  flex: 1,
+  marginLeft: 11,
+},
+
+orderTypeTitle: {
+  fontSize: 15,
+  fontWeight: "800",
+  color: "#111",
+},
+
+orderTypeTitleActive: {
+  color: "#fff",
+},
+
+orderTypeDescription: {
+  marginTop: 3,
+  fontSize: 12,
+  lineHeight: 17,
+  color: "#777",
+},
+
+orderTypeDescriptionActive: {
+  color: "#ddd",
+},
+
+scheduleCard: {
+  marginTop: 12,
+  padding: 14,
+  borderWidth: 1,
+  borderColor: "#e1e1e1",
+  borderRadius: 14,
+  backgroundColor: "#fafafa",
+},
+
+scheduleHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginBottom: 12,
+},
+
+scheduleHeaderText: {
+  marginLeft: 8,
+  fontSize: 15,
+  fontWeight: "800",
+  color: "#111",
+},
+
+webScheduleContainer: {
+  gap: 12,
+},
+
+webScheduleField: {
+  width: "100%",
+},
+
+webScheduleLabel: {
+  marginBottom: 6,
+  fontSize: 13,
+  fontWeight: "700",
+  color: "#333",
+},
+
+webScheduleInput: {
+  width: "100%",
+  minHeight: 48,
+  paddingLeft: 12,
+  paddingRight: 12,
+  borderWidth: 1,
+  borderColor: "#d5d5d5",
+  borderRadius: 10,
+  backgroundColor: "#fff",
+  color: "#111",
+  fontSize: 15,
+  boxSizing: "border-box",
+  outlineStyle: "none",
+} as any,
+
+schedulePickerButton: {
+  flexDirection: "row",
+  alignItems: "center",
+  padding: 12,
+  marginBottom: 10,
+  borderWidth: 1,
+  borderColor: "#ddd",
+  borderRadius: 11,
+  backgroundColor: "#fff",
+},
+
+schedulePickerContent: {
+  flex: 1,
+  marginLeft: 10,
+},
+
+schedulePickerLabel: {
+  fontSize: 11,
+  color: "#777",
+},
+
+schedulePickerValue: {
+  marginTop: 3,
+  fontSize: 15,
+  fontWeight: "700",
+  color: "#111",
+},
+
+selectedSchedule: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 2,
+  padding: 10,
+  borderRadius: 9,
+  backgroundColor: "#dcfce7",
+},
+
+selectedScheduleText: {
+  flex: 1,
+  marginLeft: 7,
+  fontSize: 13,
+  fontWeight: "700",
+  color: "#166534",
+},
+
+scheduleHint: {
+  marginTop: 9,
+  fontSize: 12,
+  lineHeight: 17,
+  color: "#777",
+},
 });
