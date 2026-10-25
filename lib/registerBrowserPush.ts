@@ -29,7 +29,6 @@ function urlBase64ToUint8Array(
 
   const rawData = window.atob(base64);
 
-  // Allocate an ArrayBuffer-backed typed array.
   const outputArray = new Uint8Array(
     new ArrayBuffer(rawData.length)
   );
@@ -42,7 +41,31 @@ function urlBase64ToUint8Array(
 }
 
 // =====================================================
-// 3. REGISTER THE SERVICE WORKER
+// 3. CHECK IPHONE HOME SCREEN INSTALLATION
+// =====================================================
+
+function isIOSDevice(): boolean {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" &&
+      navigator.maxTouchPoints > 1)
+  );
+}
+
+function isRunningAsInstalledApp(): boolean {
+  const standaloneMediaQuery =
+    window.matchMedia?.("(display-mode: standalone)")
+      .matches ?? false;
+
+  const iosStandalone =
+    (navigator as Navigator & { standalone?: boolean })
+      .standalone === true;
+
+  return standaloneMediaQuery || iosStandalone;
+}
+
+// =====================================================
+// 4. REGISTER THE SERVICE WORKER
 // =====================================================
 
 export async function registerBrowserPush(): Promise<ServiceWorkerRegistration | null> {
@@ -50,31 +73,38 @@ export async function registerBrowserPush(): Promise<ServiceWorkerRegistration |
     return null;
   }
 
+  if (!window.isSecureContext) {
+    console.error("Browser push requires HTTPS.");
+    return null;
+  }
+
   if (!("serviceWorker" in navigator)) {
-    console.log("Service workers are not supported.");
+    console.error("Service workers are not supported.");
     return null;
   }
 
   if (!("PushManager" in window)) {
-    console.log("Browser push is not supported.");
+    console.error("PushManager is not supported.");
     return null;
   }
 
   if (!("Notification" in window)) {
-    console.log("Browser notifications are not supported.");
-    return null;
-  }
-
-  if (!window.isSecureContext) {
-    console.log("Browser push requires HTTPS.");
+    console.error("Notifications are not supported.");
     return null;
   }
 
   try {
     const registration =
-      await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.register("/sw.js", {
+        scope: "/",
+      });
 
     await navigator.serviceWorker.ready;
+
+    console.log(
+      "Nasara service worker registered:",
+      registration.scope
+    );
 
     return registration;
   } catch (error) {
@@ -88,7 +118,8 @@ export async function registerBrowserPush(): Promise<ServiceWorkerRegistration |
 }
 
 // =====================================================
-// 4. REQUEST NOTIFICATION PERMISSION
+// 5. REQUEST NOTIFICATION PERMISSION
+// Call this after the user taps the Enable button.
 // =====================================================
 
 export async function requestBrowserNotificationPermission(): Promise<boolean> {
@@ -96,6 +127,8 @@ export async function requestBrowserNotificationPermission(): Promise<boolean> {
     typeof window === "undefined" ||
     !("Notification" in window)
   ) {
+    console.error("Notification API is unavailable.");
+
     return false;
   }
 
@@ -104,12 +137,21 @@ export async function requestBrowserNotificationPermission(): Promise<boolean> {
   }
 
   if (Notification.permission === "denied") {
+    console.error(
+      "Notification permission is blocked. Change the permission in device or website settings."
+    );
+
     return false;
   }
 
   try {
     const permission =
       await Notification.requestPermission();
+
+    console.log(
+      "Nasara notification permission:",
+      permission
+    );
 
     return permission === "granted";
   } catch (error) {
@@ -123,13 +165,13 @@ export async function requestBrowserNotificationPermission(): Promise<boolean> {
 }
 
 // =====================================================
-// 5. CREATE OR REUSE A BROWSER PUSH SUBSCRIPTION
+// 6. CREATE OR REUSE A BROWSER PUSH SUBSCRIPTION
 // =====================================================
 
 export async function createBrowserPushSubscription(): Promise<PushSubscription | null> {
   if (!VAPID_PUBLIC_KEY) {
     console.error(
-      "Missing EXPO_PUBLIC_VAPID_PUBLIC_KEY."
+      "Missing EXPO_PUBLIC_VAPID_PUBLIC_KEY. Check the Vercel environment variables and redeploy."
     );
 
     return null;
@@ -146,15 +188,25 @@ export async function createBrowserPushSubscription(): Promise<PushSubscription 
       await registration.pushManager.getSubscription();
 
     if (existingSubscription) {
+      console.log(
+        "Existing browser push subscription found."
+      );
+
       return existingSubscription;
     }
+
+    const applicationServerKey =
+      urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
 
     const subscription =
       await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey:
-          urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        applicationServerKey,
       });
+
+    console.log(
+      "Browser push subscription created."
+    );
 
     return subscription;
   } catch (error) {
@@ -168,7 +220,7 @@ export async function createBrowserPushSubscription(): Promise<PushSubscription 
 }
 
 // =====================================================
-// 6. SAVE THE SUBSCRIPTION TO SUPABASE
+// 7. SAVE THE SUBSCRIPTION TO SUPABASE
 // =====================================================
 
 export async function saveBrowserPushSubscription(
@@ -176,9 +228,7 @@ export async function saveBrowserPushSubscription(
   subscription: PushSubscription
 ): Promise<boolean> {
   if (!userId) {
-    console.error(
-      "A logged-in user ID is required."
-    );
+    console.error("A logged-in user ID is required.");
 
     return false;
   }
@@ -237,7 +287,7 @@ export async function saveBrowserPushSubscription(
 }
 
 // =====================================================
-// 7. ENABLE BROWSER NOTIFICATIONS FOR A USER
+// 8. ENABLE BROWSER NOTIFICATIONS FOR A USER
 // =====================================================
 
 export async function enableBrowserNotifications(
@@ -246,6 +296,13 @@ export async function enableBrowserNotifications(
   success: boolean;
   message: string;
 }> {
+  if (typeof window === "undefined") {
+    return {
+      success: false,
+      message: "Notifications are unavailable here.",
+    };
+  }
+
   if (!userId) {
     return {
       success: false,
@@ -253,14 +310,59 @@ export async function enableBrowserNotifications(
     };
   }
 
+  if (!window.isSecureContext) {
+    return {
+      success: false,
+      message:
+        "Notifications require a secure HTTPS connection.",
+    };
+  }
+
+  if (!("Notification" in window)) {
+    return {
+      success: false,
+      message:
+        "This browser does not support web notifications.",
+    };
+  }
+
+  if (!("serviceWorker" in navigator)) {
+    return {
+      success: false,
+      message:
+        "Service workers are unavailable in this browser.",
+    };
+  }
+
+  if (isIOSDevice() && !isRunningAsInstalledApp()) {
+    return {
+      success: false,
+      message:
+        "On iPhone, open Nasara using its Home Screen icon to enable notifications.",
+    };
+  }
+
+  if (!VAPID_PUBLIC_KEY) {
+    return {
+      success: false,
+      message:
+        "Notification setup is incomplete. Please check the Vercel VAPID public key configuration.",
+    };
+  }
+
   const allowed =
     await requestBrowserNotificationPermission();
 
   if (!allowed) {
+    const permission =
+      Notification.permission;
+
     return {
       success: false,
       message:
-        "Notification permission was not granted.",
+        permission === "denied"
+          ? "Notifications are blocked. Allow them in your device or website settings."
+          : "The browser did not grant notification permission. Try again from the Nasara Home Screen app.",
     };
   }
 
@@ -271,7 +373,7 @@ export async function enableBrowserNotifications(
     return {
       success: false,
       message:
-        "Could not create a browser push subscription.",
+        "Permission was granted, but the browser push subscription failed. Check the browser console for details.",
     };
   }
 
@@ -284,13 +386,13 @@ export async function enableBrowserNotifications(
     return {
       success: false,
       message:
-        "The subscription could not be saved. Check your Supabase login and permissions.",
+        "The browser subscription was created but could not be saved. Check the Supabase table permissions and login session.",
     };
   }
 
   return {
     success: true,
     message:
-      "Browser notifications have been enabled successfully.",
+      "Nasara browser notifications have been enabled successfully.",
   };
 }
