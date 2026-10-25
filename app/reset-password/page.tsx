@@ -1,12 +1,12 @@
 import { useState } from "react";
 import {
-    Alert,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../../lib/supabase";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
