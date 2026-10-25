@@ -23,6 +23,7 @@ import {
   registerForPushNotificationsAsync,
 } from "../../lib/sendPush";
 
+import EnableBrowserNotifications from "../../components/EnableBrowserNotifications";
 import { supabase } from "../../lib/supabase";
 
 /* ===== ACTION TILE ===== */
@@ -794,6 +795,11 @@ return (
   )}
 </View>
       <Text style={styles.email}>{session.user.email}</Text>
+
+      {/* ===== BROWSER PUSH NOTIFICATIONS ===== */}
+{(!user || String(user) === session.user.id) && (
+  <EnableBrowserNotifications userId={session.user.id} />
+)}
       {/* ===== MENTOR BADGE ===== */}
 {mentorBadge && (
   <View style={styles.badge}>
