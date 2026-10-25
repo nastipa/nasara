@@ -3,16 +3,21 @@
 // File: components/EnableBrowserNotifications.tsx
 // =====================================================
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
 import {
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
-import { enableBrowserNotifications } from "../lib/registerBrowserPush";
+import {
+  enableBrowserNotifications,
+  registerBrowserPush,
+  saveBrowserPushSubscription,
+} from "../lib/registerBrowserPush";
 
 // =====================================================
 // 1. COMPONENT PROPERTIES
@@ -22,6 +27,11 @@ type EnableBrowserNotificationsProps = {
   userId: string;
 };
 
+type NotificationStatus =
+  | "checking"
+  | "enabled"
+  | "disabled";
+
 // =====================================================
 // 2. ENABLE NOTIFICATIONS BUTTON
 // =====================================================
@@ -30,11 +40,109 @@ export default function EnableBrowserNotifications({
   userId,
 }: EnableBrowserNotificationsProps) {
   const [loading, setLoading] = useState(false);
+
+  const [status, setStatus] =
+    useState<NotificationStatus>("checking");
+
   const [message, setMessage] = useState("");
+
   const [success, setSuccess] = useState(false);
 
   // ===================================================
-  // 3. HIDE THIS BUTTON ON NATIVE MOBILE PLATFORMS
+  // 3. CHECK EXISTING NOTIFICATION STATUS
+  // Runs when the component loads or the user changes.
+  // ===================================================
+
+  const checkNotificationStatus = useCallback(async () => {
+    if (
+      Platform.OS !== "web" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    setStatus("checking");
+
+    try {
+      if (
+        !userId ||
+        !("Notification" in window) ||
+        Notification.permission !== "granted"
+      ) {
+        setStatus("disabled");
+        setSuccess(false);
+        setMessage("");
+        return;
+      }
+
+      // Register or reuse the existing service worker.
+
+      const registration = await registerBrowserPush();
+
+      if (!registration) {
+        setStatus("disabled");
+        return;
+      }
+
+      // Retrieve the existing browser subscription.
+
+      const subscription =
+        await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        setStatus("disabled");
+        setSuccess(false);
+        setMessage(
+          "Notifications are permitted, but no push subscription was found. Please enable notifications again."
+        );
+        return;
+      }
+
+      // Save or update the subscription for this user.
+
+      const saved = await saveBrowserPushSubscription(
+        userId,
+        subscription
+      );
+
+      if (saved) {
+        setStatus("enabled");
+        setSuccess(true);
+        setMessage(
+          "Nasara browser notifications are enabled."
+        );
+      } else {
+        setStatus("disabled");
+        setSuccess(false);
+        setMessage(
+          "Your notification subscription could not be verified. Tap the button to try again."
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Checking browser notification status failed:",
+        error
+      );
+
+      setStatus("disabled");
+      setSuccess(false);
+      setMessage(
+        "Could not check notification status. Please try again."
+      );
+    }
+  }, [userId]);
+
+  // ===================================================
+  // 4. CHECK STATUS WHEN THE COMPONENT LOADS
+  // This prevents the button resetting after a refresh.
+  // ===================================================
+
+  useEffect(() => {
+    void checkNotificationStatus();
+  }, [checkNotificationStatus]);
+
+  // ===================================================
+  // 5. HIDE BUTTON ON NATIVE MOBILE PLATFORMS
   // ===================================================
 
   if (Platform.OS !== "web") {
@@ -42,7 +150,7 @@ export default function EnableBrowserNotifications({
   }
 
   // ===================================================
-  // 4. HANDLE THE BUTTON PRESS
+  // 6. HANDLE ENABLE NOTIFICATIONS BUTTON PRESS
   // ===================================================
 
   async function handleEnableNotifications() {
@@ -52,7 +160,9 @@ export default function EnableBrowserNotifications({
 
     if (!userId) {
       setSuccess(false);
-      setMessage("Please sign in to enable notifications.");
+      setMessage(
+        "Please sign in to enable notifications."
+      );
       return;
     }
 
@@ -60,10 +170,17 @@ export default function EnableBrowserNotifications({
     setMessage("");
 
     try {
-      const result = await enableBrowserNotifications(userId);
+      const result =
+        await enableBrowserNotifications(userId);
 
       setSuccess(result.success);
       setMessage(result.message);
+
+      if (result.success) {
+        setStatus("enabled");
+      } else {
+        setStatus("disabled");
+      }
     } catch (error) {
       console.error(
         "Could not enable browser notifications:",
@@ -71,6 +188,8 @@ export default function EnableBrowserNotifications({
       );
 
       setSuccess(false);
+      setStatus("disabled");
+
       setMessage(
         "Something went wrong. Please try again."
       );
@@ -80,26 +199,42 @@ export default function EnableBrowserNotifications({
   }
 
   // ===================================================
-  // 5. DISPLAY THE BUTTON
+  // 7. DISPLAY THE NOTIFICATIONS BUTTON
   // ===================================================
 
   return (
     <View style={styles.container}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Enable browser notifications"
-        disabled={loading}
+        accessibilityLabel={
+          status === "enabled"
+            ? "Browser notifications enabled"
+            : "Enable browser notifications"
+        }
+        disabled={
+          loading || status === "checking"
+        }
         onPress={handleEnableNotifications}
         style={({ pressed }) => [
           styles.button,
+
+          status === "enabled" &&
+            styles.buttonEnabled,
+
           pressed && styles.buttonPressed,
-          loading && styles.buttonDisabled,
+
+          (loading || status === "checking") &&
+            styles.buttonDisabled,
         ]}
       >
         <Text style={styles.buttonText}>
           {loading
             ? "Enabling notifications..."
-            : "🔔 Enable Notifications"}
+            : status === "checking"
+              ? "⏳ Checking Notifications..."
+              : status === "enabled"
+                ? "✅ Notifications Enabled"
+                : "🔔 Enable Notifications"}
         </Text>
       </Pressable>
 
@@ -108,6 +243,7 @@ export default function EnableBrowserNotifications({
           accessibilityLiveRegion="polite"
           style={[
             styles.message,
+
             success
               ? styles.successMessage
               : styles.errorMessage,
@@ -121,7 +257,7 @@ export default function EnableBrowserNotifications({
 }
 
 // =====================================================
-// 6. STYLES
+// 8. STYLES
 // =====================================================
 
 const styles = StyleSheet.create({
@@ -137,6 +273,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  buttonEnabled: {
+    backgroundColor: "#15803D",
   },
 
   buttonPressed: {
