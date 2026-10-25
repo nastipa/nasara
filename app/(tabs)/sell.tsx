@@ -362,16 +362,65 @@ router.replace("/browse");
             .insert(inserts);
         }
 
-        fetch("https://nasara-upload-server.onrender.com/send-push", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "item",
-            title: "🛒 New Item",
-            body: title,
-            ref_id: newItem.id,
-          }),
-        }).catch(() => {});
+      // =====================================================
+// SEND AUTHENTICATED ITEM PUSH NOTIFICATIONS
+// =====================================================
+
+const {
+  data: { session: currentSession },
+  error: sessionError,
+} = await supabase.auth.getSession();
+
+if (sessionError) {
+  console.error(
+    "Could not retrieve the current session:",
+    sessionError.message
+  );
+} else if (currentSession?.access_token) {
+  try {
+    const response = await fetch(
+      "https://nasara-upload-server.onrender.com/send-push",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${currentSession.access_token}`,
+        },
+
+        body: JSON.stringify({
+          type: "item",
+          title: "🛒 New Item",
+          body: title,
+          ref_id: newItem.id,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      console.error(
+        "Notification request failed:",
+        await response.text()
+      );
+    } else {
+      const result = await response.json();
+
+      console.log(
+        "Item notification result:",
+        result
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Notification request error:",
+      error
+    );
+  }
+} else {
+  console.error(
+    "No active session. Item notifications were not requested."
+  );
+}
       }, 0);
     } catch (err) {
       Alert.alert("Upload failed");

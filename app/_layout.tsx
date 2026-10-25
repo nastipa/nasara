@@ -277,52 +277,91 @@ export default function RootLayout() {
   useEffect(() => {
     if (!session?.user?.id) return;
 
-    /* ================= ITEMS ================= */
+   // =====================================================
+// GLOBAL ITEMS — WEB + NATIVE NOTIFICATIONS
+// =====================================================
 
-    const itemsChannel = supabase
-      .channel("global-items")
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "items_live",
-        },
-        async (payload) => {
-          const item = payload.new as any;
+const itemsChannel = supabase
+  .channel("global-items")
+  .on(
+    "postgres_changes",
+    {
+      event: "INSERT",
+      schema: "public",
+      table: "items_live",
+    },
+    async (payload) => {
+      const item = payload.new as any;
 
-          /* DON'T NOTIFY OWNER */
-          if (item.user_id === session.user.id) {
-            return;
-          }
+      // Don't notify the person who posted the item.
+      if (item.user_id === session.user.id) {
+        return;
+      }
 
-          /* 🔊 SOUND */
-          playSound("post");
-          playWebNotificationSound();
+      // Play the existing notification sounds.
+      playSound("post");
+      playWebNotificationSound();
 
-          /* 📱 NATIVE NOTIFICATION ONLY */
-          if (Platform.OS !== "web") {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: "🛒 New Item Posted",
+      // -------------------------------------------------
+      // WEB BROWSER SYSTEM NOTIFICATION
+      // -------------------------------------------------
+      if (Platform.OS === "web") {
+        try {
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted"
+          ) {
+            const registration =
+              await navigator.serviceWorker.ready;
+
+            await registration.showNotification(
+              "🛒 New Item Posted",
+              {
                 body:
                   item.title ||
-                  "New item available",
-
-                sound: "default",
-
+                  "A new item is available on Nasara.",
+                icon: "/favicon.ico",
+                badge: "/favicon.ico",
+                tag: `nasara-item-${item.id}`,
                 data: {
                   type: "item",
                   id: item.id,
+                  url: `/item/${item.id}`,
                 },
-              },
-
-              trigger: null,
-            });
+              }
+            );
           }
+        } catch (error) {
+          console.error(
+            "Browser system notification failed:",
+            error
+          );
         }
-      )
-      .subscribe();
+
+        return;
+      }
+
+      // -------------------------------------------------
+      // EXISTING NATIVE NOTIFICATION — PRESERVED
+      // -------------------------------------------------
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "🛒 New Item Posted",
+          body:
+            item.title ||
+            "New item available",
+          sound: "default",
+          data: {
+            type: "item",
+            id: item.id,
+          },
+        },
+        trigger: null,
+      });
+    }
+  )
+  .subscribe();
 
     /* ================= NOTIFICATIONS ================= */
 
