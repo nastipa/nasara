@@ -1542,7 +1542,7 @@ style={{ backgroundColor: "#0f172a" }}
   <TouchableOpacity
   onPress={() =>
     Linking.openURL(
-      "https://expo.dev/artifacts/eas/8HhlBRPGuoKgNR5-1LOyOXgxTsqi1-BcdXuyz271hJo.apk"
+      "https://expo.dev/artifacts/eas/-irtG2Uc63nLJC-tf1aIs0yaAYfHP_JxILPTb2zwpOk.apk"
     )
   }
   style={{
