@@ -1050,229 +1050,255 @@ userId,
     }
   };
 
-  /* ================= SEND IMAGE ================= */
-  const sendImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.8,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+ /* ================= 🖼️ SEND IMAGE + BROWSER PUSH ================= */
+
+const sendImage = async () => {
+  const res = await ImagePicker.launchImageLibraryAsync({
+    quality: 0.8,
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  });
+
+  if (res.canceled || !userId) return;
+
+  // 🟢 Resolve the actual recipient before inserting the message
+  const actualReceiverId = await getChatRecipientId();
+
+  if (!actualReceiverId) {
+    console.error("🔴 IMAGE MESSAGE: Recipient could not be resolved.");
+    return;
+  }
+
+  const asset = res.assets[0];
+  const tempId = Date.now();
+
+  const tempMessage: Message = {
+    id: tempId,
+    room_id: roomId,
+    sender_id: userId,
+    text: null,
+    image_url: asset.uri,
+    file_url: null,
+    file_name: null,
+    reaction: null,
+    seen: false,
+    created_at: new Date().toISOString(),
+  };
+
+  setMessages((prev) => [...prev, tempMessage]);
+
+  try {
+    // 🔵 Upload image
+    const uploadedUrl = await uploadToServer(asset.uri);
+
+    // 🟣 Save image message
+    const { data, error } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        receiver_id: actualReceiverId,
+        image_url: uploadedUrl,
+        reply_to: replyTo?.id || null,
+        reply_text: replyTo?.text || null,
+        reply_audio_url: replyTo?.audio_url || null,
+        reply_image_url: replyTo?.image_url || null,
+        one_time_view: oneTimeView,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (!data) {
+      throw new Error("Image message was not returned after insertion.");
+    }
+
+    // 🟢 Replace temporary image with saved message
+    setMessages((prev) =>
+      prev.map((m) => (m.id === tempId ? data : m))
+    );
+
+    // 🔔 Send browser notification
+    console.log("🖼️ IMAGE MESSAGE SAVED; SENDING PUSH:", {
+      messageId: data.id,
+      recipientId: actualReceiverId,
     });
 
-    if (res.canceled || !userId) return;
+    void sendChatBrowserPush(data.id, actualReceiverId);
 
-    const asset = res.assets[0];
-    const tempId = Date.now();
+    setOneTimeView(false);
+    setReplyTo(null);
+  } catch (error) {
+    console.error("🔴 SEND IMAGE ERROR:", error);
 
-    const tempMessage: Message = {
-      id: tempId,
-      room_id: roomId,
-      sender_id: userId,
-      text: null,
-      image_url: asset.uri,
-      file_url: null,
-      file_name: null,
-      reaction: null,
-      seen: false,
-      created_at: new Date().toISOString(),
-    };
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+};
 
-    setMessages((prev) => [...prev, tempMessage]);
-   
+  /* ================= 📷 SEND CAMERA PHOTO + BROWSER PUSH ================= */
 
-    try {
-      const uploadedUrl = await uploadToServer(asset.uri);
+const sendCamera = async () => {
+  const res = await ImagePicker.launchCameraAsync({
+    quality: 0.8,
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  });
 
+  if (res.canceled || !userId) return;
 
-      const { data, error } = await (supabase as any)
-        .from("messages")
-        .insert({
-          room_id: roomId,
-          sender_id: userId,
-          receiver_id: receiverId,
-          image_url: uploadedUrl,
-          reply_to: replyTo?.id || null,
-        reply_text: replyTo?.text || null,
-reply_audio_url:
-  replyTo?.audio_url || null,
-reply_image_url:
-  replyTo?.image_url || null,
-         one_time_view:
-  oneTimeView,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-     // 🟢 Save the image message and notify the recipient
-if (data) {
-  setMessages((prev) =>
-    prev.map((m) => (m.id === tempId ? data : m))
-  );
-
-  // 🔔 Send a browser notification
+  // 🟢 Resolve the actual recipient first
   const actualReceiverId = await getChatRecipientId();
 
-  if (actualReceiverId) {
-    void sendChatBrowserPush(
-      data.id,
-      actualReceiverId
-    );
+  if (!actualReceiverId) {
+    console.error("🔴 CAMERA MESSAGE: Recipient could not be resolved.");
+    return;
   }
-}
-      setOneTimeView(false);
-    } catch {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setReplyTo(null);
-    }
+
+  const asset = res.assets[0];
+  const tempId = Date.now();
+
+  const tempMessage: Message = {
+    id: tempId,
+    room_id: roomId,
+    sender_id: userId,
+    text: null,
+    image_url: asset.uri,
+    file_url: null,
+    file_name: null,
+    reaction: null,
+    seen: false,
+    created_at: new Date().toISOString(),
   };
 
-  /* ================= SEND CAMERA ================= */
-  const sendCamera = async () => {
-    const res = await ImagePicker.launchCameraAsync({
-      quality: 0.8,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  setMessages((prev) => [...prev, tempMessage]);
+
+  try {
+    // 🔵 Upload camera photo
+    const uploadedUrl = await uploadToServer(asset.uri);
+
+    // 🟣 Save camera photo message
+    const { data, error } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        receiver_id: actualReceiverId,
+        image_url: uploadedUrl,
+        reply_to: replyTo?.id || null,
+        reply_text: replyTo?.text || null,
+        reply_audio_url: replyTo?.audio_url || null,
+        reply_image_url: replyTo?.image_url || null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (!data) {
+      throw new Error("Camera photo message was not returned after insertion.");
+    }
+
+    // 🟢 Replace temporary message
+    setMessages((prev) =>
+      prev.map((m) => (m.id === tempId ? data : m))
+    );
+
+    // 🔔 Send browser notification
+    console.log("📷 CAMERA MESSAGE SAVED; SENDING PUSH:", {
+      messageId: data.id,
+      recipientId: actualReceiverId,
     });
 
-    if (res.canceled || !userId) return;
+    void sendChatBrowserPush(data.id, actualReceiverId);
 
-    const asset = res.assets[0];
-    const tempId = Date.now();
+    setReplyTo(null);
+  } catch (error) {
+    console.error("🔴 SEND CAMERA ERROR:", error);
 
-    const tempMessage: Message = {
-      id: tempId,
-      room_id: roomId,
-      sender_id: userId,
-      text: null,
-      image_url: asset.uri,
-      file_url: null,
-      file_name: null,
-      reaction: null,
-      seen: false,
-      created_at: new Date().toISOString(),
-    };
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+};
 
-    setMessages((prev) => [...prev, tempMessage]);
-    
+  /* ================= 📎 SEND FILE + BROWSER PUSH ================= */
 
-    try {
-      const uploadedUrl = await uploadToServer(asset.uri);
+const sendFile = async () => {
+  const res = await DocumentPicker.getDocumentAsync({});
 
-      const { data, error } = await (supabase as any)
-        .from("messages")
-        .insert({
-          room_id: roomId,
-          sender_id: userId,
-          receiver_id: receiverId,
-          image_url: uploadedUrl,
-          reply_to: replyTo?.id || null,
-        reply_text: replyTo?.text || null,
-reply_audio_url:
-  replyTo?.audio_url || null,
-reply_image_url:
-  replyTo?.image_url || null,
-        })
-        .select()
-        .single();
+  if (res.canceled || !userId) return;
 
-      if (error) throw error;
-
-      // 🟢 Save the camera photo and notify the recipient
-if (data) {
-  setMessages((prev) =>
-    prev.map((m) => (m.id === tempId ? data : m))
-  );
-
-  // 🔔 Send a browser notification
+  // 🟢 Resolve the actual recipient first
   const actualReceiverId = await getChatRecipientId();
 
-  if (actualReceiverId) {
-    void sendChatBrowserPush(
-      data.id,
-      actualReceiverId
-    );
+  if (!actualReceiverId) {
+    console.error("🔴 FILE MESSAGE: Recipient could not be resolved.");
+    return;
   }
-}
-    } catch {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setReplyTo(null);
-    }
+
+  const file = res.assets[0];
+  const tempId = Date.now();
+
+  const tempMessage: Message = {
+    id: tempId,
+    room_id: roomId,
+    sender_id: userId,
+    text: null,
+    image_url: null,
+    file_url: file.uri,
+    file_name: file.name,
+    reaction: null,
+    seen: false,
+    created_at: new Date().toISOString(),
   };
 
-  /* ================= SEND FILE ================= */
-  const sendFile = async () => {
-    const res = await DocumentPicker.getDocumentAsync({});
+  setMessages((prev) => [...prev, tempMessage]);
 
-    if (res.canceled || !userId) return;
+  try {
+    // 🔵 Upload file
+    const uploadedUrl = await uploadToServer(file.uri, file.name);
 
-    const file = res.assets[0];
-    const tempId = Date.now();
-
-    const tempMessage: Message = {
-      id: tempId,
-      room_id: roomId,
-      sender_id: userId,
-      text: null,
-      image_url: null,
-      file_url: file.uri,
-      file_name: file.name,
-      reaction: null,
-      seen: false,
-      created_at: new Date().toISOString(),
-      
-    };
-
-    setMessages((prev) => [...prev, tempMessage]);
-   
-
-    try {
-      const uploadedUrl = await uploadToServer(
-        file.uri,
-        file.name
-      );
-
-      const { data, error } = await (supabase as any)
-        .from("messages")
-        .insert({
-          room_id: roomId,
-          sender_id: userId,
-          receiver_id: receiverId,
-          file_url: uploadedUrl,
-          file_name: file.name,
-          reply_to: replyTo?.id || null,
+    // 🟣 Save file message
+    const { data, error } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        receiver_id: actualReceiverId,
+        file_url: uploadedUrl,
+        file_name: file.name,
+        reply_to: replyTo?.id || null,
         reply_text: replyTo?.text || null,
-reply_audio_url:
-  replyTo?.audio_url || null,
-reply_image_url:
-  replyTo?.image_url || null,
-        })
-        .select()
-        .single();
+        reply_audio_url: replyTo?.audio_url || null,
+        reply_image_url: replyTo?.image_url || null,
+      })
+      .select()
+      .single();
 
-      if (error) throw error;
+    if (error) throw error;
 
-      // 🟢 Save the file message and notify the recipient
-if (data) {
-  setMessages((prev) =>
-    prev.map((m) => (m.id === tempId ? data : m))
-  );
-
-  // 🔔 Send a browser notification
-  const actualReceiverId = await getChatRecipientId();
-
-  if (actualReceiverId) {
-    void sendChatBrowserPush(
-      data.id,
-      actualReceiverId
-    );
-  }
-}
-    } catch {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setReplyTo(null);
-      
+    if (!data) {
+      throw new Error("File message was not returned after insertion.");
     }
-  };
-  
+
+    // 🟢 Replace temporary file message
+    setMessages((prev) =>
+      prev.map((m) => (m.id === tempId ? data : m))
+    );
+
+    // 🔔 Send browser notification
+    console.log("📎 FILE MESSAGE SAVED; SENDING PUSH:", {
+      messageId: data.id,
+      recipientId: actualReceiverId,
+      fileName: file.name,
+    });
+
+    void sendChatBrowserPush(data.id, actualReceiverId);
+
+    setReplyTo(null);
+  } catch (error) {
+    console.error("🔴 SEND FILE ERROR:", error);
+
+    setMessages((prev) => prev.filter((m) => m.id !== tempId));
+  }
+};
   /* ================= START RECORDING ================= */
 const startRecording =
   async () => {
@@ -1318,90 +1344,82 @@ timerRef.current = setInterval(() => {
       );
     }
   };
-  /* ================= STOP RECORDING ================= */
-const stopRecording =
-  async () => {
-    try {
-      await recorder.stop();
+ /* ================= 🎤 STOP RECORDING + BROWSER PUSH ================= */
 
-      setRecording(false);
-     clearInterval(timerRef.current);
-      const uri =
-        recorder.uri;
+const stopRecording = async () => {
+  try {
+    await recorder.stop();
 
-      if (!uri || !userId)
-        return;
+    setRecording(false);
+    clearInterval(timerRef.current);
 
-      /* RESTORE AUDIO MODE */
-      await AudioModule.setAudioModeAsync(
-        {
-          allowsRecording: false,
-        }
-      );
+    const uri = recorder.uri;
 
-      const uploadedUrl =
-        await uploadToServer(
-          uri,
-          Platform.OS === "web"
-  ? `voice-${Date.now()}.mp3`
-  : `voice-${Date.now()}.m4a`
-        );
+    if (!uri || !userId) return;
 
-      const {
-        data,
-        error,
-      } = await (
-        supabase as any
-      )
-        .from("messages")
-        .insert({
-  room_id: roomId,
-  sender_id: userId,
-  receiver_id: receiverId,
-  audio_url: uploadedUrl,
+    // 🟢 Resolve the actual recipient before inserting the message
+    const actualReceiverId = await getChatRecipientId();
 
-  reply_to:
-    replyTo?.id || null,
-
-  reply_text:
-    replyTo?.text || null,
-
-  reply_audio_url:
-    replyTo?.audio_url || null,
-
-  reply_image_url:
-    replyTo?.image_url || null,
-})
-        .select()
-        .single();
-
-      if (error)
-        throw error;
-
-     // 🟢 Save the voice note and notify the recipient
-if (data) {
-  setMessages((prev) => [
-    ...prev,
-    data,
-  ]);
-
-  // 🔔 Send a browser notification
-  const actualReceiverId = await getChatRecipientId();
-
-  if (actualReceiverId) {
-    void sendChatBrowserPush(
-      data.id,
-      actualReceiverId
-    );
-  }
-}
-    } catch (e) {
-      console.log(
-        "record stop error",
-        e
-      );
+    if (!actualReceiverId) {
+      console.error("🔴 VOICE NOTE: Recipient could not be resolved.");
+      return;
     }
-  };
+
+    // 🔵 Restore audio mode
+    await AudioModule.setAudioModeAsync({
+      allowsRecording: false,
+    });
+
+    // 🔵 Upload voice note
+    const uploadedUrl = await uploadToServer(
+      uri,
+      Platform.OS === "web"
+        ? `voice-${Date.now()}.mp3`
+        : `voice-${Date.now()}.m4a`
+    );
+
+    // 🟣 Save voice-note message
+    const { data, error } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: roomId,
+        sender_id: userId,
+        receiver_id: actualReceiverId,
+        audio_url: uploadedUrl,
+        reply_to: replyTo?.id || null,
+        reply_text: replyTo?.text || null,
+        reply_audio_url: replyTo?.audio_url || null,
+        reply_image_url: replyTo?.image_url || null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (!data) {
+      throw new Error("Voice-note message was not returned after insertion.");
+    }
+
+    // 🟢 Add saved voice note to chat
+    setMessages((prev) => {
+      const exists = prev.some((m) => m.id === data.id);
+
+      return exists ? prev : [...prev, data];
+    });
+
+    // 🔔 Send browser notification
+    console.log("🎤 VOICE NOTE SAVED; SENDING PUSH:", {
+      messageId: data.id,
+      recipientId: actualReceiverId,
+    });
+
+    void sendChatBrowserPush(data.id, actualReceiverId);
+
+    setReplyTo(null);
+  } catch (error) {
+    console.error("🔴 STOP RECORDING ERROR:", error);
+  }
+};
   /* ================= WALLPAPER ================= */
   const pickWallpaper =
   async () => {
