@@ -220,70 +220,99 @@ export async function createBrowserPushSubscription(): Promise<PushSubscription 
 }
 
 // =====================================================
-// 7. SAVE THE SUBSCRIPTION TO SUPABASE
+// 7. SAVE / TRANSFER THE BROWSER PUSH SUBSCRIPTION
 // =====================================================
 
 export async function saveBrowserPushSubscription(
   userId: string,
   subscription: PushSubscription
 ): Promise<boolean> {
-  if (!userId) {
-    console.error("A logged-in user ID is required.");
+try {
+// 🛡️ STEP 1: Validate the supplied information.
+if (!userId || !subscription) {
+console.error(
+"Saving browser push subscription failed:",
+"Missing user ID or subscription."
+);
 
-    return false;
+  return false;
+}
+const subscriptionData = subscription.toJSON();
+if (
+  !subscription.endpoint ||
+  !subscription.endpoint.startsWith("https://") ||
+  !subscriptionData.keys?.p256dh ||
+  !subscriptionData.keys?.auth
+) {
+  console.error(
+    "Saving browser push subscription failed:",
+    "The browser subscription is incomplete."
+  );
+  return false;
+}
+// 🔐 STEP 2: Get the current Supabase login session.
+const {
+  data: { session },
+  error: sessionError,
+} = await supabase.auth.getSession();
+if (
+  sessionError ||
+  !session?.access_token ||
+  !session.user?.id
+) {
+  console.error(
+    "Saving browser push subscription failed:",
+    sessionError || "No authenticated session was found."
+  );
+  return false;
+}
+// 🔐 STEP 3: Ensure this is the currently logged-in account.
+if (session.user.id !== userId) {
+  console.error(
+    "Saving browser push subscription failed:",
+    "The supplied user ID does not match the active login."
+  );
+  return false;
+}
+// 🌐 STEP 4: Send the subscription to the trusted backend.
+const response = await fetch(
+  "https://nasara-upload-server.onrender.com/browser-push/register-subscription",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      subscription: subscriptionData,
+    }),
   }
+);
+// 📦 STEP 5: Read the backend response.
+const result = await response.json().catch(() => null);
+if (!response.ok || !result?.success) {
+  console.error(
+    "Saving browser push subscription failed:",
+    result?.error ||
+      `Backend returned HTTP ${response.status}.`
+  );
+  return false;
+}
+// ✅ STEP 6: Registration succeeded.
+console.log(
+  "Browser push subscription registered successfully."
+);
+return true;
 
-  try {
-    const subscriptionData = subscription.toJSON();
+} catch (error) {
+console.error(
+"Saving browser push subscription failed:",
+error
+);
 
-    if (
-      !subscription.endpoint ||
-      !subscriptionData.keys?.p256dh ||
-      !subscriptionData.keys?.auth
-    ) {
-      console.error(
-        "The browser subscription is incomplete."
-      );
+return false;
 
-      return false;
-    }
-
-    const { error } = await (supabase as any)
-      .from("browser_push_subscriptions")
-      .upsert(
-        {
-          user_id: userId,
-          endpoint: subscription.endpoint,
-          subscription: subscriptionData,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "endpoint",
-        }
-      );
-
-    if (error) {
-      console.error(
-        "Saving browser subscription failed:",
-        error.message
-      );
-
-      return false;
-    }
-
-    console.log(
-      "Browser push subscription saved successfully."
-    );
-
-    return true;
-  } catch (error) {
-    console.error(
-      "Unexpected subscription save error:",
-      error
-    );
-
-    return false;
-  }
+}
 }
 
 // =====================================================
