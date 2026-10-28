@@ -1103,11 +1103,22 @@ reply_image_url:
 
       if (error) throw error;
 
-      if (data) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? data : m))
-        );
-      }
+     // 🟢 Save the image message and notify the recipient
+if (data) {
+  setMessages((prev) =>
+    prev.map((m) => (m.id === tempId ? data : m))
+  );
+
+  // 🔔 Send a browser notification
+  const actualReceiverId = await getChatRecipientId();
+
+  if (actualReceiverId) {
+    void sendChatBrowserPush(
+      data.id,
+      actualReceiverId
+    );
+  }
+}
       setOneTimeView(false);
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
@@ -1165,11 +1176,22 @@ reply_image_url:
 
       if (error) throw error;
 
-      if (data) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? data : m))
-        );
-      }
+      // 🟢 Save the camera photo and notify the recipient
+if (data) {
+  setMessages((prev) =>
+    prev.map((m) => (m.id === tempId ? data : m))
+  );
+
+  // 🔔 Send a browser notification
+  const actualReceiverId = await getChatRecipientId();
+
+  if (actualReceiverId) {
+    void sendChatBrowserPush(
+      data.id,
+      actualReceiverId
+    );
+  }
+}
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setReplyTo(null);
@@ -1228,11 +1250,22 @@ reply_image_url:
 
       if (error) throw error;
 
-      if (data) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? data : m))
-        );
-      }
+      // 🟢 Save the file message and notify the recipient
+if (data) {
+  setMessages((prev) =>
+    prev.map((m) => (m.id === tempId ? data : m))
+  );
+
+  // 🔔 Send a browser notification
+  const actualReceiverId = await getChatRecipientId();
+
+  if (actualReceiverId) {
+    void sendChatBrowserPush(
+      data.id,
+      actualReceiverId
+    );
+  }
+}
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setReplyTo(null);
@@ -1345,14 +1378,23 @@ const stopRecording =
       if (error)
         throw error;
 
-      if (data) {
-        setMessages(
-          (prev) => [
-            ...prev,
-            data,
-          ]
-        );
-      }
+     // 🟢 Save the voice note and notify the recipient
+if (data) {
+  setMessages((prev) => [
+    ...prev,
+    data,
+  ]);
+
+  // 🔔 Send a browser notification
+  const actualReceiverId = await getChatRecipientId();
+
+  if (actualReceiverId) {
+    void sendChatBrowserPush(
+      data.id,
+      actualReceiverId
+    );
+  }
+}
     } catch (e) {
       console.log(
         "record stop error",
