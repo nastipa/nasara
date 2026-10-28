@@ -1163,18 +1163,56 @@ loadOrders(false);
   };
 
   const markCompleted = async (
-    order: FoodOrder
-  ) => {
-    await updateOrder(
-      order,
-      {
-        order_status: "completed",
-        completed_at:
-          new Date().toISOString(),
-      },
-      "The order has been completed."
-    );
-  };
+order: FoodOrder
+) => {
+await updateOrder(
+order,
+{
+order_status: "completed",
+completed_at: new Date().toISOString(),
+},
+"The order has been completed."
+);
+
+try {
+const {
+data: { session },
+} = await supabase.auth.getSession();
+
+if (!session?.access_token) {
+  console.error(
+    "Customer notification failed: No authenticated session."
+  );
+  return;
+}
+const response = await fetch(
+  "https://nasara-upload-server.onrender.com/restaurant/notify-order-completed",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      orderId: order.id,
+    })
+  }
+);
+const result = await response.json();
+if (!response.ok || !result.success) {
+  console.error(
+    "Customer completion notification failed:",
+    result
+  );
+}
+
+} catch (error) {
+console.error(
+"Customer completion notification error:",
+error
+);
+}
+};
 
   const rejectOrder = async (
     order: FoodOrder

@@ -1647,7 +1647,42 @@ if (
 
           throw paymentError;
         }
-
+       // ============================================================
+// 🔔 RESTAURANT PUSH NOTIFICATION
+// Notify the restaurant owner about the new order.
+// Notification failure must not cancel the order.
+// ============================================================
+try {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session?.access_token && order?.id) {
+    const notificationResponse = await fetch(
+      "https://nasara-upload-server.onrender.com/restaurant/notify-new-order",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+        }),
+      }
+    );
+    if (!notificationResponse.ok) {
+      console.warn(
+        "Restaurant notification request failed:",
+        notificationResponse.status
+      );
+    }
+  }
+} catch (notificationError) {
+  console.warn(
+    "Restaurant notification could not be sent:",
+    notificationError
+  );
+}
         await Promise.all([
           AsyncStorage.removeItem(
             CART_STORAGE_KEY
