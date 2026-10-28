@@ -395,58 +395,64 @@ useEffect(() => {
   let cancelled = false;
 
   const getReceiver = async () => {
-    if (!roomId || !userId) {
-      return;
-    }
-
-    console.log("💬 Loading chat recipient:", {
-      roomId,
-      userId,
-    });
+    if (!roomId || !userId) return;
 
     try {
-      const { data: participants, error: participantsError } =
-        await (supabase as any)
-          .from("chat_participants")
-          .select("user_id")
-          .eq("room_id", roomId);
+      console.log("💬 Loading recipient from chat_rooms:", {
+        roomId,
+        userId,
+      });
 
-      if (participantsError) {
+      const { data: room, error } = await (supabase as any)
+        .from("chat_rooms")
+        .select("id, buyer_id, seller_id")
+        .eq("id", roomId)
+        .maybeSingle();
+
+      if (error) {
         console.error(
-          "🔴 CHAT RECIPIENT: Participant query failed:",
-          participantsError
+          "🔴 CHAT RECIPIENT: Room query failed:",
+          error
         );
         return;
       }
 
-      const other = (participants || []).find(
-        (participant: any) =>
-          participant.user_id !== userId
-      );
-
-      if (!other?.user_id) {
+      if (!room) {
         console.error(
-          "🔴 CHAT RECIPIENT: Other participant not found",
+          "🔴 CHAT RECIPIENT: Room not found:",
+          roomId
+        );
+        return;
+      }
+
+      let otherUserId: string | null = null;
+
+      if (room.buyer_id === userId) {
+        otherUserId = room.seller_id;
+      } else if (room.seller_id === userId) {
+        otherUserId = room.buyer_id;
+      }
+
+      if (!otherUserId || otherUserId === userId) {
+        console.error(
+          "🔴 CHAT RECIPIENT: Could not identify the other user:",
           {
             roomId,
             userId,
-            participants,
+            buyerId: room.buyer_id,
+            sellerId: room.seller_id,
           }
         );
         return;
       }
 
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
-      // Set the recipient before loading their profile.
-      setReceiverId(other.user_id);
+      setReceiverId(otherUserId);
 
-      console.log("🟢 CHAT RECIPIENT FOUND:", {
+      console.log("🟢 CHAT RECIPIENT LOADED:", {
         roomId,
-        userId,
-        receiverId: other.user_id,
+        receiverId: otherUserId,
       });
 
       const { data: profile, error: profileError } =
@@ -455,23 +461,20 @@ useEffect(() => {
           .select(
             "full_name, verified, chat_theme, chat_wallpaper"
           )
-          .eq("id", other.user_id)
+          .eq("id", otherUserId)
           .maybeSingle();
 
       if (profileError) {
         console.error(
-          "🟡 CHAT RECIPIENT: Profile query failed:",
+          "🟡 CHAT RECIPIENT PROFILE ERROR:",
           profileError
         );
       }
 
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
       if (profile) {
         setReceiverName(profile.full_name || "User");
-
         setReceiverVerified(profile.verified === true);
 
         if (profile.chat_theme) {
@@ -484,7 +487,7 @@ useEffect(() => {
       }
     } catch (error) {
       console.error(
-        "🔴 CHAT RECIPIENT: Unexpected error:",
+        "🔴 CHAT RECIPIENT ERROR:",
         error
       );
     }
@@ -811,6 +814,9 @@ const sendChatBrowserPush = async (
 messageId: number | string,
 recipientId: string | null
 ) => {
+  if (Platform.OS !== "web") {
+  return;
+}
 console.log("💬 CHAT PUSH FUNCTION CALLED:", {
 messageId,
 recipientId,
