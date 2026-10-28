@@ -389,63 +389,113 @@ if (
     }
   })();
 }, []);
+/* 🟢 ================= LOAD CHAT RECIPIENT ================= */
+
 useEffect(() => {
+  let cancelled = false;
+
   const getReceiver = async () => {
-    if (!roomId || !userId) return;
+    if (!roomId || !userId) {
+      return;
+    }
 
-    const { data } = await (supabase as any)
-      .from("chat_participants")
-      .select("user_id")
-      .eq("room_id", roomId);
+    console.log("💬 Loading chat recipient:", {
+      roomId,
+      userId,
+    });
 
-    if (data) {
-      const other = data.find(
-        (x: any) => x.user_id !== userId
+    try {
+      const { data: participants, error: participantsError } =
+        await (supabase as any)
+          .from("chat_participants")
+          .select("user_id")
+          .eq("room_id", roomId);
+
+      if (participantsError) {
+        console.error(
+          "🔴 CHAT RECIPIENT: Participant query failed:",
+          participantsError
+        );
+        return;
+      }
+
+      const other = (participants || []).find(
+        (participant: any) =>
+          participant.user_id !== userId
       );
 
-     if (other) {
-  setReceiverId(other.user_id);
+      if (!other?.user_id) {
+        console.error(
+          "🔴 CHAT RECIPIENT: Other participant not found",
+          {
+            roomId,
+            userId,
+            participants,
+          }
+        );
+        return;
+      }
 
-  const { data: profile } = await (supabase as any)
-    .from("profiles")
-    .select(
-  "full_name, verified, chat_theme, chat_wallpaper"
-)
-    .eq("id", other.user_id)
-    .single();
+      if (cancelled) {
+        return;
+      }
 
- if (profile) {
-  setReceiverName(
-    profile.full_name || "User"
-  );
+      // Set the recipient before loading their profile.
+      setReceiverId(other.user_id);
 
-  setReceiverVerified(
-    profile.verified || false
-  );
+      console.log("🟢 CHAT RECIPIENT FOUND:", {
+        roomId,
+        userId,
+        receiverId: other.user_id,
+      });
 
-  if (
-    profile?.chat_theme
-  ) {
-    setThemeColor(
-      profile.chat_theme
-    );
-  }
+      const { data: profile, error: profileError } =
+        await (supabase as any)
+          .from("profiles")
+          .select(
+            "full_name, verified, chat_theme, chat_wallpaper"
+          )
+          .eq("id", other.user_id)
+          .maybeSingle();
 
-  if (
-    profile?.chat_wallpaper
-  ) {
-    setWallpaper(
-      profile.chat_wallpaper
-    );
-  }
-}
-}
+      if (profileError) {
+        console.error(
+          "🟡 CHAT RECIPIENT: Profile query failed:",
+          profileError
+        );
+      }
+
+      if (cancelled) {
+        return;
+      }
+
+      if (profile) {
+        setReceiverName(profile.full_name || "User");
+
+        setReceiverVerified(profile.verified === true);
+
+        if (profile.chat_theme) {
+          setThemeColor(profile.chat_theme);
+        }
+
+        if (profile.chat_wallpaper) {
+          setWallpaper(profile.chat_wallpaper);
+        }
+      }
+    } catch (error) {
+      console.error(
+        "🔴 CHAT RECIPIENT: Unexpected error:",
+        error
+      );
     }
   };
 
-  getReceiver();
-}, [roomId, userId]);
+  void getReceiver();
 
+  return () => {
+    cancelled = true;
+  };
+}, [roomId, userId]);
 /* ================= CHAT CLICK TRACKING ================= */
 useEffect(() => {
   const run = async () => {
@@ -751,10 +801,151 @@ const handleSlashReply = (
 
   setText(value);
 };
+
+/* 🟣 =====================================================
+💬 NASARA CHAT BROWSER PUSH — DIAGNOSTIC VERSION
+📍 FILE: app/chat/[id].tsx
+===================================================== */
+
+const sendChatBrowserPush = async (
+messageId: number | string,
+recipientId: string | null
+) => {
+console.log("💬 CHAT PUSH FUNCTION CALLED:", {
+messageId,
+recipientId,
+userId,
+platform: Platform.OS,
+});
+
+/* 🔵 1. CHECK REQUIRED VALUES */
+
+if (!messageId || !recipientId || !userId) {
+console.error("🔴 CHAT PUSH STOPPED: Missing values", {
+messageId,
+recipientId,
+userId,
+});
+return;
+}
+
+if (recipientId === userId) {
+console.error("🔴 CHAT PUSH STOPPED: Recipient is sender");
+return;
+}
+
+/* 🟢 2. GET THE LOGIN SESSION */
+
+try {
+const {
+data: { session },
+error: sessionError,
+} = await (supabase as any).auth.getSession();
+
+if (sessionError || !session?.access_token) {
+  console.error("🔴 CHAT PUSH: No valid session", sessionError);
+  return;
+}
+console.log("🟢 CHAT PUSH: Session found; calling backend");
+/* 🟣 3. CALL THE BACKEND */
+const response = await fetch(
+  "https://nasara-upload-server.onrender.com/chat-browser-push",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      message_id: messageId,
+      recipient_id: recipientId,
+    }),
+  }
+);
+const responseText = await response.text();
+console.log("💬 CHAT PUSH BACKEND RESPONSE:", {
+  status: response.status,
+  response: responseText,
+});
+
+} catch (error) {
+console.error("🔴 CHAT PUSH REQUEST ERROR:", error);
+}
+};
+
+/* 🟢 ================= GET VERIFIED CHAT RECIPIENT ================= */
+
+const getChatRecipientId = async (): Promise<string | null> => {
+  if (!roomId || !userId) {
+    console.error("🔴 CHAT RECIPIENT: Room ID or user ID is missing.");
+    return null;
+  }
+
+  try {
+    // 🟢 Get the actual buyer and seller from the chat room.
+    const { data: room, error } = await (supabase as any)
+      .from("chat_rooms")
+      .select("id, buyer_id, seller_id")
+      .eq("id", roomId)
+      .maybeSingle();
+
+    if (error) {
+      console.error("🔴 CHAT RECIPIENT: Could not load chat room:", error);
+      return null;
+    }
+
+    if (!room) {
+      console.error("🔴 CHAT RECIPIENT: Chat room not found:", roomId);
+      return null;
+    }
+
+    // 🟢 Determine the other user.
+    let actualReceiverId: string | null = null;
+
+    if (room.buyer_id === userId) {
+      actualReceiverId = room.seller_id;
+    } else if (room.seller_id === userId) {
+      actualReceiverId = room.buyer_id;
+    }
+
+    if (!actualReceiverId || actualReceiverId === userId) {
+      console.error("🔴 CHAT RECIPIENT: Could not identify the other user.", {
+        roomId,
+        userId,
+        buyerId: room.buyer_id,
+        sellerId: room.seller_id,
+      });
+
+      return null;
+    }
+
+    // 🟢 Update the existing recipient state.
+    setReceiverId(actualReceiverId);
+
+    console.log("🟢 CHAT RECIPIENT RESOLVED:", {
+      roomId,
+      receiverId: actualReceiverId,
+    });
+
+    return actualReceiverId;
+  } catch (error) {
+    console.error("🔴 CHAT RECIPIENT: Unexpected error:", error);
+    return null;
+  }
+};
   /* ================= SEND TEXT ================= */
   const sendText = async () => {
-    if (!text.trim() || !userId) return;
+  if (!text.trim() || !userId) return;
 
+  const actualReceiverId = await getChatRecipientId();
+
+  if (!actualReceiverId) {
+    console.error(
+      "🔴 MESSAGE NOT SENT: Could not identify the recipient."
+    );
+
+    return;
+  }
     const tempId = Date.now();
     const messageText = text.trim();
 
@@ -787,7 +978,7 @@ setText("");
         .insert({
   room_id: roomId,
   sender_id: userId,
-  receiver_id: receiverId,
+  receiver_id: actualReceiverId,
   text: messageText,
 
   reply_to: replyTo?.id || null,
@@ -824,17 +1015,29 @@ reply_image_url:
 
       if (error) throw error;
 
-      if (data) {
-        setReplyingStatus(null);
-      
-        setMessages((prev) =>
-         prev.map((m) =>
-  m.id === tempId
-    ? { ...data, image_url: data.image_url || m.image_url }
-    : m
-)
-        );
-      }
+if (data) {
+  setReplyingStatus(null);
+
+  setMessages((prev) =>
+    prev.map((m) =>
+      m.id === tempId
+        ? { ...data, image_url: data.image_url || m.image_url }
+        : m
+    )
+  );
+  console.log("🟢 CHAT MESSAGE INSERTED:", {
+messageId: data.id,
+receiverId: actualReceiverId,
+userId,
+});
+
+  /* 🟢 WEBSITE BROWSER NOTIFICATION */
+
+  void sendChatBrowserPush(
+    data.id,
+   actualReceiverId
+  );
+}
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setReplyTo(null);

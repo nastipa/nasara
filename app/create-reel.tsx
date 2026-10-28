@@ -143,6 +143,66 @@ export default function CreateReel() {
 
       console.log("✅ Post created:", newPost);
 
+      /* 🟣 =====================================================
+   🎥 NASARA REEL WEBSITE BROWSER NOTIFICATIONS
+   📍 ADD AFTER SUCCESSFUL REEL INSERTION
+   ===================================================== */
+
+try {
+  /* 🔵 1. GET THE CURRENT USER SESSION */
+
+  const {
+    data: { session },
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    console.error(
+      "🔴 REEL BROWSER PUSH SESSION ERROR:",
+      sessionError
+    );
+  } else if (session?.access_token && newPost?.id) {
+    /* 🟢 2. REQUEST WEBSITE BROWSER NOTIFICATIONS */
+
+    const response = await fetch(
+      "https://nasara-upload-server.onrender.com/reel-browser-push",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          ref_id: newPost.id,
+        }),
+      }
+    );
+
+    /* 🟡 3. CHECK THE SERVER RESPONSE */
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      console.error(
+        "🔴 REEL BROWSER PUSH FAILED:",
+        result
+      );
+    } else {
+      console.log(
+        "🟢 REEL BROWSER PUSH RESULT:",
+        result
+      );
+    }
+  }
+} catch (browserPushError) {
+  /* 🔴 4. DO NOT INTERRUPT REEL CREATION */
+
+  console.error(
+    "🔴 REEL BROWSER PUSH ERROR:",
+    browserPushError
+  );
+}
+
       /* ================= NOTIFY FOLLOWERS (LIGHTWEIGHT) ================= */
       const { data: followers } = await (supabase as any)
         .from("follows")
