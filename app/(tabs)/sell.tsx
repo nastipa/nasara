@@ -149,15 +149,16 @@ const [dealPrice, setDealPrice] = useState("");
   const [isNegotiable, setIsNegotiable] = useState(false);
 
   const categories = [
-    "education",
-    "electronics",
-    "fashion",
-    "vehicles",
-    "real estate",
-    "food & grocery",
-    "home & living",
-    "jobs",
-    "services",
+     "electronics",
+  "beauty & personal care",
+  "health & wellness",
+  "fashion",
+  "vehicles",
+  "real estate",
+  "food & grocery",
+  "home & living",
+  "education",
+  "others",
   ];
 
   /* ================= LOCATION ================= */
@@ -341,26 +342,67 @@ image_urls:
 Alert.alert("Success 🚀");
 
 router.replace("/browse");
-      /* ===== NOTIFICATIONS ===== */
-      setTimeout(async () => {
-        const { data: users } = await (supabase as any)
-          .from("profiles")
-          .select("id");
+     // ==========================================
+// 🔔 NOTIFICATIONS WITH SELLER NAME
+// ==========================================
+setTimeout(async () => {
 
-        if (users) {
-          const inserts = users.map((u: any) => ({
-            user_id: u.id,
-            type: "item",
-            title: "🛒 New Item",
-            body: title,
-            ref_id: newItem.id,
-            read: false,
-          }));
-
-          await (supabase as any)
-            .from("notifications")
-            .insert(inserts);
-        }
+    // 🟢 GET THE SELLER'S FULL NAME
+    const {
+      data: sellerProfile,
+      error: sellerError,
+    } = await (supabase as any)
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (sellerError) {
+      console.error(
+        "🔴 Could not retrieve seller name:",
+        sellerError.message
+      );
+    }
+    // 👤 SET THE SELLER NAME
+    const sellerName =
+      sellerProfile?.full_name?.trim() ||
+      "A Nasara User";
+    // 🟡 GET ALL USERS EXCEPT THE SELLER
+    const {
+      data: users,
+      error: usersError,
+    } = await (supabase as any)
+      .from("profiles")
+      .select("id")
+      .neq("id", user.id);
+    if (usersError) {
+      console.error(
+        "🔴 Could not retrieve notification recipients:",
+        usersError.message
+      );
+      return;
+    }
+    // 🔵 CREATE NOTIFICATIONS
+    if (users?.length) {
+      const inserts = users.map((u: any) => ({
+        user_id: u.id,
+        type: "item",
+        title: `🛒 New Item from ${sellerName}`,
+        body: title,
+        ref_id: newItem.id,
+        read: false,
+      }));
+      // 🟣 SAVE NOTIFICATIONS
+      const { error: notificationError } =
+        await (supabase as any)
+          .from("notifications")
+          .insert(inserts);
+      if (notificationError) {
+        console.error(
+          "🔴 Could not save item notifications:",
+          notificationError.message
+        );
+      }
+    }
 
       // =====================================================
 // SEND AUTHENTICATED ITEM PUSH NOTIFICATIONS

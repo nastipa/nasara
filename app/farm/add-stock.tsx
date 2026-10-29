@@ -341,28 +341,89 @@ if (videoUri) {
     )
   );
 
-const { error } =
-  await (supabase as any)
-    .from("farm_stocks")
-    .insert({
-      farm_id: farmId,
-      user_id: userId,
-      category,
-      product_name: productName,
-      quantity: Number(quantity),
-      unit,
-      price: Number(price || 0),
+// ============================================================
+// 🌾 SAVE FARM STOCK
+// ============================================================
 
-      image_url:
-        uploadedImages[0] || null,
+const {
+  data: savedStock,
+  error,
+} = await (supabase as any)
+  .from("farm_stocks")
+  .insert({
+    farm_id: farmId,
+    user_id: userId,
+    category,
+    product_name: productName,
+    quantity: Number(quantity),
+    unit,
+    price: Number(price || 0),
 
-      images:
-       
-          uploadedImages,
-          video_url: uploadedVideo,
-      
-    });
-      if (error) throw error;
+    image_url:
+      uploadedImages[0] || null,
+
+    images: uploadedImages,
+    video_url: uploadedVideo,
+  })
+  .select("id")
+  .single();
+
+if (error) throw error;
+
+// ============================================================
+// 🔔 REQUEST BROWSER PUSH NOTIFICATION
+// Only after the stock has been saved successfully.
+// ============================================================
+
+try {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (session?.access_token) {
+    const notificationResponse = await fetch(
+      "https://nasara-upload-server.onrender.com/farm-stock-browser-push",
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:
+            `Bearer ${session.access_token}`,
+        },
+
+        body: JSON.stringify({
+          stock_id: savedStock.id,
+        }),
+      }
+    );
+
+    if (!notificationResponse.ok) {
+      console.error(
+        "Farm stock notification request failed:",
+        notificationResponse.status
+      );
+    } else {
+      const notificationResult =
+        await notificationResponse.json();
+
+      console.log(
+        "🌾 Farm stock notification result:",
+        notificationResult
+      );
+    }
+  } else {
+    console.warn(
+      "Stock saved, but no active session was available for the notification request."
+    );
+  }
+} catch (notificationError) {
+  // A notification failure must not undo a successful stock save.
+  console.error(
+    "Farm stock notification error:",
+    notificationError
+  );
+}
 
       Alert.alert(
         "Success",

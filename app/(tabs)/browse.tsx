@@ -131,15 +131,16 @@ const [recentViews, setRecentViews] = useState<string[]>([]);
  const categories = [
   "All",
   "🔥 Friday Deals",
-  "education",
   "electronics",
+  "beauty & personal care",
+  "health & wellness",
   "fashion",
   "vehicles",
   "real estate",
   "food & grocery",
   "home & living",
-  "jobs",
-  "services",
+  "education",
+  "others",
 ];
 
   /* ================= GRID ================= */
