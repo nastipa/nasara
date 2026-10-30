@@ -1190,126 +1190,70 @@ useEffect(() => {
   return () => clearInterval(timer);
 }, []);
   /* ================= CLEAN ITEMS ================= */
-  const cleanItems =
-    useMemo(() => {
-      const specialIds =
-        new Set([
-          ...promoted.map(
-            (x) => x.id
-          ),
-          ...boosted.map(
-            (x) => x.id
-          ),
-        ]);
-
-      return items.filter(
-        (x) =>
-          !specialIds.has(
-            x.id
-          )
-      );
-    }, [
-      items,
-      promoted,
-      boosted,
-    ]);
-
- /* ================= FINAL AI FEED ================= */
-const combined: Item[] =
-  useMemo(() => {
-    const all =
-      selectedCategory ===
-      "All"
-        ? [
-            ...promoted,
-            ...boosted,
-            ...ads,
-            ...banners,
-            ...cleanItems,
-          ]
-        : [
-            ...promoted,
-            ...boosted,
-            ...cleanItems,
-          ];
-
-    const scored = all.map(
-      (item) => {
-        let score = 0;
-
-        /* PROMOTED BOOST */
-        if (
-          item.type ===
-          "promoted"
-        )
-          score += 100;
-
-        if (
-          item.type ===
-          "boosted"
-        )
-          score += 80;
-
-        /* RECENCY BOOST */
-        const ageHours =
-          Math.max(
-            1,
-            (
-              Date.now() -
-              new Date(
-                item.created_at ||
-                  ""
-              ).getTime()
-            ) /
-              3600000
-          );
-
-        score +=
-          50 / ageHours;
-
-        /* SEARCH BOOST */
-        if (
-          debouncedSearch &&
-          item.title
-            ?.toLowerCase()
-            .includes(
-              debouncedSearch.toLowerCase()
-            )
-        ) {
-          score += 40;
-        }
-
-        /* CATEGORY BOOST */
-        if (
-          selectedCategory !==
-            "All" &&
-          item.category ===
-            selectedCategory
-        ) {
-          score += 60;
-        }
-
-        return {
-          ...item,
-          aiScore: score,
-        };
-      }
-    );
-
-    return scored.sort(
-      (a: any, b: any) =>
-        b.aiScore -
-        a.aiScore
-    );
-  }, [
-    promoted,
-    boosted,
-    ads,
-    banners,
-    cleanItems,
-    selectedCategory,
-    debouncedSearch,
+const cleanItems = useMemo(() => {
+  const specialIds = new Set([
+    ...promoted.map((x) => x.id),
+    ...boosted.map((x) => x.id),
   ]);
+  return items.filter(
+    (x) => !specialIds.has(x.original_id || x.id)
+  );
+}, [items, promoted, boosted]);
+/* ================= PRIORITY-BASED FEED ================= */
+const combined: Item[] = useMemo(() => {
+  // Keep promotional sections in fixed priority order.
+  // Newer normal posts must never push promotions below them.
+  const sortByNewest = (list: Item[]) =>
+    [...list].sort((a, b) => {
+      const dateA = new Date(a.created_at || 0).getTime();
+      const dateB = new Date(b.created_at || 0).getTime();
+      return dateB - dateA;
+    });
+  // 1. Paid advertisements
+  const paidAds = sortByNewest(ads);
+  // 2. Banners
+  const bannerItems = sortByNewest(banners);
+  // 3. Promoted posts
+  const promotedItems = sortByNewest(promoted);
+  // 4. Boosted posts
+  const boostedItems = sortByNewest(boosted);
+  // 5. Normal posts
+  let normalItems = sortByNewest(cleanItems);
+  // Preserve category filtering for normal posts.
+  // Friday Deals are already filtered in loadItems.
+  if (
+    selectedCategory !== "All" &&
+    selectedCategory !== "🔥 Friday Deals"
+  ) {
+    normalItems = normalItems.filter(
+      (item) => item.category === selectedCategory
+    );
+  }
+  // Search filtering for promotional content.
+  // Normal posts are already filtered by the database query.
+  const search = debouncedSearch.toLowerCase();
+  const filterPromotions = (list: Item[]) => {
+    if (!search) return list;
+    return list.filter((item) =>
+      item.title?.toLowerCase().includes(search)
+    );
+  };
+  return [
+    ...filterPromotions(paidAds),
+    ...filterPromotions(bannerItems),
+    ...filterPromotions(promotedItems),
+    ...filterPromotions(boostedItems),
+    ...normalItems,
+  ];
+}, [
+  ads,
+  banners,
+  promoted,
+  boosted,
+  cleanItems,
+  selectedCategory,
+  debouncedSearch,
+]);
 const loadMore = () => {
   if (!hasMore || loadingMore) return;
   loadItems(false);
