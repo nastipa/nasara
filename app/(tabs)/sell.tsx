@@ -386,8 +386,13 @@ setTimeout(async () => {
       const inserts = users.map((u: any) => ({
         user_id: u.id,
         type: "item",
-        title: `🛒 New Item from ${sellerName}`,
-        body: title,
+       title: isDeal
+  ? `🔥 Friday Market Deal from ${sellerName}`
+  : `🛒 New Item from ${sellerName}`,
+
+body: isDeal
+  ? `${title} — Friday Deal Price: GH₵${dealPrice}`
+  : title,
         ref_id: newItem.id,
         read: false,
       }));
@@ -431,11 +436,18 @@ if (sessionError) {
         },
 
         body: JSON.stringify({
-          type: "item",
-          title: "🛒 New Item",
-          body: title,
-          ref_id: newItem.id,
-        }),
+  type: "item",
+
+  title: isDeal
+    ? `🔥 Friday Market Deal from ${sellerName}`
+    : `🛒 New Item from ${sellerName}`,
+
+  body: isDeal
+    ? `${title} — Friday Deal Price: GH₵${dealPrice}`
+    : title,
+
+  ref_id: newItem.id,
+}),
       }
     );
 
