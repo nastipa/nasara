@@ -1838,953 +1838,1291 @@ const deleteChat = async (
     ]
   );
 };
- /* ================= UI ================= */
+ /* =========================================================
+     🟢 NASARA CHAT — PREMIUM NAVY & GOLD UI
+     🔵 PRESERVES PRIVATE CHAT, GROUP CHAT AND STATUS FEATURES
+     🟡 PRESERVES EXISTING ROUTES AND DATABASE LOGIC
+     ========================================================= */
 
-return (
-  <View
-    style={{
-      flex: 1,
-      backgroundColor: "#fff",
-    }}
-  >
-
-    {/* STATUS BAR */}
-
-    <View style={{ height: 110 }}>
-  <ScrollView
-    horizontal
-      showsHorizontalScrollIndicator={false}
-      style={{
-        paddingVertical: 10,
-        paddingHorizontal: 10,
-        backgroundColor: "white",
-        borderBottomWidth: 1,
-        borderBottomColor: "#eee",
-      }}
-    >
-
-      {/* WRITE STATUS */}
-
-      <TouchableOpacity
-        onPress={() =>
-          setShowTextModal(true)
-        }
-        style={{
-          marginRight: 14,
-          alignItems: "center",
-        }}
-      >
-        <View
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            backgroundColor: "#111827",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Text
-            style={{
-              color: "white",
-              fontSize: 30,
-            }}
-          >
-            ✏️
-          </Text>
-        </View>
-
-        <Text
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-          }}
-        >
-          Write
-        </Text>
-      </TouchableOpacity>
-
-      {/* IMAGE STATUS */}
-<TouchableOpacity
-  onPress={() => handleMediaPick("image")}
-  style={{ marginRight: 14, alignItems: "center" }}
->
-  <View
-    style={{
-      width: 72,
-      height: 72,
-      borderRadius: 36,
-      backgroundColor: "#2563eb",
-      justifyContent: "center",
-      alignItems: "center",
-    }}
-  >
-    <Text
-      style={{
-        color: "white",
-        fontSize: 30,
-      }}
-    >
-      📷
-    </Text>
-  </View>
-
-  <Text
-    style={{
-      marginTop: 4,
-      fontSize: 12,
-    }}
-  >
-    Image
-  </Text>
-</TouchableOpacity>
-
-     {/* VIDEO STATUS */}
-
-<TouchableOpacity
-  onPress={() => handleMediaPick("video")}
-  style={{ marginRight: 14, alignItems: "center" }}
->
-        <View
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: 36,
-            backgroundColor: "#000",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <Text
-            style={{
-              color: "white",
-              fontSize: 28,
-            }}
-          >
-            ▶️
-          </Text>
-        </View>
-
-        <Text
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-          }}
-        >
-          Video
-        </Text>
-      </TouchableOpacity>
-       {/* VOICE STATUS */}
-      <TouchableOpacity
-  onPress={() => {
-    if (recording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  }}
-  style={{
-    marginRight: 14,
-    alignItems: "center",
-  }}
->
-  <View
-    style={{
-      width: 72,
-      height: 72,
-      borderRadius: 36,
-      backgroundColor:
-        recording
-          ? "#dc2626"
-          : "#16a34a",
-
-      justifyContent:
-        "center",
-
-      alignItems:
-        "center",
-    }}
-  >
-    <Text
-  style={{
-    color: "white",
-    fontSize: 30,
-  }}
->
-  {recording ? "🔴" : "🎤"}
-</Text>
-  </View>
-
-  <Text
-    style={{
-      marginTop: 4,
-      fontSize: 12,
-    }}
-  >{recording
-  ? `${Math.floor(recordingTime / 60)}:${String(
-      recordingTime % 60
-    ).padStart(2, "0")}`
-  : "audio"}
-  </Text>
-</TouchableOpacity>
-
-      {/* USER STATUSES */}
-
-      {statuses.map((status) => (
-        <TouchableOpacity
-          key={status.id}
-          onPress={() =>
-            router.push({
-              pathname:
-                "/status-view/[id]",
-              params: {
-                id: String(
-                  status.id
-                ),
-              },
-            })
-          }
-          style={{
-            marginRight: 14,
-            alignItems: "center",
-          }}
-        >
-
-          {/* TEXT STATUS */}
-
-          {status.type ===
-          "text" ? (
-            <View
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 36,
-                backgroundColor:
-                  status.background ||
-                  "#111827",
-                justifyContent:
-                  "center",
-                alignItems:
-                  "center",
-                padding: 8,
-              }}
-            >
-              <Text
-                numberOfLines={3}
-                style={{
-                  color: "white",
-                  fontSize: 10,
-                  textAlign:
-                    "center",
-                  fontWeight:
-                    "bold",
-                }}
-              >
-                {status.text}
-              </Text>
-            </View>
-          ) : status.type ===
-            "image" ? (
-            <Image
-              source={{
-                uri:
-                  status.media_url ||
-                  "",
-              }}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: 36,
-              }}
-              resizeMode="cover"
-            />
-         ) : status.type ===
-  "audio" ? (
-
-  <View
-    style={{
-      width: 72,
-      height: 72,
-      borderRadius: 36,
-      backgroundColor: "#16a34a",
-      justifyContent: "center",
-      alignItems: "center",
-    }}
-  >
-    <Text
-      style={{
-        fontSize: 30,
-        color: "white",
-      }}
-    >
-      🎤
-    </Text>
-  </View>
-
-) : (
-
-  <StatusVideo
-    uri={
-      status.media_url || ""
-    }
-  />
-
-          )}
-
-          <Text
-            numberOfLines={1}
-            style={{
-              marginTop: 5,
-              width: 72,
-              textAlign: "center",
-              fontSize: 11,
-              color: "#111",
-            }}
-          >
-            {status.profiles
-              ?.full_name ||
-              "User"}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-    </View>
-    {/* WEB PRIVACY MODAL */}
-
-<Modal
-  visible={showWebPrivacyModal}
-  transparent
-  animationType="fade"
->
-  <View
-    style={{
-      flex: 1,
-      backgroundColor:
-        "rgba(0,0,0,0.5)",
-      justifyContent:
-        "center",
-      alignItems: "center",
-      padding: 20,
-    }}
-  >
-
+  return (
     <View
       style={{
-        width: "100%",
-        maxWidth: 350,
-        backgroundColor: "white",
-        borderRadius: 18,
-        padding: 20,
+        flex: 1,
+        backgroundColor: "#F3F5F9",
       }}
     >
+      {/* =====================================================
+          🔵 PREMIUM HEADER
+          ===================================================== */}
 
-      <Text
-        style={{
-          fontSize: 18,
-          fontWeight: "bold",
-          marginBottom: 10,
-          color: "#111",
-        }}
-      >
-        Status Privacy
-      </Text>
-
-      <Text
-        style={{
-          color: "#666",
-          marginBottom: 25,
-        }}
-      >
-        Who can view this status?
-      </Text>
-
-      {/* PUBLIC */}
-
-     <TouchableOpacity
-  onPress={async () => {
-    setStatusVisibility("public");
-    setShowWebPrivacyModal(false);
-
-    if (!pendingMediaUri || !pendingMediaType) return;
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-const uploadedUrl = await uploadFile(
-  pendingMediaUri,
-  pendingMediaType
-);
-
-      await (supabase as any)
-        .from("statuses")
-        .insert({
-          user_id: user.id,
-          type:
-  pendingMediaType === "audio"
-    ? "audio"
-    : pendingMediaType,
-          media_url: uploadedUrl,
-          visibility: "public",
-        });
-
-      Alert.alert("Status uploaded");
-      loadStatuses();
-    } catch (e) {
-      console.log(e);
-      Alert.alert("Upload failed");
-    } finally {
-      setPendingMediaUri(null);
-      setPendingMediaType(null);
-    }
-  }}
-  style={{
-    backgroundColor: "#2563eb",
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 12,
-  }}
->
-  <Text
-    style={{
-      color: "white",
-      textAlign: "center",
-      fontWeight: "bold",
-    }}
-  >
-    🌍 Public
-  </Text>
-</TouchableOpacity>
-
-      {/* FOLLOWERS */}
-
-      <TouchableOpacity
-  onPress={async () => {
-    setStatusVisibility("followers");
-    setShowWebPrivacyModal(false);
-
-    if (!pendingMediaUri || !pendingMediaType) return;
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const uploadedUrl = await uploadFile(
-  pendingMediaUri,
-  pendingMediaType
-);
-      await (supabase as any)
-        .from("statuses")
-        .insert({
-          user_id: user.id,
-          type:
-  pendingMediaType === "audio"
-    ? "audio"
-    : pendingMediaType,
-          media_url: uploadedUrl,
-          visibility: "followers",
-        });
-
-      Alert.alert("Status uploaded");
-      loadStatuses();
-    } catch (e) {
-      console.log(e);
-      Alert.alert("Upload failed");
-    } finally {
-      setPendingMediaUri(null);
-      setPendingMediaType(null);
-    }
-  }}
-  style={{
-    backgroundColor: "#111827",
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 12,
-  }}
->
-  <Text
-    style={{
-      color: "white",
-      textAlign: "center",
-      fontWeight: "bold",
-    }}
-  >
-    👥 Followers
-  </Text>
-</TouchableOpacity>
-      {/* CANCEL */}
-
-      <TouchableOpacity
-       onPress={() => {
-  setShowWebPrivacyModal(false);
-  setPendingMediaUri(null);
-  setPendingMediaType(null);
-}}
-        style={{
-          padding: 14,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: "#ddd",
-        }}
-      >
-        <Text
-          style={{
-            textAlign: "center",
-            fontWeight: "bold",
-            color: "#111",
-          }}
-        >
-          ❌ Cancel
-        </Text>
-      </TouchableOpacity>
-
-    </View>
-  </View>
-</Modal>
-    {/* TEXT STATUS MODAL */}
-
-    <Modal
-      visible={showTextModal}
-      animationType="slide"
-    >
       <View
         style={{
-          flex: 1,
-          backgroundColor:
-            selectedColor,
-          padding: 20,
-          justifyContent:
-            "center",
+          backgroundColor: "#101B35",
+          paddingTop: Platform.OS === "ios" ? 12 : 8,
+          paddingHorizontal: 20,
+          paddingBottom: 20,
+          borderBottomLeftRadius: 24,
+          borderBottomRightRadius: 24,
         }}
       >
-
-        {/* CLOSE */}
-
-        <TouchableOpacity
-          onPress={() =>
-            setShowTextModal(
-              false
-            )
-          }
+        <View
           style={{
-            position: "absolute",
-            top: 60,
-            right: 20,
-            zIndex: 10,
-          }}
-        >
-          <Text
-            style={{
-              color: "white",
-              fontSize: 28,
-              fontWeight:
-                "bold",
-            }}
-          >
-            ✕
-          </Text>
-        </TouchableOpacity>
-
-        {/* INPUT */}
-
-        <TextInput
-          value={textStatus}
-          onChangeText={
-            setTextStatus
-          }
-          placeholder="Write your status..."
-          placeholderTextColor="rgba(255,255,255,0.7)"
-          multiline
-          style={{
-            color: "white",
-            fontSize: 30,
-            textAlign: "center",
-            fontWeight: "bold",
-          }}
-        />
-
-        {/* COLORS */}
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
-          style={{
-            marginTop: 40,
-          }}
-        >
-          {colors.map(
-            (color) => (
-              <TouchableOpacity
-                key={color}
-                onPress={() =>
-                  setSelectedColor(
-                    color
-                  )
-                }
-                style={{
-                  width: 50,
-                  height: 50,
-                  borderRadius:
-                    25,
-                  backgroundColor:
-                    color,
-                  marginRight: 12,
-                  borderWidth:
-                    selectedColor ===
-                    color
-                      ? 3
-                      : 0,
-                  borderColor:
-                    "white",
-                }}
-              />
-            )
-          )}
-        </ScrollView>
-        {/* VISIBILITY */}
-
-<View
-  style={{
-    flexDirection: "row",
-    marginTop: 25,
-    justifyContent: "center",
-  }}
->
-  <TouchableOpacity
-    onPress={() =>
-      setStatusVisibility(
-        "public"
-      )
-    }
-    style={{
-      backgroundColor:
-        statusVisibility ===
-        "public"
-          ? "white"
-          : "rgba(255,255,255,0.2)",
-
-      paddingVertical: 12,
-      paddingHorizontal: 22,
-      borderRadius: 12,
-      marginRight: 12,
-    }}
-  >
-    <Text
-      style={{
-        color:
-          statusVisibility ===
-          "public"
-            ? "#111"
-            : "white",
-
-        fontWeight: "bold",
-      }}
-    >
-      🌍 Public
-    </Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity
-    onPress={() =>
-      setStatusVisibility(
-        "followers"
-      )
-    }
-    style={{
-      backgroundColor:
-        statusVisibility ===
-        "followers"
-          ? "white"
-          : "rgba(255,255,255,0.2)",
-
-      paddingVertical: 12,
-      paddingHorizontal: 22,
-      borderRadius: 12,
-    }}
-  >
-    <Text
-      style={{
-        color:
-          statusVisibility ===
-          "followers"
-            ? "#111"
-            : "white",
-
-        fontWeight: "bold",
-      }}
-    >
-      👥 Followers
-    </Text>
-  </TouchableOpacity>
-</View>
-        {/* POST BUTTON */}
-
-        <TouchableOpacity
-          onPress={() =>
-            uploadStatus("text")
-          }
-          style={{
-            backgroundColor:
-              "white",
-            padding: 16,
-            borderRadius: 14,
-            marginTop: 40,
-          }}
-        >
-          <Text
-            style={{
-              textAlign: "center",
-              fontWeight: "bold",
-              fontSize: 16,
-            }}
-          >
-            Post Status
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </Modal>
-    {/* TOP ACTIONS */}
-
-<View
-  style={{
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  }}
->
-  <Text
-    style={{
-      fontSize: 18,
-      fontWeight: "bold",
-      color: "#111",
-    }}
-  >
-    Chats
-  </Text>
-
-  <TouchableOpacity
-    onPress={() =>
-      router.push("/groups/create")
-    }
-    style={{
-      backgroundColor: "#2563eb",
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-      borderRadius: 12,
-    }}
-  >
-    <Text
-      style={{
-        color: "white",
-        fontWeight: "bold",
-      }}
-    >
-      👥 Create Group
-    </Text>
-  </TouchableOpacity>
-</View>
-
-    {/* CHAT LIST */}
-
-    <FlatList
-  contentContainerStyle={{ paddingTop: 8 }}
-      data={conversations}
-      keyExtractor={(item) =>
-        item.room_id
-      }
-
-      ListEmptyComponent={
-        <Text
-          style={{
-            textAlign: "center",
-            marginTop: 40,
-            color: "#666",
-          }}
-        >
-          No conversations yet
-        </Text>
-      }
-
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          onLongPress={() =>
-  deleteChat(
-    item.room_id,
-    item.chat_type
-  )
-}
-
-          onPress={() =>
-  router.push({
-    pathname:
-      item.chat_type === "group"
-        ? "/groups/[id]"
-        : "/chat/[id]",
-
-    params: {
-      id: item.room_id,
-    },
-  })
-}
-
-          style={{
-            padding: 14,
-            borderBottomWidth: 1,
-            borderColor: "#eee",
             flexDirection: "row",
+            justifyContent: "space-between",
             alignItems: "center",
-            backgroundColor:
-              "white",
           }}
         >
-
-          {/* PROFILE */}
-
-          <Image
-            source={{
-              uri:
-                item.avatar_url ||
-                "https://ui-avatars.com/api/?name=User",
-            }}
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 28,
-              marginRight: 12,
-            }}
-          />
-
-          {/* CHAT INFO */}
-
-          <View
-            style={{
-              flex: 1,
-            }}
-          >
-            <View
+          <View>
+            <Text
               style={{
-                flexDirection:
-                  "row",
-                alignItems:
-                  "center",
+                color: "#D6AD55",
+                fontSize: 11,
+                fontWeight: "800",
+                letterSpacing: 3,
               }}
             >
-              <Text
-                style={{
-                  fontWeight:
-                    "bold",
-                  fontSize: 16,
-                  color: "#111",
-                }}
-              >
-                {item.full_name}
-              </Text>
-               {item.chat_type === "group" && (
-  <Text
-    style={{
-      marginLeft: 6,
-      fontSize: 12,
-    }}
-  >
-    👥
-  </Text>
-)}
-              {item.verified && (
-                <Text
-                  style={{
-                    marginLeft: 5,
-                    color:
-                      "#2563eb",
-                  }}
-                >
-                  ✔️
-                </Text>
-              )}
-            </View>
+              NASARA
+            </Text>
 
             <Text
-              numberOfLines={1}
               style={{
-                color: "#666",
-                marginTop: 4,
+                color: "#FFFFFF",
+                fontSize: 27,
+                fontWeight: "900",
+                marginTop: 3,
               }}
             >
-              {
-                item.last_message
-              }
+              Messages
+            </Text>
+
+            <Text
+              style={{
+                color: "#B8C2D6",
+                fontSize: 12,
+                marginTop: 3,
+              }}
+            >
+              Stay connected with your community
             </Text>
           </View>
 
-          {/* RIGHT SIDE */}
-
-          <View
+          <TouchableOpacity
+            onPress={() => router.push("/groups/create")}
+            activeOpacity={0.8}
             style={{
-              alignItems:
-                "flex-end",
+              backgroundColor: "#D6AD55",
+              paddingHorizontal: 15,
+              paddingVertical: 12,
+              borderRadius: 14,
+              flexDirection: "row",
+              alignItems: "center",
             }}
           >
+            <Text
+              style={{
+                fontSize: 17,
+                marginRight: 6,
+              }}
+            >
+              👥
+            </Text>
 
-            {!!item.last_time && (
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: "#999",
-                  marginBottom: 6,
-                }}
-              >
-                {new Date(
-                  item.last_time
-                ).toLocaleTimeString()}
+            <Text
+              style={{
+                color: "#101B35",
+                fontSize: 12,
+                fontWeight: "900",
+              }}
+            >
+              New Group
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* HEADER SUMMARY */}
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: 18,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "rgba(255,255,255,0.10)",
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 20,
+              flexDirection: "row",
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 4,
+                backgroundColor: "#D6AD55",
+                marginRight: 7,
+              }}
+            />
+
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 11,
+                fontWeight: "700",
+              }}
+            >
+              {conversations.length} conversations
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* =====================================================
+          🟡 STATUS SECTION
+          ===================================================== */}
+
+      <View
+        style={{
+          marginTop: 14,
+          marginHorizontal: 14,
+          backgroundColor: "#FFFFFF",
+          borderRadius: 20,
+          paddingTop: 15,
+          paddingBottom: 10,
+          elevation: 2,
+          shadowColor: "#101B35",
+          shadowOpacity: 0.04,
+          shadowRadius: 8,
+        }}
+      >
+        <View
+          style={{
+            paddingHorizontal: 16,
+            marginBottom: 12,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <View>
+            <Text
+              style={{
+                fontSize: 15,
+                fontWeight: "900",
+                color: "#101B35",
+              }}
+            >
+              Status Updates
+            </Text>
+
+            <Text
+              style={{
+                color: "#8992A3",
+                fontSize: 11,
+                marginTop: 3,
+              }}
+            >
+              Share a moment with your community
+            </Text>
+          </View>
+
+          <Text
+            style={{
+              color: "#B58B37",
+              fontSize: 11,
+              fontWeight: "800",
+            }}
+          >
+            24 HOURS
+          </Text>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{
+            paddingHorizontal: 14,
+          }}
+        >
+          {/* WRITE STATUS */}
+
+          <TouchableOpacity
+            onPress={() => setShowTextModal(true)}
+            activeOpacity={0.8}
+            style={{
+              width: 75,
+              alignItems: "center",
+              marginRight: 12,
+            }}
+          >
+            <View
+              style={{
+                width: 66,
+                height: 66,
+                borderRadius: 23,
+                backgroundColor: "#101B35",
+                justifyContent: "center",
+                alignItems: "center",
+                borderWidth: 2,
+                borderColor: "#D6AD55",
+              }}
+            >
+              <Text style={{ fontSize: 27 }}>✏️</Text>
+            </View>
+
+            <Text
+              style={{
+                marginTop: 7,
+                fontSize: 11,
+                color: "#101B35",
+                fontWeight: "800",
+              }}
+            >
+              Write
+            </Text>
+          </TouchableOpacity>
+
+          {/* IMAGE STATUS */}
+
+          <TouchableOpacity
+            onPress={() => handleMediaPick("image")}
+            activeOpacity={0.8}
+            style={{
+              width: 75,
+              alignItems: "center",
+              marginRight: 12,
+            }}
+          >
+            <View
+              style={{
+                width: 66,
+                height: 66,
+                borderRadius: 23,
+                backgroundColor: "#E8F0FF",
+                justifyContent: "center",
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: "#D9E4FA",
+              }}
+            >
+              <Text style={{ fontSize: 27 }}>📷</Text>
+            </View>
+
+            <Text
+              style={{
+                marginTop: 7,
+                fontSize: 11,
+                color: "#101B35",
+                fontWeight: "700",
+              }}
+            >
+              Image
+            </Text>
+          </TouchableOpacity>
+
+          {/* VIDEO STATUS */}
+
+          <TouchableOpacity
+            onPress={() => handleMediaPick("video")}
+            activeOpacity={0.8}
+            style={{
+              width: 75,
+              alignItems: "center",
+              marginRight: 12,
+            }}
+          >
+            <View
+              style={{
+                width: 66,
+                height: 66,
+                borderRadius: 23,
+                backgroundColor: "#F0ECFA",
+                justifyContent: "center",
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: "#E5DDF5",
+              }}
+            >
+              <Text style={{ fontSize: 27 }}>▶️</Text>
+            </View>
+
+            <Text
+              style={{
+                marginTop: 7,
+                fontSize: 11,
+                color: "#101B35",
+                fontWeight: "700",
+              }}
+            >
+              Video
+            </Text>
+          </TouchableOpacity>
+
+          {/* AUDIO STATUS */}
+
+          <TouchableOpacity
+            onPress={() => {
+              if (recording) {
+                stopRecording();
+              } else {
+                startRecording();
+              }
+            }}
+            activeOpacity={0.8}
+            style={{
+              width: 75,
+              alignItems: "center",
+              marginRight: 12,
+            }}
+          >
+            <View
+              style={{
+                width: 66,
+                height: 66,
+                borderRadius: 23,
+                backgroundColor: recording
+                  ? "#FDECEC"
+                  : "#E7F5EF",
+                justifyContent: "center",
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: recording
+                  ? "#F5CACA"
+                  : "#CDE9DA",
+              }}
+            >
+              <Text style={{ fontSize: 27 }}>
+                {recording ? "🔴" : "🎤"}
               </Text>
-            )}
+            </View>
 
-            {item.unread_count >
-              0 && (
+            <Text
+              style={{
+                marginTop: 7,
+                fontSize: 11,
+                color: recording ? "#DC2626" : "#101B35",
+                fontWeight: "700",
+              }}
+            >
+              {recording
+                ? `${Math.floor(recordingTime / 60)}:${String(
+                    recordingTime % 60
+                  ).padStart(2, "0")}`
+                : "Audio"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* EXISTING USER STATUSES */}
+
+          {statuses.map((status) => (
+            <TouchableOpacity
+              key={status.id}
+              activeOpacity={0.8}
+              onPress={() =>
+                router.push({
+                  pathname: "/status-view/[id]",
+                  params: {
+                    id: String(status.id),
+                  },
+                })
+              }
+              style={{
+                width: 75,
+                alignItems: "center",
+                marginRight: 12,
+              }}
+            >
               <View
                 style={{
-                  backgroundColor:
-                    "#22c55e",
-                  minWidth: 24,
-                  height: 24,
-                  borderRadius: 12,
-                  justifyContent:
-                    "center",
-                  alignItems:
-                    "center",
-                  paddingHorizontal: 6,
+                  width: 70,
+                  height: 70,
+                  borderRadius: 25,
+                  padding: 3,
+                  backgroundColor: "#D6AD55",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                {status.type === "text" ? (
+                  <View
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 22,
+                      backgroundColor:
+                        status.background || "#101B35",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      padding: 7,
+                    }}
+                  >
+                    <Text
+                      numberOfLines={3}
+                      style={{
+                        color: "#FFFFFF",
+                        fontSize: 9,
+                        fontWeight: "800",
+                        textAlign: "center",
+                      }}
+                    >
+                      {status.text}
+                    </Text>
+                  </View>
+                ) : status.type === "image" ? (
+                  <Image
+                    source={{
+                      uri: status.media_url || "",
+                    }}
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 22,
+                    }}
+                    resizeMode="cover"
+                  />
+                ) : status.type === "audio" ? (
+                  <View
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: 22,
+                      backgroundColor: "#16845B",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 27 }}>🎤</Text>
+                  </View>
+                ) : (
+                  <View
+                    style={{
+                      borderRadius: 22,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <StatusVideo uri={status.media_url || ""} />
+                  </View>
+                )}
+              </View>
+
+              <Text
+                numberOfLines={1}
+                style={{
+                  marginTop: 6,
+                  width: 75,
+                  textAlign: "center",
+                  fontSize: 10,
+                  color: "#39445A",
+                  fontWeight: "700",
+                }}
+              >
+                {status.profiles?.full_name || "User"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* =====================================================
+          🔵 CONVERSATION SECTION HEADING
+          ===================================================== */}
+
+      <View
+        style={{
+          paddingHorizontal: 19,
+          paddingTop: 20,
+          paddingBottom: 10,
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <View>
+          <Text
+            style={{
+              fontSize: 19,
+              fontWeight: "900",
+              color: "#101B35",
+            }}
+          >
+            Recent Conversations
+          </Text>
+
+          <Text
+            style={{
+              color: "#8992A3",
+              fontSize: 11,
+              marginTop: 3,
+            }}
+          >
+            Your private and group chats
+          </Text>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: "#F5EBD5",
+            paddingHorizontal: 11,
+            paddingVertical: 7,
+            borderRadius: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: "#96712D",
+              fontSize: 11,
+              fontWeight: "900",
+            }}
+          >
+            {conversations.length}
+          </Text>
+        </View>
+      </View>
+
+      {/* =====================================================
+          🟢 CHAT LIST
+          ===================================================== */}
+
+      <FlatList
+        data={conversations}
+        keyExtractor={(item) => item.room_id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: 14,
+          paddingBottom: 30,
+          flexGrow: 1,
+        }}
+        ListEmptyComponent={
+          <View
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "center",
+              paddingVertical: 45,
+              paddingHorizontal: 30,
+            }}
+          >
+            <View
+              style={{
+                width: 82,
+                height: 82,
+                borderRadius: 28,
+                backgroundColor: "#E9EDF5",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ fontSize: 35 }}>💬</Text>
+            </View>
+
+            <Text
+              style={{
+                fontSize: 17,
+                color: "#101B35",
+                fontWeight: "900",
+                marginTop: 16,
+              }}
+            >
+              No conversations yet
+            </Text>
+
+            <Text
+              style={{
+                fontSize: 12,
+                color: "#8992A3",
+                textAlign: "center",
+                marginTop: 7,
+                lineHeight: 19,
+              }}
+            >
+              Your conversations will appear here when you
+              start connecting with people on Nasara.
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onLongPress={() =>
+              deleteChat(item.room_id, item.chat_type)
+            }
+            onPress={() =>
+              router.push({
+                pathname:
+                  item.chat_type === "group"
+                    ? "/groups/[id]"
+                    : "/chat/[id]",
+                params: {
+                  id: item.room_id,
+                },
+              })
+            }
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 18,
+              padding: 13,
+              marginBottom: 9,
+              flexDirection: "row",
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: item.unread_count > 0
+                ? "#E9D8B3"
+                : "#EDF0F5",
+              elevation: 1,
+              shadowColor: "#101B35",
+              shadowOpacity: 0.035,
+              shadowRadius: 5,
+            }}
+          >
+            {/* PROFILE IMAGE */}
+
+            <View
+              style={{
+                width: 57,
+                height: 57,
+                borderRadius: 20,
+                padding: 2,
+                backgroundColor: item.unread_count > 0
+                  ? "#D6AD55"
+                  : "#E8ECF3",
+                marginRight: 12,
+              }}
+            >
+              <Image
+                source={{
+                  uri:
+                    item.avatar_url ||
+                    "https://ui-avatars.com/api/?name=User",
+                }}
+                style={{
+                  width: 53,
+                  height: 53,
+                  borderRadius: 18,
+                  backgroundColor: "#E8ECF3",
+                }}
+              />
+            </View>
+
+            {/* CHAT DETAILS */}
+
+            <View
+              style={{
+                flex: 1,
+                minWidth: 0,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
                 }}
               >
                 <Text
+                  numberOfLines={1}
                   style={{
-                    color:
-                      "white",
-                    fontWeight:
-                      "bold",
-                    fontSize: 12,
+                    fontSize: 14,
+                    fontWeight: item.unread_count > 0
+                      ? "900"
+                      : "800",
+                    color: "#101B35",
+                    flexShrink: 1,
                   }}
                 >
-                  {
-                    item.unread_count
+                  {item.full_name}
+                </Text>
+
+                {item.chat_type === "group" && (
+                  <View
+                    style={{
+                      backgroundColor: "#EEF1F8",
+                      paddingHorizontal: 6,
+                      paddingVertical: 3,
+                      borderRadius: 6,
+                      marginLeft: 6,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 9,
+                        color: "#52617D",
+                        fontWeight: "800",
+                      }}
+                    >
+                      GROUP
+                    </Text>
+                  </View>
+                )}
+
+                {item.verified && (
+                  <Text
+                    style={{
+                      marginLeft: 5,
+                      color: "#2876D2",
+                      fontSize: 13,
+                    }}
+                  >
+                    ✔️
+                  </Text>
+                )}
+              </View>
+
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: item.unread_count > 0
+                    ? "#34415A"
+                    : "#8992A3",
+                  fontSize: 12,
+                  marginTop: 6,
+                  fontWeight: item.unread_count > 0
+                    ? "700"
+                    : "400",
+                }}
+              >
+                {item.last_message}
+              </Text>
+            </View>
+
+            {/* TIME AND UNREAD COUNT */}
+
+            <View
+              style={{
+                alignItems: "flex-end",
+                justifyContent: "center",
+                marginLeft: 8,
+              }}
+            >
+              {!!item.last_time && (
+                <Text
+                  style={{
+                    fontSize: 10,
+                    color: item.unread_count > 0
+                      ? "#A47B2E"
+                      : "#9AA2B1",
+                    fontWeight: item.unread_count > 0
+                      ? "800"
+                      : "500",
+                    marginBottom: 7,
+                  }}
+                >
+                  {new Date(
+                    item.last_time
+                  ).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </Text>
+              )}
+
+              {item.unread_count > 0 && (
+                <View
+                  style={{
+                    minWidth: 22,
+                    height: 22,
+                    borderRadius: 11,
+                    paddingHorizontal: 6,
+                    backgroundColor: "#D6AD55",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#101B35",
+                      fontSize: 10,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {item.unread_count}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        )}
+      />
+
+      {/* =====================================================
+          🟡 STATUS PRIVACY MODAL
+          ===================================================== */}
+
+      <Modal
+        visible={showWebPrivacyModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowWebPrivacyModal(false);
+          setPendingMediaUri(null);
+          setPendingMediaType(null);
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(9,17,35,0.72)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 370,
+              backgroundColor: "#FFFFFF",
+              borderRadius: 24,
+              padding: 23,
+            }}
+          >
+            <View
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 17,
+                backgroundColor: "#F7EEDB",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 15,
+              }}
+            >
+              <Text style={{ fontSize: 25 }}>🔐</Text>
+            </View>
+
+            <Text
+              style={{
+                fontSize: 21,
+                fontWeight: "900",
+                color: "#101B35",
+              }}
+            >
+              Status Privacy
+            </Text>
+
+            <Text
+              style={{
+                color: "#8992A3",
+                fontSize: 13,
+                marginTop: 7,
+                marginBottom: 22,
+              }}
+            >
+              Choose who can view your status update.
+            </Text>
+
+            {/* PUBLIC */}
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={async () => {
+                setStatusVisibility("public");
+                setShowWebPrivacyModal(false);
+
+                if (!pendingMediaUri || !pendingMediaType) {
+                  return;
+                }
+
+                try {
+                  const {
+                    data: { user },
+                  } = await supabase.auth.getUser();
+
+                  if (!user) return;
+
+                  const uploadedUrl = await uploadFile(
+                    pendingMediaUri,
+                    pendingMediaType
+                  );
+
+                  const { error } = await (supabase as any)
+                    .from("statuses")
+                    .insert({
+                      user_id: user.id,
+                      type: pendingMediaType,
+                      media_url: uploadedUrl,
+                      visibility: "public",
+                    });
+
+                  if (error) {
+                    throw error;
                   }
+
+                  Alert.alert("Status uploaded");
+                  loadStatuses();
+                } catch (e) {
+                  console.log(e);
+                  Alert.alert("Upload failed");
+                } finally {
+                  setPendingMediaUri(null);
+                  setPendingMediaType(null);
+                }
+              }}
+              style={{
+                backgroundColor: "#101B35",
+                padding: 16,
+                borderRadius: 14,
+                marginBottom: 11,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 21, marginRight: 12 }}>
+                🌍
+              </Text>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontWeight: "900",
+                    fontSize: 14,
+                  }}
+                >
+                  Public
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#B8C2D6",
+                    fontSize: 11,
+                    marginTop: 3,
+                  }}
+                >
+                  Everyone can view your status
                 </Text>
               </View>
-            )}
+
+              <Text style={{ color: "#D6AD55", fontSize: 19 }}>
+                ›
+              </Text>
+            </TouchableOpacity>
+
+            {/* FOLLOWERS */}
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={async () => {
+                setStatusVisibility("followers");
+                setShowWebPrivacyModal(false);
+
+                if (!pendingMediaUri || !pendingMediaType) {
+                  return;
+                }
+
+                try {
+                  const {
+                    data: { user },
+                  } = await supabase.auth.getUser();
+
+                  if (!user) return;
+
+                  const uploadedUrl = await uploadFile(
+                    pendingMediaUri,
+                    pendingMediaType
+                  );
+
+                  const { error } = await (supabase as any)
+                    .from("statuses")
+                    .insert({
+                      user_id: user.id,
+                      type: pendingMediaType,
+                      media_url: uploadedUrl,
+                      visibility: "followers",
+                    });
+
+                  if (error) {
+                    throw error;
+                  }
+
+                  Alert.alert("Status uploaded");
+                  loadStatuses();
+                } catch (e) {
+                  console.log(e);
+                  Alert.alert("Upload failed");
+                } finally {
+                  setPendingMediaUri(null);
+                  setPendingMediaType(null);
+                }
+              }}
+              style={{
+                backgroundColor: "#F3F5F9",
+                padding: 16,
+                borderRadius: 14,
+                marginBottom: 15,
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 21, marginRight: 12 }}>
+                👥
+              </Text>
+
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: "#101B35",
+                    fontWeight: "900",
+                    fontSize: 14,
+                  }}
+                >
+                  Followers
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#8992A3",
+                    fontSize: 11,
+                    marginTop: 3,
+                  }}
+                >
+                  Only people who follow you
+                </Text>
+              </View>
+
+              <Text style={{ color: "#B58B37", fontSize: 19 }}>
+                ›
+              </Text>
+            </TouchableOpacity>
+
+            {/* CANCEL */}
+
+            <TouchableOpacity
+              onPress={() => {
+                setShowWebPrivacyModal(false);
+                setPendingMediaUri(null);
+                setPendingMediaType(null);
+              }}
+              style={{
+                padding: 14,
+                borderRadius: 13,
+                borderWidth: 1,
+                borderColor: "#E5E8EF",
+              }}
+            >
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: "#687386",
+                  fontWeight: "800",
+                }}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      )}
-    />
- </View>
-);
+        </View>
+      </Modal>
+
+      {/* =====================================================
+          🟢 TEXT STATUS MODAL
+          ===================================================== */}
+
+      <Modal
+        visible={showTextModal}
+        animationType="slide"
+        onRequestClose={() => setShowTextModal(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: selectedColor,
+            padding: 22,
+            justifyContent: "center",
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setShowTextModal(false)}
+            style={{
+              position: "absolute",
+              top: Platform.OS === "ios" ? 60 : 30,
+              right: 22,
+              zIndex: 10,
+              width: 43,
+              height: 43,
+              borderRadius: 15,
+              backgroundColor: "rgba(255,255,255,0.18)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFFFFF",
+                fontSize: 23,
+                fontWeight: "900",
+              }}
+            >
+              ✕
+            </Text>
+          </TouchableOpacity>
+
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.7)",
+              textAlign: "center",
+              fontSize: 12,
+              fontWeight: "800",
+              letterSpacing: 2,
+              marginBottom: 25,
+            }}
+          >
+            NASARA STATUS
+          </Text>
+
+          <TextInput
+            value={textStatus}
+            onChangeText={setTextStatus}
+            placeholder="What's on your mind?"
+            placeholderTextColor="rgba(255,255,255,0.65)"
+            multiline
+            textAlignVertical="center"
+            style={{
+              color: "#FFFFFF",
+              fontSize: 29,
+              textAlign: "center",
+              fontWeight: "800",
+              minHeight: 150,
+              paddingHorizontal: 10,
+            }}
+          />
+
+          {/* BACKGROUND COLOURS */}
+
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.8)",
+              fontSize: 12,
+              fontWeight: "800",
+              marginTop: 30,
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
+            CHOOSE BACKGROUND
+          </Text>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              justifyContent: "center",
+              flexGrow: 1,
+            }}
+          >
+            {colors.map((color) => (
+              <TouchableOpacity
+                key={color}
+                onPress={() => setSelectedColor(color)}
+                style={{
+                  width: 43,
+                  height: 43,
+                  borderRadius: 15,
+                  backgroundColor: color,
+                  marginRight: 10,
+                  borderWidth: selectedColor === color ? 3 : 1,
+                  borderColor: "#FFFFFF",
+                }}
+              />
+            ))}
+          </ScrollView>
+
+          {/* VISIBILITY */}
+
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.8)",
+              fontSize: 12,
+              fontWeight: "800",
+              textAlign: "center",
+              marginTop: 27,
+              marginBottom: 12,
+            }}
+          >
+            WHO CAN VIEW?
+          </Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "center",
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setStatusVisibility("public")}
+              style={{
+                backgroundColor: statusVisibility === "public"
+                  ? "#FFFFFF"
+                  : "rgba(255,255,255,0.18)",
+                paddingVertical: 12,
+                paddingHorizontal: 20,
+                borderRadius: 13,
+                marginRight: 9,
+              }}
+            >
+              <Text
+                style={{
+                  color: statusVisibility === "public"
+                    ? "#101B35"
+                    : "#FFFFFF",
+                  fontWeight: "900",
+                }}
+              >
+                🌍 Public
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setStatusVisibility("followers")}
+              style={{
+                backgroundColor: statusVisibility === "followers"
+                  ? "#FFFFFF"
+                  : "rgba(255,255,255,0.18)",
+                paddingVertical: 12,
+                paddingHorizontal: 20,
+                borderRadius: 13,
+              }}
+            >
+              <Text
+                style={{
+                  color: statusVisibility === "followers"
+                    ? "#101B35"
+                    : "#FFFFFF",
+                  fontWeight: "900",
+                }}
+              >
+                👥 Followers
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* POST STATUS */}
+
+          <TouchableOpacity
+            onPress={() => uploadStatus("text")}
+            activeOpacity={0.85}
+            style={{
+              backgroundColor: "#D6AD55",
+              padding: 17,
+              borderRadius: 15,
+              marginTop: 35,
+            }}
+          >
+            <Text
+              style={{
+                textAlign: "center",
+                color: "#101B35",
+                fontWeight: "900",
+                fontSize: 15,
+              }}
+            >
+              POST STATUS
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    </View>
+  );
 }

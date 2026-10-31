@@ -1356,10 +1356,10 @@ const getDealTimeLeft = (dealEnd?: string) => {
       removeClippedSubviews={true}
       columnWrapperStyle={{ gap: 12 }}
       contentContainerStyle={{
-  padding: 12,
-  backgroundColor: "#0f172a",
+  padding: 14,
+  backgroundColor: "#F5F7FB",
 }}
-style={{ backgroundColor: "#0f172a" }}
+style={{ backgroundColor: "#F5F7FB" }}
       onEndReached={loadMore}
       onEndReachedThreshold={0.6}
       ListFooterComponent={
@@ -1418,186 +1418,356 @@ style={{ backgroundColor: "#0f172a" }}
               No sellers are live right now.
             </Text>
           )}
-            {/* TOP BAR */}
-<LinearGradient
-  colors={["#0f172a", "#1e293b"]}
-  style={{
-    padding: 16,
-    borderRadius: 18,
-    marginBottom: 12,
-  }}
->
-  {/* Row 1: Logo */}
-  <View
-  style={{
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  }}
->
-  <Text
-    style={{
-      fontSize: 20,
-      fontWeight: "bold",
-      color: "white",
-    }}
-  >
-    ✨ Nasara
-  </Text>
+           {/* ================= PREMIUM NASARA HEADER ================= */}
 
-  <TouchableOpacity
-    onPress={() => router.push("/settings")}
-    style={{
-      backgroundColor: "#111827",
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 8,
-    }}
-  >
-    <Text style={{ color: "white", fontWeight: "bold" }}>
-      ⚙️ Settings
-    </Text>
-  </TouchableOpacity>
-  
-</View>
-<TouchableOpacity
-  onPress={() =>
-    router.push("/discover")
-  }
+{/* TOP NAVIGATION */}
+<LinearGradient
+  colors={["#101D38", "#1E3A63"]}
   style={{
-    backgroundColor: "#2563eb",
-    padding: 14,
-    borderRadius: 12,
+    padding: 20,
+    borderRadius: 22,
     marginBottom: 16,
   }}
 >
-  <Text
+  <View
     style={{
-      color: "#fff",
-      fontWeight: "bold",
-      textAlign: "center",
-      fontSize: 16,
-    }}
-  >
-    Discover Users
-  </Text>
-</TouchableOpacity>
-
-  <TouchableOpacity
-  onPress={() =>
-    Linking.openURL(
-      "https://expo.dev/artifacts/eas/-irtG2Uc63nLJC-tf1aIs0yaAYfHP_JxILPTb2zwpOk.apk"
-    )
-  }
-  style={{
-    backgroundColor: "#16a34a",
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 10,
-  }}
->
-  
-  <Text style={{ color: "white", fontWeight: "bold" }}>
-    📱 Download Android App
-  </Text>
-</TouchableOpacity>
-
-  {/* Row 2: Search */}
-  <TextInput
-    placeholder="Search anything..."
-    placeholderTextColor="#aaa"
-    value={searchText}
-    onChangeText={setSearchText}
-    style={{
-      width: "100%",
-      backgroundColor: "#1f2937",
-      color: "white",
-      borderRadius: 25,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      marginBottom: 12,
-    }}
-  />
-
-  {/* Row 3: Buttons */}
-  {!user && (
-  <TouchableOpacity
-    onPress={() => router.push("/(auth)/login")}
-    style={{
-      backgroundColor: "#22c55e",
-      paddingVertical: 10,
-      borderRadius: 10,
+      flexDirection: "row",
+      justifyContent: "space-between",
       alignItems: "center",
     }}
   >
-    <Text style={{ color: "white", fontWeight: "bold" }}>
-      Sign In / Create Account
-    </Text>
-  </TouchableOpacity>
-)}
-</LinearGradient>
-<View
-  style={{
-    backgroundColor:"#fad415",
-    padding:15,
-    borderRadius:14,
-    marginBottom:15
-  }}
->
+    <View>
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontSize: 27,
+          fontWeight: "900",
+          letterSpacing: 0.5,
+        }}
+      >
+        ✨ Nasara
+      </Text>
 
-<Text
-style={{
-fontSize:20,
-fontWeight:"bold"
-}}
->
-🔥 Nasara Friday Market
-</Text>
+      <Text
+        style={{
+          color: "#CBD5E1",
+          fontSize: 12,
+          marginTop: 3,
+        }}
+      >
+        Discover. Connect. Trade.
+      </Text>
+    </View>
 
-<Text style={{ marginTop: 6, fontWeight: "bold", fontSize: 16 }}>
-  ⏳ Starts in: {countdown}
-</Text>
-</View>
+    <View style={{ flexDirection: "row", gap: 9 }}>
+      <TouchableOpacity
+        onPress={() => router.push("/settings")}
+        style={{
+          width: 43,
+          height: 43,
+          borderRadius: 14,
+          backgroundColor: "rgba(255,255,255,0.13)",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ fontSize: 20 }}>⚙️</Text>
+      </TouchableOpacity>
 
-         {/* CATEGORY BAR */}
-<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-  {categories.map((cat) => (
+      <TouchableOpacity
+        onPress={() => router.push("/discover")}
+        style={{
+          width: 43,
+          height: 43,
+          borderRadius: 14,
+          backgroundColor: "#2563EB",
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ fontSize: 20 }}>👥</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+
+  <View
+    style={{
+      height: 1,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      marginVertical: 16,
+    }}
+  />
+
+  <Text
+    style={{
+      color: "#FFFFFF",
+      fontSize: 19,
+      fontWeight: "800",
+    }}
+  >
+    Your marketplace, your community.
+  </Text>
+
+  <Text
+    style={{
+      color: "#CBD5E1",
+      fontSize: 12,
+      marginTop: 5,
+      marginBottom: 15,
+    }}
+  >
+    Find products, discover sellers and explore opportunities.
+  </Text>
+
+  {!user && (
     <TouchableOpacity
-      key={cat}
-      onPress={() => {
-        setSelectedCategory(cat);
-       
-      }}
+      onPress={() => router.push("/(auth)/login")}
       style={{
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        marginRight: 10,
-        borderRadius: 20,
-        backgroundColor:
-          selectedCategory === cat ? "black" : "#eee",
+        backgroundColor: "#FFFFFF",
+        padding: 12,
+        borderRadius: 12,
+        alignItems: "center",
       }}
     >
       <Text
         style={{
-          fontWeight: "bold",
-          color: selectedCategory === cat ? "white" : "black",
+          color: "#17345B",
+          fontWeight: "800",
         }}
       >
-        {cat === "All"
-          ? "All"
-          : cat
-              .split(" ")
-              .map(
-                (word) =>
-                  word.charAt(0).toUpperCase() + word.slice(1)
-              )
-              .join(" ")}
+        Sign In / Create Account
       </Text>
     </TouchableOpacity>
-  ))}
-</ScrollView>
+  )}
+
+  <TouchableOpacity
+    onPress={() =>
+      Linking.openURL(
+        "https://expo.dev/artifacts/eas/-irtG2Uc63nLJC-tf1aIs0yaAYfHP_JxILPTb2zwpOk.apk"
+      )
+    }
+    style={{
+      backgroundColor: "#16A34A",
+      padding: 11,
+      borderRadius: 12,
+      alignItems: "center",
+      marginTop: 10,
+    }}
+  >
+    <Text style={{ color: "white", fontWeight: "800" }}>
+      📱 Download Android App
+    </Text>
+  </TouchableOpacity>
+</LinearGradient>
+
+{/* ================= MODERN SEARCH ================= */}
+
+<View
+  style={{
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingHorizontal: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 17,
+    minHeight: 54,
+  }}
+>
+  <Text style={{ fontSize: 19, marginRight: 10 }}>
+    🔍
+  </Text>
+
+  <TextInput
+    placeholder="Search products, sellers and more..."
+    placeholderTextColor="#94A3B8"
+    value={searchText}
+    onChangeText={setSearchText}
+    style={{
+      flex: 1,
+      color: "#0F172A",
+      fontSize: 14,
+      paddingVertical: 12,
+    }}
+  />
+
+  {searchText.length > 0 && (
+    <TouchableOpacity onPress={() => setSearchText("")}>
+      <Text style={{ fontSize: 18, color: "#64748B" }}>
+        ✕
+      </Text>
+    </TouchableOpacity>
+  )}
+</View>
+
+{/* ================= FRIDAY MARKET BANNER ================= */}
+
+<TouchableOpacity
+  activeOpacity={0.9}
+  onPress={() => setSelectedCategory("🔥 Friday Deals")}
+  style={{
+    backgroundColor: "#FFF7DB",
+    borderRadius: 20,
+    padding: 17,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    overflow: "hidden",
+  }}
+>
+  <View
+    style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    }}
+  >
+    <View style={{ flex: 1 }}>
+      <Text
+        style={{
+          color: "#92400E",
+          fontSize: 11,
+          fontWeight: "900",
+          letterSpacing: 1,
+        }}
+      >
+        NASARA SPECIAL
+      </Text>
+
+      <Text
+        style={{
+          color: "#78350F",
+          fontSize: 22,
+          fontWeight: "900",
+          marginTop: 5,
+        }}
+      >
+        🔥 Friday Market
+      </Text>
+
+      <Text
+        style={{
+          color: "#92400E",
+          fontSize: 12,
+          marginTop: 5,
+        }}
+      >
+        Discover special offers from sellers.
+      </Text>
+    </View>
+
+    <Text style={{ fontSize: 43 }}>🛍️</Text>
+  </View>
+
+  <View
+    style={{
+      backgroundColor: "#FDE68A",
+      padding: 10,
+      borderRadius: 12,
+      marginTop: 14,
+    }}
+  >
+    <Text
+      style={{
+        color: "#78350F",
+        fontWeight: "800",
+        fontSize: 13,
+      }}
+    >
+      ⏳ {countdown}
+    </Text>
+  </View>
+</TouchableOpacity>
+
+{/* ================= CATEGORY NAVIGATION ================= */}
+
+<View style={{ marginBottom: 18 }}>
+  <View
+    style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    }}
+  >
+    <Text
+      style={{
+        color: "#0F172A",
+        fontSize: 18,
+        fontWeight: "900",
+      }}
+    >
+      Explore Categories
+    </Text>
+
+    <Text style={{ color: "#64748B", fontSize: 11 }}>
+      Discover more
+    </Text>
+  </View>
+
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    contentContainerStyle={{ paddingRight: 12 }}
+  >
+    {categories.map((cat) => {
+      const active = selectedCategory === cat;
+
+      const categoryIcons: Record<string, string> = {
+        "All": "🏠",
+        "🔥 Friday Deals": "🔥",
+        "electronics": "📱",
+        "beauty & personal care": "💄",
+        "health & wellness": "💊",
+        "fashion": "👗",
+        "vehicles": "🚗",
+        "real estate": "🏡",
+        "food & grocery": "🥑",
+        "home & living": "🛋️",
+        "education": "📚",
+        "others": "🛍️",
+      };
+
+      return (
+        <TouchableOpacity
+          key={cat}
+          onPress={() => setSelectedCategory(cat)}
+          activeOpacity={0.8}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 11,
+            paddingHorizontal: 15,
+            marginRight: 9,
+            borderRadius: 14,
+            backgroundColor: active ? "#1D4ED8" : "#FFFFFF",
+            borderWidth: 1,
+            borderColor: active ? "#1D4ED8" : "#E2E8F0",
+          }}
+        >
+          <Text style={{ fontSize: 14, marginRight: 6 }}>
+            {categoryIcons[cat] || "🛍️"}
+          </Text>
+
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "800",
+              color: active ? "#FFFFFF" : "#334155",
+            }}
+          >
+            {cat === "All"
+              ? "All"
+              : cat.replace("🔥 ", "").replace(/\b\w/g, (c) =>
+                  c.toUpperCase()
+                )}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+  </ScrollView>
+</View>
 
         </View>
         
@@ -1609,10 +1779,15 @@ fontWeight:"bold"
   width: cardWidth,
   borderRadius: 18,
   overflow: "hidden",
-  marginBottom: 16,
-  backgroundColor: "rgba(255,255,255,0.05)",
+  marginBottom: 18,
+  backgroundColor: "#FFFFFF",
   borderWidth: 1,
-  borderColor: "rgba(255,255,255,0.08)",
+  borderColor: "#E8EDF5",
+  shadowColor: "#0F172A",
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 0.07,
+  shadowRadius: 7,
+  elevation: 3,
 }}
         >
     {/* MEDIA */}
@@ -1653,34 +1828,46 @@ fontWeight:"bold"
     <ActivityIndicator size="small" />
   </View>
 )}
-          {/* BADGES */}
-          {item.type === "ad" && <Badge label="📢 AD" />}
-          {item.type === "banner" && <Badge label="🎯 BANNER" />}
-          {item.type === "promoted" && <Badge label="⭐ PROMOTED" />}
-          {item.type === "boosted" && <Badge label="🚀 BOOSTED" />}
-          {item.is_deal && ( <Badge label="🔥 DEAL" />)}
-          {item.is_deal && item.deal_end && (
-  <View
-    style={{
-      position: "absolute",
-      top: 35,
-      left: 8,
-      backgroundColor: "rgba(0,0,0,0.7)",
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-    }}
-  >
-    <Text style={{ color: "white", fontSize: 11, fontWeight: "bold" }}>
-      ⏳ {getDealTimeLeft(item.deal_end)}
-    </Text>
-  </View>
-)}
+        {/* ================= PREMIUM BADGES ================= */}
+<View
+  pointerEvents="none"
+  style={{
+    position: "absolute",
+    top: 8,
+    left: 8,
+    right: 8,
+    zIndex: 100,
+    elevation: 20,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "flex-start",
+    gap: 6,
+  }}
+>
+  {item.type === "ad" && (
+    <Badge label="📢 AD" />
+  )}
 
-          {/* NEGOTIABLE */}
-          {item.type === "item" && item.negotiable && (
-            <Badge label="💬 Negotiable" />
-          )}
+  {item.type === "banner" && (
+    <Badge label="🎯 BANNER" />
+  )}
+
+  {item.type === "promoted" && (
+    <Badge label="⭐ PROMOTED" />
+  )}
+
+  {item.type === "boosted" && (
+    <Badge label="🚀 BOOSTED" />
+  )}
+
+  {item.is_deal === true && (
+    <Badge label="🔥 DEAL" />
+  )}
+
+  {(item.negotiable === true || item.is_negotiable === true) && (
+    <Badge label="💬 NEGOTIABLE" />
+  )}
+</View>
 
           {/* ADMIN DELETE */}
 {isAdmin && (
@@ -1715,11 +1902,16 @@ fontWeight:"bold"
 )}
           
           {/* DETAILS */}
-          <View style={{ padding: 8 }}>
+          <View style={{ padding: 12 }}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
   <Text
     numberOfLines={1}
-    style={{ fontWeight: "700", color: "white", flex: 1 }}
+    style={{
+  fontWeight: "800",
+  color: "#17243B",
+  flex: 1,
+  fontSize: 14,
+}}
   >
     {item.title}
   </Text>
@@ -1772,30 +1964,45 @@ fontWeight:"bold"
 ) : (
   item.price && (
     <Text
-      style={{
-        fontWeight: "bold",
-        color: "#22c55e",
-      }}
+     style={{
+  fontWeight: "900",
+  color: "#059669",
+  fontSize: 17,
+  marginTop: 5,
+}}
     >
       GH₵ {item.price}
     </Text>
   )
 )}
 
-            <Text style={{ fontSize: 12, color: "#9ca3af" }}>
-              {item.location}
-            </Text>
+            <Text
+  numberOfLines={1}
+  style={{
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 5,
+  }}
+>
+  📍 {item.location}
+</Text>
             <TouchableOpacity
   onPress={() => shareItem(item)}
   style={{
-    marginTop: 6,
-    backgroundColor: "#3b82f6",
-    paddingVertical: 6,
-    borderRadius: 6,
-    alignItems: "center",
-  }}
+  marginTop: 10,
+  backgroundColor: "#EFF6FF",
+  paddingVertical: 9,
+  borderRadius: 9,
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: "#DBEAFE",
+}}
 >
-  <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>
+  <Text style={{
+  color: "#1D4ED8",
+  fontSize: 12,
+  fontWeight: "800",
+}}>
     🔗 Share
   </Text>
 </TouchableOpacity>
@@ -1869,13 +2076,14 @@ fontWeight:"bold"
         Alert.alert("Error", "Could not open chat");
       }
     }}
-    style={{
-    backgroundColor: "#16a34a",
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 10,
-  }}
+   style={{
+  backgroundColor: "#059669",
+  paddingVertical: 11,
+  borderRadius: 10,
+  alignItems: "center",
+  marginBottom: 10,
+  marginTop: 10,
+}}
   >
     <Text style={{ color: "white", fontSize: 12, fontWeight: "bold" }}>
       💬 Chat Seller
@@ -1895,16 +2103,18 @@ fontWeight:"bold"
     });
   }}
   style={{
-    marginTop: 6,
-    backgroundColor: "#111827",
-    paddingVertical: 6,
-    borderRadius: 6,
-    alignItems: "center",
-  }}
+  marginTop: 6,
+  backgroundColor: "#F1F5F9",
+  paddingVertical: 9,
+  borderRadius: 9,
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: "#E2E8F0",
+}}
 >
   <Text
     style={{
-      color: "white",
+      color: "#334155",
       fontSize: 12,
       fontWeight: "bold",
     }}
@@ -1922,21 +2132,45 @@ fontWeight:"bold"
   );
 }
 
-/* ================= BADGE ================= */
+/* ================= PREMIUM BADGE COMPONENT ================= */
 function Badge({ label }: { label: string }) {
+  let backgroundColor = "#17243B";
+
+  if (label.includes("AD")) {
+    backgroundColor = "#2563EB";
+  } else if (label.includes("BANNER")) {
+    backgroundColor = "#7C3AED";
+  } else if (label.includes("PROMOTED")) {
+    backgroundColor = "#D97706";
+  } else if (label.includes("BOOSTED")) {
+    backgroundColor = "#059669";
+  } else if (label.includes("DEAL")) {
+    backgroundColor = "#DC2626";
+  } else if (label.includes("NEGOTIABLE")) {
+    backgroundColor = "#475569";
+  }
+
   return (
     <View
       style={{
-        position: "absolute",
-        top: 8,
-        left: 8,
-        backgroundColor: "black",
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
+        backgroundColor,
+        paddingHorizontal: 9,
+        paddingVertical: 6,
+        borderRadius: 7,
+        alignSelf: "flex-start",
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.35)",
+        elevation: 5,
       }}
     >
-      <Text style={{ color: "white", fontSize: 11, fontWeight: "bold" }}>
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontSize: 9,
+          fontWeight: "900",
+          letterSpacing: 0.3,
+        }}
+      >
         {label}
       </Text>
     </View>
