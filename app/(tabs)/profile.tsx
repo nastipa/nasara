@@ -4,12 +4,12 @@
    🟣 Navy, Gold and White Design
    ========================================================= */
 
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import { Session } from "@supabase/supabase-js";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-
 import {
   Alert,
   Image,
@@ -53,35 +53,54 @@ const COLORS = {
 };
 
 /* =========================================================
-   🔵 ACTION TILE
+   🟡 PREMIUM PROFILE ACTION TILE
    ========================================================= */
 
 const ActionTile = ({
   label,
+  icon,
   onPress,
-  bg,
   disabled,
 }: {
   label: string;
+  icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
-  bg: string;
   disabled?: boolean;
 }) => (
   <TouchableOpacity
     disabled={disabled}
-    activeOpacity={0.8}
+    activeOpacity={0.75}
     onPress={onPress}
     style={[
       styles.actionTile,
-      {
-        backgroundColor: disabled ? "#9CA3AF" : bg,
-      },
+      disabled && styles.actionTileDisabled,
     ]}
   >
-    <Text style={styles.actionTileText}>{label}</Text>
-  </TouchableOpacity>
-);
+    <View style={styles.actionIconCircle}>
+      <Ionicons
+        name={icon}
+        size={25}
+        color={disabled ? "#9CA3AF" : COLORS.navy}
+      />
+    </View>
 
+    <Text
+      style={[
+        styles.actionTileText,
+        disabled && { color: COLORS.muted },
+      ]}
+    >
+      {label}
+    </Text>
+
+    <Ionicons
+      name="chevron-forward"
+      size={14}
+      color="#A1A9B7"
+      style={styles.actionTileArrow}
+    />
+  </TouchableOpacity>
+)
 /* =========================================================
    🟣 STAT CARD
    ========================================================= */
@@ -1330,113 +1349,98 @@ export default function ProfileScreen() {
                   🟢 ACCOUNT
                   ======================================= */}
 
-              <Text style={styles.sectionTitle}>
-                👤  Account
-              </Text>
-
               <View style={styles.actionGrid}>
-                <ActionTile
-                  label="Favorites ❤️"
-                  bg="#0EA5E9"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/favorite");
-                  }}
-                />
+  <ActionTile
+    label="Favorites"
+    icon="heart"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/favorite");
+    }}
+  />
 
-                <ActionTile
-                  label="MoMo 💳"
-                  bg="#0EA5E9"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    setTimeout(() => setShowMomoModal(true), 200);
-                  }}
-                />
+  <ActionTile
+    label="MoMo Account"
+    icon="wallet"
+    onPress={() => {
+      setShowActionsModal(false);
+      setTimeout(() => setShowMomoModal(true), 200);
+    }}
+  />
 
-                <ActionTile
-                  label="Offers 💌"
-                  bg="#D99A23"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/offers");
-                  }}
-                />
-              </View>
-
+  <ActionTile
+    label="Offers"
+    icon="gift"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/offers");
+    }}
+  />
+</View>
               {/* =======================================
                   🔵 ACTIVITY
                   ======================================= */}
 
-              <Text style={styles.sectionTitle}>
-                📊  Activity
-              </Text>
+             <View style={styles.actionGrid}>
+  <ActionTile
+    label="My Page"
+    icon="person-circle"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/my-page");
+    }}
+  />
 
-              <View style={styles.actionGrid}>
-                <ActionTile
-                  label="My Page"
-                  bg="#22C55E"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/my-page");
-                  }}
-                />
+  <ActionTile
+    label="My Mentors"
+    icon="school"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/mentor/my-mentor");
+    }}
+  />
 
-                <ActionTile
-                  label="My Mentors"
-                  bg="#2563EB"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/mentor/my-mentor");
-                  }}
-                />
-
-                <ActionTile
-                  label="My Mentees"
-                  bg="#16A34A"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/mentor/my-mentees");
-                  }}
-                />
-              </View>
-
+  <ActionTile
+    label="My Mentees"
+    icon="people"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/mentor/my-mentees");
+    }}
+  />
+</View>
               {/* =======================================
                   🟣 WATCH AND AUCTIONS
                   ======================================= */}
 
-              <Text style={styles.sectionTitle}>
-                🎥  Watch & Auctions
-              </Text>
-
               <View style={styles.actionGrid}>
-                <ActionTile
-                  label="Watch Live"
-                  bg="#22C55E"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/live");
-                  }}
-                />
+  <ActionTile
+    label="Watch Live"
+    icon="videocam"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/live");
+    }}
+  />
 
-                <ActionTile
-                  label="My Auctions 🔥"
-                  bg="#D99A23"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/auctions");
-                  }}
-                />
+  <ActionTile
+    label="My Auctions"
+    icon="hammer"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/auctions");
+    }}
+  />
 
-                <ActionTile
-                  label="Battle ⚔️"
-                  bg="#D99A23"
-                  onPress={() => {
-                    setShowActionsModal(false);
-                    router.push("/battle");
-                  }}
-                />
-              </View>
-
+  <ActionTile
+    label="Battle"
+    icon="trophy"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/battle");
+    }}
+  />
+</View>
               {/* =======================================
                   🔵 ADMIN
                   ======================================= */}
@@ -1448,18 +1452,18 @@ export default function ProfileScreen() {
                   </Text>
 
                   <View style={styles.actionGrid}>
-                    <ActionTile
-                      label="Admin Panel"
-                      bg="#111827"
-                      onPress={() => {
-                        setShowActionsModal(false);
+  <ActionTile
+    label="Admin Panel"
+    icon="settings"
+    onPress={() => {
+      setShowActionsModal(false);
 
-                        setTimeout(() => {
-                          adminSecurity();
-                        }, 300);
-                      }}
-                    />
-                  </View>
+      setTimeout(() => {
+        adminSecurity();
+      }, 300);
+    }}
+  />
+</View>
                 </>
               )}
 
@@ -1474,18 +1478,15 @@ export default function ProfileScreen() {
                   </Text>
 
                   <View style={styles.actionGrid}>
-                    <ActionTile
-                      label="Hospital Admin"
-                      bg="#0B6E4F"
-                      onPress={() => {
-                        setShowActionsModal(false);
-
-                        router.push(
-                          "/(hospital-admin)/dashboard"
-                        );
-                      }}
-                    />
-                  </View>
+  <ActionTile
+    label="Hospital Admin"
+    icon="medkit"
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/(hospital-admin)/dashboard");
+    }}
+  />
+</View>
                 </>
               )}
 
@@ -1500,19 +1501,16 @@ export default function ProfileScreen() {
                   </Text>
 
                   <View style={styles.actionGrid}>
-                    <ActionTile
-                      label="Restaurant Admin"
-                      bg="#DC2626"
-                      disabled={restaurantOwnerLoading}
-                      onPress={() => {
-                        setShowActionsModal(false);
-
-                        router.push(
-                          "/(restaurant-owner)/dashboard"
-                        );
-                      }}
-                    />
-                  </View>
+  <ActionTile
+    label="Restaurant Admin"
+    icon="restaurant"
+    disabled={restaurantOwnerLoading}
+    onPress={() => {
+      setShowActionsModal(false);
+      router.push("/(restaurant-owner)/dashboard");
+    }}
+  />
+</View>
                 </>
               )}
 
@@ -2350,30 +2348,63 @@ const styles = StyleSheet.create({
     marginBottom: 9,
   },
 
-  actionGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginHorizontal: -5,
-  },
+  /* =========================================================
+   🟡 PREMIUM ACTION ICON GRID
+   ========================================================= */
 
-  actionTile: {
-    flex: 1,
-    minWidth: "28%",
-    paddingVertical: 16,
-    paddingHorizontal: 5,
-    margin: 5,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+actionGrid: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  marginHorizontal: -5,
+  marginBottom: 8,
+},
 
-  actionTileText: {
-    color: COLORS.white,
-    fontWeight: "800",
-    fontSize: 11,
-    textAlign: "center",
-  },
+actionTile: {
+  width: "30%",
+  flexGrow: 1,
+  minWidth: 90,
+  backgroundColor: COLORS.white,
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  paddingVertical: 17,
+  paddingHorizontal: 7,
+  margin: 5,
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 112,
+},
 
+actionTileDisabled: {
+  backgroundColor: "#F0F1F4",
+  opacity: 0.7,
+},
+
+actionIconCircle: {
+  width: 53,
+  height: 53,
+  borderRadius: 18,
+  backgroundColor: COLORS.goldLight,
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 10,
+  borderWidth: 1,
+  borderColor: "#F0DFB7",
+},
+
+actionTileText: {
+  color: COLORS.navy,
+  fontSize: 11,
+  fontWeight: "800",
+  textAlign: "center",
+  lineHeight: 15,
+},
+
+actionTileArrow: {
+  position: "absolute",
+  top: 9,
+  right: 8,
+},
   closeActionsButton: {
     backgroundColor: COLORS.navy,
     padding: 15,
