@@ -123,6 +123,7 @@ const [viewedImages, setViewedImages] =
   const [editId, setEditId] = useState<number | null>(null);
   const [receiverId, setReceiverId] = useState<string | null>(null);
   const [receiverName, setReceiverName] = useState("");
+  const [receiverAvatar, setReceiverAvatar] = useState<string | null>(null);
 const [receiverVerified, setReceiverVerified] =
   useState(false);
   const [playingId, setPlayingId] =
@@ -142,6 +143,11 @@ const [themeColor, setThemeColor] =
 
 const [wallpaper, setWallpaper] =
   useState("");
+// ==========================================
+// 🎨 CHAT APPEARANCE CONTROLS
+// ==========================================
+
+const [showThemePicker, setShowThemePicker] = useState(false);
 
   const [deleteModal, setDeleteModal] = useState<{
     visible: boolean;
@@ -151,7 +157,47 @@ const [wallpaper, setWallpaper] =
     id: null,
   });
 
-  const flatRef = useRef<FlatList<Message>>(null);
+  // ==========================================
+// 🔄 RESET SCROLL WHEN CHAT ROOM CHANGES
+// ==========================================
+
+useEffect(() => {
+  initialScrollDoneRef.current = false;
+  isNearBottomRef.current = true;
+  previousMessageCountRef.current = 0;
+}, [roomId]);
+
+ // ==========================================
+// 📜 SMART CHAT SCROLL CONTROL
+// ==========================================
+
+const flatRef = useRef<FlatList<Message>>(null);
+
+const isNearBottomRef = useRef(true);
+
+const initialScrollDoneRef = useRef(false);
+
+const previousMessageCountRef = useRef(0);
+
+// ==========================================
+// 📜 TRACK WHETHER USER IS NEAR BOTTOM
+// ==========================================
+
+const handleChatScroll = (event: any) => {
+  const {
+    contentOffset,
+    contentSize,
+    layoutMeasurement,
+  } = event.nativeEvent;
+
+  const distanceFromBottom =
+    contentSize.height -
+    layoutMeasurement.height -
+    contentOffset.y;
+
+  isNearBottomRef.current =
+    distanceFromBottom < 120;
+};
   const [userVerifiedMap, setUserVerifiedMap] = useState<{
   [key: string]: boolean;
 }>({});
@@ -459,7 +505,7 @@ useEffect(() => {
         await (supabase as any)
           .from("profiles")
           .select(
-            "full_name, verified, chat_theme, chat_wallpaper"
+            "full_name, avatar_url,  verified, chat_theme, chat_wallpaper"
           )
           .eq("id", otherUserId)
           .maybeSingle();
@@ -475,6 +521,7 @@ useEffect(() => {
 
       if (profile) {
         setReceiverName(profile.full_name || "User");
+        setReceiverAvatar(profile?.avatar_url || null);
         setReceiverVerified(profile.verified === true);
 
         if (profile.chat_theme) {
@@ -723,11 +770,52 @@ useEffect(() => {
   receiverName,
 ]);
 
-  /* ================= AUTO SCROLL ================= */
-  useEffect(() => {
-    flatRef.current?.scrollToEnd({ animated: true });
-  }, [messages]);
+  // ==========================================
+// 📜 SMART AUTO SCROLL
+// ==========================================
 
+useEffect(() => {
+  if (!messages.length) return;
+
+  // 🟢 FIRST LOAD: Open at the latest message.
+
+  if (!initialScrollDoneRef.current) {
+    requestAnimationFrame(() => {
+      flatRef.current?.scrollToEnd({
+        animated: false,
+      });
+
+      initialScrollDoneRef.current = true;
+
+      previousMessageCountRef.current =
+        messages.length;
+    });
+
+    return;
+  }
+
+  // 🟡 CHECK WHETHER A NEW MESSAGE WAS ADDED.
+
+  const messageCountIncreased =
+    messages.length >
+    previousMessageCountRef.current;
+
+  previousMessageCountRef.current =
+    messages.length;
+
+  // 🔵 ONLY AUTO-SCROLL IF USER IS ALREADY NEAR BOTTOM.
+
+  if (
+    messageCountIncreased &&
+    isNearBottomRef.current
+  ) {
+    requestAnimationFrame(() => {
+      flatRef.current?.scrollToEnd({
+        animated: true,
+      });
+    });
+  }
+}, [messages]);
   /* ================= ONLINE ================= */
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
@@ -1628,7 +1716,7 @@ return (
    <SafeAreaView
   style={{
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: "#F6F4FF",
   }}
 >
   {!!wallpaper && (
@@ -1642,231 +1730,354 @@ return (
       blurRadius={2}
     />
   )}
+
+  {/* ========================================== */}
+{/* 💜 NASARA CHAT BACKGROUND WATERMARK */}
+{/* ========================================== */}
+
+<View
+  pointerEvents="none"
+  style={{
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "space-evenly",
+    overflow: "hidden",
+  }}
+>
+  {Array.from({ length: 7 }).map((_, index) => (
+    <View
+      key={`nasara-watermark-${index}`}
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-around",
+        alignItems: "center",
+        transform: [{ rotate: "-12deg" }],
+      }}
+    >
+      {Array.from({ length: 3 }).map((_, itemIndex) => (
+        <Text
+          key={`nasara-text-${index}-${itemIndex}`}
+          style={{
+            fontSize: 15,
+            fontWeight: "800",
+            letterSpacing: 4,
+            color: "#7965A8",
+            opacity: 0.10,
+          }}
+        >
+          NASARA
+        </Text>
+      ))}
+    </View>
+  ))}
+</View>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        {/* HEADER */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            padding: 15,
-            backgroundColor: "#111827",
-          }}
-        >
-          {showSearch && (
-  <TextInput
-    value={searchText}
-    onChangeText={setSearchText}
-    placeholder="Search..."
-    placeholderTextColor="#9ca3af"
-    style={{
-      backgroundColor: "#1f2937",
-      color: "white",
-      margin: 10,
-      borderRadius: 12,
-      padding: 12,
-    }}
-  />
-)}
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={{ color: "#22c55e", fontSize: 24 }}>←</Text>
-          </TouchableOpacity>
+       {/* ========================================== */}
+{/* 💬 NASARA MODERN CHAT HEADER */}
+{/* ========================================== */}
 
-          <View style={{ marginLeft: 12 }}>
-            <View
-  style={{
-    flexDirection: "row",
-    alignItems: "center",
-  }}
->
-  <Text
-    style={{
-      color: "white",
-      fontSize: 18,
-      fontWeight: "600",
-    }}
-  >
-    {receiverName || "Chat"}
-  </Text>
-
-  {receiverVerified && (
-  <Text
-    style={{
-      marginLeft: 6,
-      color: "#3b82f6",
-      fontSize: 16,
-      fontWeight: "bold",
-    }}
-  >
-    ✔️
-  </Text>
-)}
-</View>
 <View
   style={{
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingBottom: 8,
     backgroundColor: "#111827",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#263244",
   }}
 >
-  {[
-    "#22c55e",
-    "#3b82f6",
-    "#ec4899",
-    "#f59e0b",
-    "#ef4444",
-    "#8b5cf6",
-  ].map((c) => (
-    <TouchableOpacity
-      key={c}
-      onPress={async () => {
-        setThemeColor(c);
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+    }}
+  >
+    {/* BACK BUTTON */}
 
-        await (
-          supabase as any
-        )
-          .from("profiles")
-          .update({
-            chat_theme: c,
-          })
-          .eq("id", userId);
-      }}
+    <TouchableOpacity
+      onPress={() => router.back()}
       style={{
-        width: 28,
-        height: 28,
+        width: 40,
+        height: 40,
         borderRadius: 20,
-        backgroundColor: c,
-        marginRight: 10,
+        backgroundColor: "#1f2937",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ color: "white", fontSize: 23 }}>
+        ‹
+      </Text>
+    </TouchableOpacity>
+
+   {/* ========================================== */}
+{/* 👤 RECIPIENT PROFILE PICTURE */}
+{/* ========================================== */}
+
+<View
+  style={{
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: themeColor,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#374151",
+  }}
+>
+  {receiverAvatar ? (
+    <Image
+      source={{ uri: receiverAvatar }}
+      style={{
+        width: "100%",
+        height: "100%",
+        borderRadius: 23,
+      }}
+      resizeMode="cover"
+      onError={() => {
+        console.log(
+          "Could not load recipient profile picture:",
+          receiverAvatar
+        );
+        setReceiverAvatar(null);
       }}
     />
-  ))}
-
-  <TouchableOpacity
-    onPress={pickWallpaper}
-    style={{
-      marginLeft: 10,
-    }}
-  >
+  ) : (
     <Text
       style={{
+        color: "#ffffff",
+        fontSize: 18,
+        fontWeight: "bold",
+      }}
+    >
+      {(receiverName || "U").charAt(0).toUpperCase()}
+    </Text>
+  )}
+</View>
+    {/* USER INFORMATION */}
+
+    <View style={{ flex: 1, marginLeft: 10 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            color: "#ffffff",
+            fontSize: 16,
+            fontWeight: "700",
+            maxWidth: 160,
+          }}
+        >
+          {receiverName || "Nasara User"}
+        </Text>
+
+        {receiverVerified && (
+          <Text
+            style={{
+              color: "#3b82f6",
+              marginLeft: 5,
+              fontSize: 15,
+            }}
+          >
+            ✔️
+          </Text>
+        )}
+      </View>
+
+      <Text
+        numberOfLines={1}
+        style={{
+          color: typing
+            ? "#22c55e"
+            : "#9ca3af",
+          fontSize: 11,
+          marginTop: 3,
+        }}
+      >
+        {typing
+          ? "Typing..."
+          : lastSeen
+          ? `Last seen ${new Date(lastSeen).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`
+          : "Chat on Nasara"}
+      </Text>
+    </View>
+
+    {/* SEARCH */}
+
+    <TouchableOpacity
+      onPress={() => {
+        setShowSearch(!showSearch);
+        setSearchText("");
+      }}
+      style={{
+        width: 38,
+        height: 38,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ fontSize: 20, color: "white" }}>
+        🔍
+      </Text>
+    </TouchableOpacity>
+
+    {/* APPEARANCE */}
+
+    <TouchableOpacity
+      onPress={() => setShowThemePicker(!showThemePicker)}
+      style={{
+        width: 38,
+        height: 38,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ fontSize: 20 }}>
+        🎨
+      </Text>
+    </TouchableOpacity>
+
+    {/* STATUS */}
+
+    <TouchableOpacity
+      onPress={() => setShowStatusModal(true)}
+      style={{
+        width: 38,
+        height: 38,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ fontSize: 20 }}>
+        🎵
+      </Text>
+    </TouchableOpacity>
+  </View>
+
+  {/* SEARCH INPUT */}
+
+  {showSearch && (
+    <TextInput
+      value={searchText}
+      onChangeText={setSearchText}
+      placeholder="Search messages..."
+      placeholderTextColor="#9ca3af"
+      autoFocus
+      style={{
+        backgroundColor: "#1f2937",
         color: "white",
-        fontSize: 22,
+        borderRadius: 14,
+        paddingHorizontal: 15,
+        paddingVertical: 11,
+        marginTop: 12,
+        fontSize: 14,
       }}
-    >
-      🖼️
-    </Text>
-  </TouchableOpacity>
-</View>
-            {/* 🎵 CHAT STATUS */}
-<View
-  style={{
-    marginTop: 4,
-  }}
->
-  {!!musicStatus && (
-    <Text
-      style={{
-        color: "#22c55e",
-        fontSize: 11,
-      }}
-    >
-      🎵 {musicStatus}
-    </Text>
+    />
   )}
 
-  {!!moodStatus && (
-    <Text
-      style={{
-        color: "#facc15",
-        fontSize: 11,
-      }}
-    >
-      💭 {moodStatus}
-    </Text>
-  )}
+  {/* THEME COLOURS */}
 
-  {!!emojiStatus && (
-    <Text
+  {showThemePicker && (
+    <View
       style={{
-        fontSize: 16,
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 14,
+        paddingVertical: 5,
       }}
     >
-      {emojiStatus}
-    </Text>
-  )}
-</View>
-            <Text style={{ color: "#9ca3af", fontSize: 12 }}>
-              {online
-                ? "Online"
-                : typing
-                ? "Typing..."
-                : lastSeen
-                ? `Last seen ${new Date(
-                    lastSeen
-                  ).toLocaleTimeString()}`
-                : "Offline"}
-            </Text>
-          </View>
-        </View>
-        {/* SEARCH */}
+      {[
+        "#22c55e",
+        "#3b82f6",
+        "#ec4899",
+        "#f59e0b",
+        "#ef4444",
+        "#8b5cf6",
+      ].map((colour) => (
         <TouchableOpacity
-  style={{ marginLeft: "auto" }}
-  onPress={() =>
-    setShowSearch(!showSearch)
-  }
->
-  <Text
-    style={{
-      color: "white",
-      fontSize: 20,
-    }}
-  >
-    🔍
-  </Text>
-</TouchableOpacity>
+          key={colour}
+          onPress={async () => {
+            setThemeColor(colour);
 
- {/* CHAT STATUS */}
+            await (supabase as any)
+              .from("profiles")
+              .update({ chat_theme: colour })
+              .eq("id", userId);
+
+            setShowThemePicker(false);
+          }}
+          style={{
+            width: 27,
+            height: 27,
+            borderRadius: 15,
+            backgroundColor: colour,
+            marginRight: 13,
+            borderWidth:
+              themeColor === colour ? 3 : 0,
+            borderColor: "white",
+          }}
+        />
+      ))}
+
+      <TouchableOpacity
+        onPress={pickWallpaper}
+        style={{ marginLeft: "auto" }}
+      >
+        <Text style={{ color: "white", fontSize: 19 }}>
+          🖼️
+        </Text>
+      </TouchableOpacity>
+    </View>
+  )}
+
+  {/* SECRET CHAT */}
+
   <TouchableOpacity
-    onPress={() =>
-      setShowStatusModal(true)
-    }
+    onPress={() => setSecretMode(!secretMode)}
     style={{
-      marginRight: 12,
+      alignSelf: "flex-start",
+      marginTop: 10,
+      backgroundColor: secretMode
+        ? "#7f1d1d"
+        : "#1f2937",
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: secretMode
+        ? "#ef4444"
+        : "#374151",
     }}
   >
     <Text
       style={{
-        fontSize: 22,
+        color: secretMode ? "#fca5a5" : "#d1d5db",
+        fontSize: 11,
+        fontWeight: "600",
       }}
     >
-      🎵
+      {secretMode
+        ? "🔒 Secret chat enabled"
+        : "🔐 Enable secret chat"}
     </Text>
   </TouchableOpacity>
-{/* SECRET CHAT */}
-<TouchableOpacity
-  onPress={() =>
-    setSecretMode(!secretMode)
-  }
-  style={{
-    marginLeft: "auto",
-    backgroundColor: secretMode
-      ? "red"
-      : "#1f2937",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-  }}
->
-  <Text style={{ color: "white" }}>
-    {secretMode
-      ? "🔒 Secret"
-      : "💬 Normal"}
-  </Text>
-</TouchableOpacity>
+</View>
 
         {/* REPLY BAR */}
         {replyTo && (
@@ -1935,13 +2146,17 @@ return (
 
         {/* MESSAGES */}
         <FlatList
-          ref={flatRef}
-          data={filtered}
+  ref={flatRef}
+  data={filtered}
+  onScroll={handleChatScroll}
+  scrollEventThrottle={16}
           keyExtractor={(item, index) => item.id + "_" + index}
-          contentContainerStyle={{
-            padding: 10,
-            paddingBottom: 100,
-          }}
+         contentContainerStyle={{
+  paddingHorizontal: 13,
+  paddingTop: 15,
+  paddingBottom: 25,
+  flexGrow: 1,
+}}
           renderItem={({ item }) => {
             const isMe = item.sender_id === userId;
 
@@ -1969,20 +2184,36 @@ return (
     ✔️ Verified
   </Text>
 )}
-                <View
-                  style={{
-                    alignSelf: isMe
-                      ? "flex-end"
-                      : "flex-start",
-                    backgroundColor: isMe
-  ? themeColor
-  : "#1f2937",
-                    padding: 15,
-                    marginVertical: 6,
-                    borderRadius: 16,
-                    maxWidth: "90%",
-                  }}
-                >
+               {/* ========================================== */}
+{/* 💬 NASARA PREMIUM MESSAGE BUBBLE */}
+{/* ========================================== */}
+
+<View
+  style={{
+    alignSelf: isMe ? "flex-end" : "flex-start",
+    backgroundColor: isMe ? themeColor : "#1F2937",
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    marginVertical: 5,
+    borderRadius: 21,
+    borderTopRightRadius: isMe ? 6 : 21,
+    borderTopLeftRadius: isMe ? 21 : 6,
+    maxWidth: "84%",
+    minWidth: 85,
+    borderWidth: 1,
+    borderColor: isMe
+      ? "rgba(255,255,255,0.18)"
+      : "rgba(148,163,184,0.13)",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: isMe ? 0.10 : 0.16,
+    shadowRadius: 5,
+    elevation: 2,
+  }}
+>
                  {item.reply_to && (
   <TouchableOpacity
     onPress={() => {
@@ -2500,100 +2731,289 @@ return (
           }}
         />
 
-        {/* INPUT */}
-        <View
-          style={{
-            flexDirection: "row",
-            padding: 12,
-            backgroundColor: "#111827",
-            alignItems: "center",
-          }}
-        >
-          <TouchableOpacity onPress={sendImage}>
-            <Text style={{ fontSize: 22 }}>🖼️</Text>
-          </TouchableOpacity>
+        {/* ========================================== */}
+{/* 💬 NASARA MODERN MESSAGE COMPOSER */}
+{/* ========================================== */}
 
-          <TouchableOpacity
-            onPress={sendCamera}
-            style={{ marginLeft: 10 }}
-          >
-            <Text style={{ fontSize: 22 }}>📷</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={sendFile}
-            style={{ marginLeft: 10 }}
-          >
-            <Text style={{ fontSize: 22 }}>📎</Text>
-          </TouchableOpacity>
-           {recording && (
-  <View
-    style={{
-      marginRight: 10,
-      backgroundColor: "red",
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 20,
-    }}
-  >
-    <Text style={{ color: "white" }}>
-      🔴 {recordingTime}s
-    </Text>
-  </View>
-)}
-          <TextInput
-            value={text}
-           onChangeText={(value) => {
-  handleSlashReply(value);
-  handleTyping(value);
-}}
-            placeholder="Type message..."
-            placeholderTextColor="#9ca3af"
-            multiline
-            style={{
-              flex: 1,
-              marginLeft: 10,
-              backgroundColor: "#1f2937",
-              color: "#fff",
-              borderRadius: 30,
-              paddingHorizontal: 20,
-              paddingVertical: 10,
-            }}
-          />
-           <TouchableOpacity
-  onPress={
-    recording
-      ? stopRecording
-      : startRecording
-  }
+<View
   style={{
-    marginLeft: 10,
+    backgroundColor: "#111827",
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "ios" ? 8 : 12,
+    borderTopWidth: 1,
+    borderTopColor: "#263244",
   }}
 >
-  <Text
+  {/* 🟢 REPLY PREVIEW */}
+
+  {replyTo && (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#1f2937",
+        borderLeftWidth: 4,
+        borderLeftColor: themeColor,
+        borderRadius: 10,
+        padding: 10,
+        marginBottom: 10,
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <Text
+          style={{
+            color: themeColor,
+            fontWeight: "bold",
+            fontSize: 12,
+          }}
+        >
+          Replying to {replyTo.sender_id === userId ? "yourself" : receiverName}
+        </Text>
+
+        <Text
+          numberOfLines={1}
+          style={{
+            color: "#d1d5db",
+            fontSize: 12,
+            marginTop: 3,
+          }}
+        >
+          {replyTo.text ||
+            (replyTo.audio_url
+              ? "🎤 Voice message"
+              : replyTo.image_url
+              ? "📷 Photo"
+              : replyTo.file_name
+              ? `📎 ${replyTo.file_name}`
+              : "Message")}
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        onPress={() => setReplyTo(null)}
+        style={{ padding: 8 }}
+      >
+        <Text style={{ color: "#f87171", fontSize: 18 }}>
+          ✕
+        </Text>
+      </TouchableOpacity>
+    </View>
+  )}
+
+  {/* 🔒 SECRET CHAT TIMER */}
+
+  {secretMode && (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 10,
+      }}
+    >
+      <Text style={{ color: "#fca5a5", fontSize: 12 }}>
+        🔒 Secret message expiry:
+      </Text>
+
+      {[1, 5, 10, 30].map((minutes) => (
+        <TouchableOpacity
+          key={minutes}
+          onPress={() => setExpireMinutes(minutes)}
+          style={{
+            marginLeft: 7,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 12,
+            backgroundColor:
+              expireMinutes === minutes ? "#991b1b" : "#1f2937",
+          }}
+        >
+          <Text style={{ color: "white", fontSize: 11 }}>
+            {minutes}m
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  )}
+
+  {/* 🟡 RECORDING INDICATOR */}
+
+  {recording && (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#7f1d1d",
+        padding: 10,
+        borderRadius: 12,
+        marginBottom: 10,
+      }}
+    >
+      <Text style={{ color: "white", fontWeight: "bold" }}>
+        🔴 Recording {recordingTime}s
+      </Text>
+
+      <View style={{ flex: 1 }} />
+
+      <Text style={{ color: "#fecaca", fontSize: 12 }}>
+        Tap stop to send
+      </Text>
+    </View>
+  )}
+
+  {/* 🟢 MESSAGE INPUT ROW */}
+
+  <View
     style={{
-      fontSize: 24,
+      flexDirection: "row",
+      alignItems: "flex-end",
     }}
   >
-    {recording
-      ? "⏹️"
-      : "🎤"}
-  </Text>
-</TouchableOpacity>
-          <TouchableOpacity
-            onPress={sendText}
-            style={{ marginLeft: 10 }}
-          >
-            <Text
-              style={{
-                color: "#22c55e",
-                fontWeight: "bold",
-              }}
-            >
-              Send
-            </Text>
-          </TouchableOpacity>
-        </View>
+    {/* ATTACHMENTS */}
+
+    <TouchableOpacity
+      onPress={sendFile}
+      style={{
+        width: 42,
+        height: 44,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text style={{ fontSize: 23 }}>＋</Text>
+    </TouchableOpacity>
+
+    {/* ONE-TIME PHOTO OPTION */}
+
+    <TouchableOpacity
+      onPress={() => setOneTimeView(!oneTimeView)}
+      style={{
+        width: 34,
+        height: 44,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 19,
+          color: oneTimeView ? themeColor : "#9ca3af",
+        }}
+      >
+        👁️
+      </Text>
+    </TouchableOpacity>
+
+    {/* TEXT INPUT */}
+
+    <View
+      style={{
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#1f2937",
+        borderRadius: 25,
+        paddingHorizontal: 14,
+        minHeight: 46,
+        maxHeight: 110,
+        borderWidth: 1,
+        borderColor: "#374151",
+      }}
+    >
+      <TextInput
+        value={text}
+        onChangeText={(value) => {
+          handleSlashReply(value);
+          handleTyping(value);
+        }}
+        placeholder="Message..."
+        placeholderTextColor="#9ca3af"
+        multiline
+        style={{
+          flex: 1,
+          color: "white",
+          fontSize: 15,
+          paddingTop: 10,
+          paddingBottom: 10,
+          maxHeight: 90,
+        }}
+      />
+
+      {/* CAMERA */}
+
+      <TouchableOpacity
+        onPress={sendCamera}
+        style={{ paddingLeft: 8 }}
+      >
+        <Text style={{ fontSize: 20 }}>📷</Text>
+      </TouchableOpacity>
+
+      {/* PHOTO GALLERY */}
+
+      <TouchableOpacity
+        onPress={sendImage}
+        style={{ paddingLeft: 10 }}
+      >
+        <Text style={{ fontSize: 20 }}>🖼️</Text>
+      </TouchableOpacity>
+    </View>
+
+    {/* SEND OR RECORD */}
+
+    {text.trim().length > 0 ? (
+      <TouchableOpacity
+        onPress={sendText}
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 23,
+          backgroundColor: themeColor,
+          alignItems: "center",
+          justifyContent: "center",
+          marginLeft: 8,
+        }}
+      >
+        <Text style={{ fontSize: 20, color: "#ffffff" }}>
+          ➤
+        </Text>
+      </TouchableOpacity>
+    ) : (
+      <TouchableOpacity
+        onPress={recording ? stopRecording : startRecording}
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 23,
+          backgroundColor: recording ? "#dc2626" : "#1f2937",
+          borderWidth: 1,
+          borderColor: recording ? "#ef4444" : "#374151",
+          alignItems: "center",
+          justifyContent: "center",
+          marginLeft: 8,
+        }}
+      >
+        <Text style={{ fontSize: 21 }}>
+          {recording ? "⏹️" : "🎤"}
+        </Text>
+      </TouchableOpacity>
+    )}
+  </View>
+
+  {/* 🔒 SECRET CHAT INDICATOR */}
+
+  {secretMode && (
+    <Text
+      style={{
+        color: "#fca5a5",
+        fontSize: 10,
+        textAlign: "center",
+        marginTop: 7,
+      }}
+    >
+      🔒 Secret chat mode is enabled
+    </Text>
+  )}
+</View>
 
         {/* DELETE MODAL */}
         <Modal
@@ -2874,6 +3294,7 @@ return (
           Save Status
         </Text>
       </TouchableOpacity>
+      
     </View>
   </View>
 </Modal>

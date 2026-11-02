@@ -1973,27 +1973,25 @@ export default function BrowseScreen() {
                 )}
               </View>
 
-              {/* 🟡 SELLER PROFILE */}
+              {/* 🟡 VIEW SELLER SHOP */}
 
-              {item.user_id && (
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push({
-                      pathname: "/profile/[id]",
-                      params: { id: item.user_id! },
-                    })
-                  }
-                  style={styles.profileButton}
-                >
-                  <Text style={styles.profileButtonText}>
-                    👤 View Seller Profile
-                  </Text>
+{item.user_id && (
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={() =>
+      router.push("/sellers/" + item.user_id)
+    }
+    style={styles.profileButton}
+  >
+    <Text style={styles.profileButtonText}>
+      🛍️ View Seller Shop
+    </Text>
 
-                  <Text style={styles.profileArrow}>
-                    →
-                  </Text>
-                </TouchableOpacity>
-              )}
+    <Text style={styles.profileArrow}>
+      →
+    </Text>
+  </TouchableOpacity>
+)}
             </View>
           </TouchableOpacity>
         );

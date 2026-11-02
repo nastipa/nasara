@@ -1852,92 +1852,123 @@ const deleteChat = async (
       }}
     >
       {/* =====================================================
-          🔵 PREMIUM HEADER
-          ===================================================== */}
+    🔵 PREMIUM HEADER
+    ===================================================== */}
 
-      <View
+<View
+  style={{
+    backgroundColor: "#101B35",
+    paddingTop: Platform.OS === "ios" ? 12 : 8,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  }}
+>
+  {/* 🟡 HEADER ROW */}
+  <View
+    style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    }}
+  >
+    {/* 🟢 HEADER TITLE */}
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <Text
         style={{
-          backgroundColor: "#101B35",
-          paddingTop: Platform.OS === "ios" ? 12 : 8,
-          paddingHorizontal: 20,
-          paddingBottom: 20,
-          borderBottomLeftRadius: 24,
-          borderBottomRightRadius: 24,
+          color: "#D6AD55",
+          fontSize: 11,
+          fontWeight: "800",
+          letterSpacing: 3,
         }}
       >
-        <View
+        NASARA
+      </Text>
+
+      <Text
+        style={{
+          color: "#FFFFFF",
+          fontSize: 27,
+          fontWeight: "900",
+          marginTop: 3,
+        }}
+      >
+        Messages
+      </Text>
+
+      <Text
+        style={{
+          color: "#B8C2D6",
+          fontSize: 12,
+          marginTop: 3,
+        }}
+      >
+        Stay connected with your community
+      </Text>
+    </View>
+
+    {/* 🟣 HEADER ACTION BUTTONS */}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginLeft: 8,
+      }}
+    >
+      {/* 👥 NEW GROUP BUTTON */}
+      <TouchableOpacity
+        onPress={() => router.push("/groups/create")}
+        activeOpacity={0.8}
+        style={{
+          backgroundColor: "#D6AD55",
+          paddingHorizontal: 12,
+          height: 44,
+          borderRadius: 14,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text style={{ fontSize: 17, marginRight: 5 }}>
+          👥
+        </Text>
+
+        <Text
           style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
+            color: "#101B35",
+            fontSize: 11,
+            fontWeight: "900",
           }}
         >
-          <View>
-            <Text
-              style={{
-                color: "#D6AD55",
-                fontSize: 11,
-                fontWeight: "800",
-                letterSpacing: 3,
-              }}
-            >
-              NASARA
-            </Text>
+          New Group
+        </Text>
+      </TouchableOpacity>
 
-            <Text
-              style={{
-                color: "#FFFFFF",
-                fontSize: 27,
-                fontWeight: "900",
-                marginTop: 3,
-              }}
-            >
-              Messages
-            </Text>
-
-            <Text
-              style={{
-                color: "#B8C2D6",
-                fontSize: 12,
-                marginTop: 3,
-              }}
-            >
-              Stay connected with your community
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            onPress={() => router.push("/groups/create")}
-            activeOpacity={0.8}
-            style={{
-              backgroundColor: "#D6AD55",
-              paddingHorizontal: 15,
-              paddingVertical: 12,
-              borderRadius: 14,
-              flexDirection: "row",
-              alignItems: "center",
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 17,
-                marginRight: 6,
-              }}
-            >
-              👥
-            </Text>
-
-            <Text
-              style={{
-                color: "#101B35",
-                fontSize: 12,
-                fontWeight: "900",
-              }}
-            >
-              New Group
-            </Text>
-          </TouchableOpacity>
-        </View>
+      {/* ⚙️ CHAT SETTINGS BUTTON */}
+      <TouchableOpacity
+        onPress={() =>
+          router.push("/chat/settings/general" as any)
+        }
+        activeOpacity={0.8}
+        style={{
+          width: 44,
+          height: 44,
+          marginLeft: 8,
+          borderRadius: 14,
+          backgroundColor: "rgba(255,255,255,0.12)",
+          borderWidth: 1,
+          borderColor: "rgba(214,173,85,0.5)",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Text style={{ fontSize: 21 }}>
+          ⚙️
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
 
         {/* HEADER SUMMARY */}
 
