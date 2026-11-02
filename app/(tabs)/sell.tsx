@@ -970,8 +970,8 @@ export default function Sell() {
     },
     {
       icon: "bicycle",
-      title: "Delivery",
-      subtitle: "Delivery services",
+      title: "Order a Ride",
+      subtitle: "Book a Ride or Request Item Delivery",
       color: "#D77932",
       onPress: () => router.push("/delivery"),
     },

@@ -1,5 +1,5 @@
 // 🔵 ==========================================
-// 🔵 NASARA DELIVERY TAB
+// 🔵 NASARA RIDES & DELIVERIES
 // 🔵 PREMIUM NAVY, GOLD & WHITE UI
 // 🔵 ==========================================
 
@@ -54,7 +54,7 @@ type DeliveryMenuItem = {
 };
 
 // 🟣 ==========================================
-// 🟣 MAIN DELIVERY SCREEN
+// 🟣 MAIN RIDES & DELIVERIES SCREEN
 // 🟣 ==========================================
 
 export default function DeliveryTab() {
@@ -84,11 +84,13 @@ export default function DeliveryTab() {
       }
 
       // 🛠️ ADMIN CHECK
+
       const admin = user.user_metadata?.role === "admin";
 
       setIsAdmin(admin);
 
       // 🚴 RIDER CHECK
+
       const { data: riderRow, error } = await (supabase as any)
         .from("riders")
         .select("*")
@@ -111,7 +113,7 @@ export default function DeliveryTab() {
         );
       }
     } catch (e) {
-      console.log(e);
+      console.log("User loading error:", e);
     } finally {
       setLoading(false);
     }
@@ -134,7 +136,7 @@ export default function DeliveryTab() {
   const adminMenu: DeliveryMenuItem[] = [
     {
       title: "Logistics",
-      subtitle: "Manage delivery operations",
+      subtitle: "Manage ride and delivery operations",
       route: "/(admin)/logistics",
       icon: "settings-outline",
       color: COLORS.blue,
@@ -150,17 +152,17 @@ export default function DeliveryTab() {
     },
     {
       title: "Rider Applications",
-      subtitle: "Review rider applications",
+      subtitle: "Review driver and rider applications",
       route: "/(admin)/rider-applications",
       icon: "people-outline",
       color: COLORS.purple,
       background: "#F1EBFA",
     },
     {
-      title: "Request Delivery",
-      subtitle: "Create a delivery request",
+      title: "Order a Ride",
+      subtitle: "Create a passenger ride or delivery request",
       route: "/request-delivery",
-      icon: "cube-outline",
+      icon: "car-outline",
       color: COLORS.orange,
       background: "#FBF1E2",
     },
@@ -172,42 +174,42 @@ export default function DeliveryTab() {
 
   const riderMenu: DeliveryMenuItem[] = [
     {
-      title: "Rider Dashboard",
-      subtitle: "Manage your delivery activities",
+      title: "Driver & Rider Dashboard",
+      subtitle: "Manage your rides and delivery activities",
       route: "/rider-dashboard",
       icon: "speedometer-outline",
       color: COLORS.blue,
       background: "#EAF1FC",
     },
     {
-      title: "Rider Wallet",
-      subtitle: "View your delivery earnings",
+      title: "Earnings Wallet",
+      subtitle: "View your earnings",
       route: "/rider-wallet",
       icon: "wallet-outline",
       color: COLORS.green,
       background: "#E8F5EE",
     },
     {
-      title: "My Deliveries",
-      subtitle: "View and manage deliveries",
+      title: "My Bookings",
+      subtitle: "View and manage your assigned requests",
       route: "/my-deliveries",
       icon: "bicycle-outline",
       color: COLORS.purple,
       background: "#F1EBFA",
     },
     {
-      title: "Delivery History",
-      subtitle: "Review previous deliveries",
+      title: "Booking History",
+      subtitle: "Review previous rides and deliveries",
       route: "/delivery-history",
       icon: "time-outline",
       color: COLORS.orange,
       background: "#FBF1E2",
     },
     {
-      title: "Request Delivery",
-      subtitle: "Create a new delivery request",
+      title: "Order a Ride",
+      subtitle: "Create a passenger ride or delivery request",
       route: "/request-delivery",
-      icon: "cube-outline",
+      icon: "car-outline",
       color: COLORS.navy,
       background: "#E9EDF5",
     },
@@ -220,33 +222,33 @@ export default function DeliveryTab() {
   const customerMenu: DeliveryMenuItem[] = [
     {
       title: "Apply as Rider",
-      subtitle: "Join the Nasara delivery network",
+      subtitle: "Join the Nasara transport and delivery network",
       route: "/become-rider",
       icon: "bicycle-outline",
       color: COLORS.green,
       background: "#E8F5EE",
     },
     {
-      title: "My Deliveries",
-      subtitle: "Track and manage your deliveries",
+      title: "My Bookings",
+      subtitle: "Track your rides and deliveries",
       route: "/my-deliveries",
       icon: "receipt-outline",
       color: COLORS.purple,
       background: "#F1EBFA",
     },
     {
-      title: "Delivery History",
-      subtitle: "View your previous deliveries",
+      title: "Booking History",
+      subtitle: "View your previous rides and deliveries",
       route: "/delivery-history",
       icon: "time-outline",
       color: COLORS.orange,
       background: "#FBF1E2",
     },
     {
-      title: "Request Delivery",
-      subtitle: "Arrange delivery for your items",
+      title: "Order a Ride",
+      subtitle: "Request passenger transport or item delivery",
       route: "/request-delivery",
-      icon: "cube-outline",
+      icon: "car-outline",
       color: COLORS.blue,
       background: "#EAF1FC",
     },
@@ -269,20 +271,20 @@ export default function DeliveryTab() {
   const screenTitle = isAdmin
     ? "Admin Logistics"
     : isRider
-    ? "Rider Center"
-    : "Delivery";
+    ? "Driver & Rider Center"
+    : "Rides & Deliveries";
 
   const screenSubtitle = isAdmin
-    ? "Oversee and manage Nasara delivery operations."
+    ? "Oversee and manage Nasara transport and delivery operations."
     : isRider
-    ? "Your delivery workspace, earnings and activities."
-    : "Get your items delivered conveniently with Nasara.";
+    ? "Your workspace for rides, deliveries, earnings and activities."
+    : "Book a ride or arrange convenient delivery with Nasara.";
 
   const screenIcon = isAdmin
     ? "settings"
     : isRider
-    ? "bicycle"
-    : "cube";
+    ? "car"
+    : "car";
 
   // ⏳ ==========================================
   // ⏳ LOADING SCREEN
@@ -298,7 +300,7 @@ export default function DeliveryTab() {
 
         <View style={styles.loadingIcon}>
           <Ionicons
-            name="cube"
+            name="car"
             size={34}
             color={COLORS.gold}
           />
@@ -311,7 +313,7 @@ export default function DeliveryTab() {
         />
 
         <Text style={styles.loadingText}>
-          Preparing your delivery center...
+          Preparing your rides and deliveries...
         </Text>
       </View>
     );
@@ -339,7 +341,7 @@ export default function DeliveryTab() {
             <View style={styles.brandContainer}>
               <View style={styles.brandIcon}>
                 <Ionicons
-                  name="cube"
+                  name="car"
                   size={19}
                   color={COLORS.navy}
                 />
@@ -354,7 +356,7 @@ export default function DeliveryTab() {
               <View style={styles.onlineDot} />
 
               <Text style={styles.headerLabelText}>
-                DELIVERY
+                RIDES & DELIVERIES
               </Text>
             </View>
           </View>
@@ -362,7 +364,7 @@ export default function DeliveryTab() {
           <View style={styles.heroContent}>
             <View style={styles.heroTextContainer}>
               <Text style={styles.heroEyebrow}>
-                DELIVERY SERVICES
+                RIDE & DELIVERY SERVICES
               </Text>
 
               <Text style={styles.heroTitle}>
@@ -389,7 +391,7 @@ export default function DeliveryTab() {
             <View style={styles.headerBottomLine} />
 
             <Text style={styles.headerBottomText}>
-              Moving goods. Connecting people.
+              Moving people. Moving goods. Connecting people.
             </Text>
           </View>
         </View>
@@ -430,7 +432,7 @@ export default function DeliveryTab() {
               }
               style={styles.menuCard}
             >
-              {/* ICON */}
+              {/* 🟣 ICON */}
 
               <View
                 style={[
@@ -447,7 +449,7 @@ export default function DeliveryTab() {
                 />
               </View>
 
-              {/* DETAILS */}
+              {/* 🔵 DETAILS */}
 
               <View style={styles.menuDetails}>
                 <Text style={styles.menuTitle}>
@@ -459,7 +461,7 @@ export default function DeliveryTab() {
                 </Text>
               </View>
 
-              {/* ARROW */}
+              {/* 🟡 ARROW */}
 
               <View style={styles.menuArrow}>
                 <Ionicons
@@ -472,7 +474,7 @@ export default function DeliveryTab() {
           ))}
         </View>
 
-        {/* 🔵 DELIVERY INFORMATION CARD */}
+        {/* 🔵 INFORMATION CARD */}
 
         <View style={styles.infoCard}>
           <View style={styles.infoIcon}>
@@ -485,12 +487,12 @@ export default function DeliveryTab() {
 
           <View style={styles.infoContent}>
             <Text style={styles.infoTitle}>
-              Deliver with confidence
+              Move with confidence
             </Text>
 
             <Text style={styles.infoDescription}>
-              Nasara connects customers, businesses and delivery
-              riders to make moving goods easier.
+              Nasara connects customers, businesses, drivers and
+              delivery riders to make transporting people and goods easier.
             </Text>
           </View>
         </View>
