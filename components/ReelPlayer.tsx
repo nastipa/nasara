@@ -680,11 +680,11 @@ const seekVideo = (value: number) => {
   return (
     <View style={styles.container}>
 
-    {/* ======================================
-    🖼️ INSTANT REEL THUMBNAIL
+   {/* ======================================
+    🖼️ SHOW THUMBNAIL ONLY WHILE LOADING
 ====================================== */}
 
-{!!thumbnail && (
+{!!thumbnail && !videoReady && (
   <Image
     source={{ uri: thumbnail }}
     style={styles.thumbnail}
@@ -835,10 +835,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   videoWrapper: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#000000",
-  },
+  position: "absolute",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  backgroundColor: "#000000",
+  zIndex: 2,
+},
   video: {
     width: "100%",
     height: "100%",
