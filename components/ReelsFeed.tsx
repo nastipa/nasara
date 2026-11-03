@@ -93,7 +93,11 @@ export default function ReelsFeed({
   const preloaded = useRef<Set<string>>(new Set());
 
   const feedRef = useRef<ReelType[]>([]);
+// ==========================================
+// 🔊 SHARED REELS SOUND PERMISSION
+// ==========================================
 
+const [soundEnabled, setSoundEnabled] = useState(false);
   /* =======================================================
      🟣 STATE
      ======================================================= */
@@ -251,8 +255,12 @@ export default function ReelsFeed({
             🟢 VIDEO PLAYER
             =============================================== */}
 
-        <ReelPlayer
-  key={item.id + "_" + isActive}
+        {/* ===============================================
+    🟢 VIDEO PLAYER
+    =============================================== */}
+
+<ReelPlayer
+  key={item.id}
   id={item.id}
   url={item.media_url}
   localUri={item.local_uri}
@@ -265,6 +273,10 @@ export default function ReelsFeed({
   original_volume={item.original_volume}
   music_start_time={item.music_start_time}
   music_duration={item.music_duration}
+
+  // 🔊 SAFARI AUDIO PERMISSION
+  soundEnabled={soundEnabled}
+  onEnableSound={() => setSoundEnabled(true)}
 />
 
         {/* ===============================================
