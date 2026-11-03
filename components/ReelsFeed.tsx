@@ -108,6 +108,11 @@ useFocusEffect(
   const preloaded = useRef<Set<string>>(new Set());
 
   const feedRef = useRef<ReelType[]>([]);
+  // =====================================================
+  // 🎬 REELS SCROLL REFERENCE
+  // =====================================================
+
+  const feedListRef = useRef<FlatList<ReelType>>(null);
 // ==========================================
 // 🔊 SHARED REELS SOUND PERMISSION
 // ==========================================
@@ -216,89 +221,7 @@ const [soundEnabled, setSoundEnabled] = useState(false);
   itemVisiblePercentThreshold: 80,
 }).current;
 
-  /* =======================================================
-   🔵 INTELLIGENT VIDEO PRELOADING
-   ======================================================= */
-// Keep references to browser video preload elements.
-const preloadElements = useRef<
-  Map<string, HTMLVideoElement>
->(new Map());
-const preloadVideos = useCallback(
-  (index: number) => {
-    // Native playback remains managed by ReelPlayer.
-    if (Platform.OS !== "web" || typeof document === "undefined") {
-      return;
-    }
-    // Preload current, next two and previous Reel.
-    const targetIndexes = [
-      index - 1,
-      index,
-      index + 1,
-      index + 2,
-    ].filter(
-      (value) => value >= 0 && value < feed.length
-    );
-    const targetIds = new Set(
-      targetIndexes.map(
-        (targetIndex) => feed[targetIndex].id
-      )
-    );
-    // Remove videos that are no longer near the active Reel.
-    preloadElements.current.forEach(
-      (video, reelId) => {
-        if (!targetIds.has(reelId)) {
-          video.pause();
-          video.removeAttribute("src");
-          video.load();
-          preloadElements.current.delete(reelId);
-          preloaded.current.delete(reelId);
-        }
-      }
-    );
-    // Prepare nearby Reels.
-    targetIndexes.forEach((targetIndex) => {
-      const item = feed[targetIndex];
-      const src = item.media_url;
-      if (!src || !src.trim()) {
-        return;
-      }
-      // Reuse existing preload element.
-      if (preloadElements.current.has(item.id)) {
-        return;
-      }
-      const video = document.createElement("video");
-      video.preload =
-        targetIndex === index + 1
-          ? "auto"
-          : "metadata";
-      video.muted = true;
-      video.playsInline = true;
-      video.src = src;
-      preloadElements.current.set(item.id, video);
-      preloaded.current.add(item.id);
-      // Start loading the selected resource.
-      video.load();
-    });
-  },
-  [feed]
-);
-// Update preloading whenever the active Reel changes.
-useEffect(() => {
-  preloadVideos(activeIndex);
-}, [activeIndex, feed, preloadVideos]);
-// Release browser preload resources when the feed unmounts.
-useEffect(() => {
-  return () => {
-    preloadElements.current.forEach((video) => {
-      video.pause();
-      video.removeAttribute("src");
-      video.load();
-    });
-    preloadElements.current.clear();
-    preloaded.current.clear();
-  };
-}, []);
-
+  
   /* =======================================================
      🟣 REEL ITEM
      ======================================================= */
@@ -560,27 +483,44 @@ useEffect(() => {
 
       </View>
 
-      {/* ===============================================
-          🟣 VIDEO FEED
-          =============================================== */}
+     {/* =====================================================
+          🎬 OPTIMIZED NASARA REELS FEED
+          ===================================================== */}
 
       <FlatList
+        ref={feedListRef}
         data={feed}
         extraData={activeIndex}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        pagingEnabled
-        snapToInterval={height}
+
+        /* 🎬 NATIVE MOBILE SCROLLING */
+        pagingEnabled={Platform.OS !== "web"}
+        snapToInterval={Platform.OS !== "web" ? height : undefined}
+        snapToAlignment="start"
         decelerationRate="fast"
+
+        /* 🌐 WEB SCROLLING */
+        {...(Platform.OS === "web"
+          ? {
+              style: styles.webReelsList,
+              contentContainerStyle: styles.webReelsContent,
+            }
+          : {})}
+
         showsVerticalScrollIndicator={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
+
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
+
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         windowSize={3}
+
         removeClippedSubviews={Platform.OS === "android"}
+
         getItemLayout={(_, index) => ({
           length: height,
           offset: height * index,
@@ -607,12 +547,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
   },
 
-  reelContainer: {
+ reelContainer: {
     height,
     width,
     backgroundColor: "#000000",
     overflow: "hidden",
-  },
+    ...(Platform.OS === "web"
+      ? {
+          scrollSnapAlign: "start",
+          scrollSnapStop: "always",
+        }
+      : {}),
+  } as any,
 
   /* ===============================================
      🟣 VIDEO OVERLAYS
@@ -841,5 +787,19 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.8)",
     textShadowRadius: 4,
   },
+// =====================================================
+  // 🌐 WEB REELS SCROLLING
+  // =====================================================
 
+  webReelsList: {
+    flex: 1,
+    height: "100%",
+    overflowY: "auto",
+    scrollSnapType: "y mandatory",
+    overscrollBehaviorY: "contain",
+  } as any,
+
+  webReelsContent: {
+    flexGrow: 1,
+  },
 });
