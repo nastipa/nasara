@@ -1,6 +1,6 @@
 // ==========================================
 // 🎬 NASARA REEL PLAYER
-// 🔵 CONTROLLED VIDEO PLAYBACK
+// 🔵 RESTORED VIDEO RENDERING
 // 🟣 BACKGROUND MUSIC + SAFARI AUDIO SUPPORT
 // ==========================================
 import {
@@ -63,33 +63,25 @@ export default function ReelPlayer({
   onEnableSound,
 }: ReelPlayerProps) {
   // ==========================================
-  // 📦 STATES
+  // 📦 VIDEO STATES
   // ==========================================
   const [loading, setLoading] = useState(true);
-  // ==========================================
-// 🎬 TAP TO PAUSE / RESUME
-// ==========================================
-
-const [isPaused, setIsPaused] = useState(false);
-
-// ==========================================
-// 📊 VIDEO PROGRESS
-// ==========================================
-
-const [videoProgress, setVideoProgress] = useState(0);
-const [videoDuration, setVideoDuration] = useState(0);
-const [progressBarWidth, setProgressBarWidth] = useState(0);
-// ==========================================
-// 🎬 AUTO-HIDE VIDEO CONTROLS
-// ==========================================
-const [controlsVisible, setControlsVisible] = useState(true);
-
-const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [progressBarWidth, setProgressBarWidth] = useState(0);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  // ==========================================
+  // 🎵 MUSIC STATES
+  // ==========================================
   const [musicPositioned, setMusicPositioned] = useState(false);
- const opacity = useRef(new Animated.Value(1)).current;
+  // ==========================================
+  // 🧰 REFS
+  // ==========================================
+  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const opacity = useRef(new Animated.Value(0)).current;
   const isResettingMusicSegment = useRef(false);
   const mounted = useRef(true);
   // ==========================================
@@ -176,23 +168,30 @@ const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
         if (!mounted.current) {
           return;
         }
-       if (event.status === "readyToPlay") {
-  setVideoReady(true);
-  setLoading(false);
-  setVideoError(null);
-
-  // 🎬 MAKE VIDEO VISIBLE WHEN READY
-  Animated.timing(opacity, {
-    toValue: 1,
-    duration: 200,
-    useNativeDriver: true,
-  }).start();
-}
+        // ==========================================
+        // ✅ VIDEO READY
+        // ==========================================
+        if (event.status === "readyToPlay") {
+          setVideoReady(true);
+          setLoading(false);
+          setVideoError(null);
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 250,
+            useNativeDriver: true,
+          }).start();
+        }
+        // ==========================================
+        // ⏳ VIDEO LOADING
+        // ==========================================
         if (event.status === "loading") {
           setVideoReady(false);
           setLoading(true);
-         
+          opacity.setValue(0);
         }
+        // ==========================================
+        // ❌ VIDEO ERROR
+        // ==========================================
         if (event.status === "error") {
           setVideoReady(false);
           setLoading(false);
@@ -232,9 +231,8 @@ const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
           id,
           safeUrl
         );
-        // IMPORTANT:
-        // Do not immediately pause after replace().
-        // Playback is controlled separately after readiness.
+        // 🎬 LOAD VIDEO SOURCE
+        // Playback is controlled separately.
         player.replace(safeUrl);
       } else {
         player.replace(null);
@@ -250,7 +248,8 @@ const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
         setLoading(false);
         setVideoReady(false);
         setVideoError(
-          error?.message || "Video source error."
+          error?.message ||
+          "Video source error."
         );
       }
     }
@@ -264,68 +263,62 @@ const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     opacity,
     id,
   ]);
- // ==========================================
-// ▶️ CONTROL ACTIVE REEL PLAYBACK
-// ==========================================
-
-useEffect(() => {
-  if (!safeUrl || !videoReady) {
-    return;
-  }
-
-  try {
-    if (active && !isPaused) {
-  player.volume = originalVolume;
-  player.muted = false;
-  player.play();
-} else {
-  player.pause();
-
-
-      // ⏸️ Also stop their background music.
-      musicPlayer.pause();
+  // ==========================================
+  // ▶️ CONTROL ACTIVE REEL PLAYBACK
+  // ==========================================
+  useEffect(() => {
+    if (!safeUrl || !videoReady) {
+      return;
     }
-  } catch (error) {
-    console.error(
-      "REEL PLAYBACK ERROR:",
-      id,
-      error
-    );
-  }
-}, [
-  active,
-  safeUrl,
-  videoReady,
-  originalVolume,
-  player,
-  musicPlayer,
-  id,
-]);
+    try {
+      if (active && !isPaused) {
+        // 🎬 PLAY ACTIVE VIDEO
+        player.volume = originalVolume;
+        player.muted = false;
+        player.play();
+      } else {
+        // ⏸️ PAUSE INACTIVE VIDEO
+        player.pause();
+        // ⏸️ STOP BACKGROUND MUSIC
+        musicPlayer.pause();
+      }
+    } catch (error) {
+      console.error(
+        "REEL PLAYBACK ERROR:",
+        id,
+        error
+      );
+    }
+  }, [
+    active,
+    safeUrl,
+    videoReady,
+    isPaused,
+    originalVolume,
+    player,
+    musicPlayer,
+    id,
+  ]);
   // ==========================================
   // 🎵 LOAD BACKGROUND MUSIC
   // ==========================================
   useEffect(() => {
-    let cancelled = false;
     setMusicPositioned(false);
     isResettingMusicSegment.current = false;
-    const loadMusic = async () => {
-      try {
-        musicPlayer.pause();
-        if (safeMusicUrl) {
-          musicPlayer.replace(safeMusicUrl);
-          musicPlayer.loop = false;
-          musicPlayer.volume = musicVolume;
-        }
-      } catch (error) {
-        console.error(
-          "BACKGROUND MUSIC LOADING ERROR:",
-          error
-        );
+    try {
+      musicPlayer.pause();
+      if (safeMusicUrl) {
+        musicPlayer.replace(safeMusicUrl);
+        musicPlayer.loop = false;
+        musicPlayer.volume = musicVolume;
       }
-    };
-    loadMusic();
+    } catch (error) {
+      console.error(
+        "BACKGROUND MUSIC LOADING ERROR:",
+        error
+      );
+    }
     return () => {
-      cancelled = true;
       try {
         musicPlayer.pause();
       } catch (error) {
@@ -535,7 +528,6 @@ useEffect(() => {
       return;
     }
     try {
-      // 🔊 USER-INITIATED AUDIO PLAYBACK
       musicPlayer.volume = musicVolume;
       musicPlayer.play();
       onEnableSound();
@@ -547,121 +539,134 @@ useEffect(() => {
     }
   };
   // ==========================================
-// 🧹 SAFE REEL PLAYER CLEANUP
-// ==========================================
-
-useEffect(() => {
-  return () => {
+  // 🧹 SAFE REEL PLAYER CLEANUP
+  // ==========================================
+  useEffect(() => {
+    return () => {
+      try {
+        player.pause();
+        musicPlayer.pause();
+      } catch (error) {
+        console.log(
+          "REEL CLEANUP ERROR:",
+          error
+        );
+      }
+    };
+  }, [
+    player,
+    musicPlayer,
+  ]);
+  // ==========================================
+  // 📊 TRACK VIDEO PLAYBACK PROGRESS
+  // ==========================================
+  useEffect(() => {
+    if (
+      !active ||
+      !videoReady ||
+      isPaused
+    ) {
+      return;
+    }
+    const timer = setInterval(() => {
+      const duration = Number(
+        player.duration || 0
+      );
+      const currentTime = Number(
+        player.currentTime || 0
+      );
+      if (duration > 0) {
+        setVideoDuration(duration);
+        setVideoProgress(
+          Math.min(
+            100,
+            Math.max(
+              0,
+              (currentTime / duration) * 100
+            )
+          )
+        );
+      }
+    }, 250);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [
+    active,
+    videoReady,
+    isPaused,
+    player,
+  ]);
+  // ==========================================
+  // ▶️ TAP VIDEO TO PAUSE / RESUME
+  // ==========================================
+  const toggleVideoPlayback = () => {
+    if (!active || !videoReady) {
+      return;
+    }
     try {
-      // Stop video playback.
-      player.pause();
-
-      // Stop background music.
-      musicPlayer.pause();
+      if (isPaused) {
+        player.play();
+        setIsPaused(false);
+      } else {
+        player.pause();
+        setIsPaused(true);
+      }
     } catch (error) {
-      console.log(
-        "REEL CLEANUP ERROR:",
+      console.error(
+        "VIDEO TOGGLE ERROR:",
         error
       );
     }
   };
-}, [
-  player,
-  musicPlayer,
-]);
-
-// ==========================================
-// 📊 TRACK VIDEO PLAYBACK PROGRESS
-// ==========================================
-
-useEffect(() => {
-  if (!active || !videoReady || isPaused) {
-    return;
-  }
-
-  const timer = setInterval(() => {
-    const duration = Number(player.duration || 0);
-    const currentTime = Number(player.currentTime || 0);
-
-    if (duration > 0) {
-      setVideoDuration(duration);
-
-      setVideoProgress(
-        Math.min(100, Math.max(0, (currentTime / duration) * 100))
-      );
-    }
-  }, 250);
-
-  return () => clearInterval(timer);
-}, [active, videoReady, isPaused, player]);
-// ==========================================
-// ▶️ TAP VIDEO TO PAUSE / RESUME
-// ==========================================
-
-const toggleVideoPlayback = () => {
-  if (!active || !videoReady) return;
-
-  try {
-    if (isPaused) {
-      player.play();
-      setIsPaused(false);
-    } else {
-      player.pause();
-      setIsPaused(true);
-    }
-  } catch (error) {
-    console.error("VIDEO TOGGLE ERROR:", error);
-  }
-};
-// ==========================================
-// 🎬 AUTO-HIDE REEL CONTROLS
-// ==========================================
-useEffect(() => {
-  if (controlsTimer.current) {
-    clearTimeout(controlsTimer.current);
-    controlsTimer.current = null;
-  }
-
-  if (!active) {
-    setControlsVisible(false);
-    return;
-  }
-
-  setControlsVisible(true);
-
-  if (!isPaused) {
-    controlsTimer.current = setTimeout(() => {
-      setControlsVisible(false);
-    }, 2500);
-  }
-
-  return () => {
+  // ==========================================
+  // 🎬 AUTO-HIDE REEL CONTROLS
+  // ==========================================
+  useEffect(() => {
     if (controlsTimer.current) {
       clearTimeout(controlsTimer.current);
       controlsTimer.current = null;
     }
+    if (!active) {
+      setControlsVisible(false);
+      return;
+    }
+    setControlsVisible(true);
+    if (!isPaused) {
+      controlsTimer.current = setTimeout(() => {
+        setControlsVisible(false);
+      }, 2500);
+    }
+    return () => {
+      if (controlsTimer.current) {
+        clearTimeout(controlsTimer.current);
+        controlsTimer.current = null;
+      }
+    };
+  }, [
+    active,
+    isPaused,
+  ]);
+  // ==========================================
+  // 🎬 SEEK VIDEO TO SELECTED POSITION
+  // ==========================================
+  const seekVideo = (value: number) => {
+    const duration = player.duration;
+    if (
+      !Number.isFinite(duration) ||
+      duration <= 0
+    ) {
+      return;
+    }
+    const newTime = Math.max(
+      0,
+      Math.min(value, duration)
+    );
+    player.currentTime = newTime;
+    setVideoProgress(
+      (newTime / duration) * 100
+    );
   };
-}, [active, isPaused]);
-// ==========================================
-// 🎬 SEEK VIDEO TO SELECTED POSITION
-// ==========================================
-const seekVideo = (value: number) => {
-  const duration = player.duration;
-
-  if (!Number.isFinite(duration) || duration <= 0) {
-    return;
-  }
-
-  const newTime = Math.max(
-    0,
-    Math.min(value, duration)
-  );
-
-  player.currentTime = newTime;
-
-  // Store progress as a percentage (0–100).
-  setVideoProgress((newTime / duration) * 100);
-};
   // ==========================================
   // 🚫 INVALID VIDEO
   // ==========================================
@@ -679,110 +684,122 @@ const seekVideo = (value: number) => {
   // ==========================================
   return (
     <View style={styles.container}>
-
-   {/* ======================================
-    🖼️ SHOW THUMBNAIL ONLY WHILE LOADING
-====================================== */}
-
-{!!thumbnail && !videoReady && (
-  <Image
-    source={{ uri: thumbnail }}
-    style={styles.thumbnail}
-    resizeMode="cover"
-  />
-)}
       {/* ======================================
-          🎬 VIDEO VIEW
+          🖼️ VIDEO THUMBNAIL
       ====================================== */}
-      <Animated.View
-        style={[
-          styles.videoWrapper,
-          { opacity },
-        ]}
-      >
-        <VideoView
-  player={player}
-  style={styles.video}
-  contentFit="cover"
-  nativeControls={false}
-  allowsFullscreen={false}
-/>
-
-{/* ======================================
-    ▶️ TAP TO PAUSE / RESUME
-====================================== */}
-
-<Pressable
-  style={styles.videoTapArea}
-  onPress={() => {
-    toggleVideoPlayback();
-  }}
-/>
-
-{isPaused && active && controlsVisible && (
-  <View
-    pointerEvents="none"
-    style={styles.pauseIndicator}
-  >
-    <Text style={styles.pauseIcon}>▶️</Text>
-  </View>
-)}
-
-{/* ======================================
-    📊 VIDEO PROGRESS BAR
-====================================== */}
-
-{active && (
-  <View
-    pointerEvents={controlsVisible ? "auto" : "none"}
-    style={[
-      styles.progressContainer,
-      {
-        opacity: controlsVisible ? 1 : 0,
-      },
-    ]}
-  >
-    <Pressable
-      style={styles.progressTrack}
-      onLayout={(event) => {
-        setProgressBarWidth(
-          event.nativeEvent.layout.width
-        );
-      }}
-      onPress={(event) => {
-        if (
-          progressBarWidth <= 0 ||
-          videoDuration <= 0
-        ) {
-          return;
-        }
-
-        const tapX = event.nativeEvent.locationX;
-
-        const percentage = Math.max(
-          0,
-          Math.min(tapX / progressBarWidth, 1)
-        );
-
-        seekVideo(percentage * videoDuration);
-      }}
-    >
-      <View
-        style={[
-          styles.progressFill,
-          { width: `${videoProgress}%` },
-        ]}
-      />
-    </Pressable>
-  </View>
-)}
-      </Animated.View>
+      {!!thumbnail && !videoReady && (
+        <Image
+          source={{ uri: thumbnail }}
+          style={styles.thumbnail}
+          resizeMode="cover"
+        />
+      )}
+      {/* ======================================
+          🎬 ANDROID VIDEO FIX WRAPPER
+      ====================================== */}
+      <View style={styles.videoWrapper}>
+        <Animated.View
+          style={[
+            styles.videoWrapper,
+            { opacity },
+          ]}
+        >
+          <VideoView
+            key={safeUrl}
+            player={player}
+            style={styles.video}
+            contentFit="cover"
+            nativeControls={false}
+            allowsFullscreen={false}
+          />
+          {/* ======================================
+              ▶️ TAP TO PAUSE / RESUME
+          ====================================== */}
+          <Pressable
+            style={styles.videoTapArea}
+            onPress={toggleVideoPlayback}
+          />
+          {/* ======================================
+              ⏸️ PAUSE INDICATOR
+          ====================================== */}
+          {isPaused && active && controlsVisible && (
+            <View
+              pointerEvents="none"
+              style={styles.pauseIndicator}
+            >
+              <Text style={styles.pauseIcon}>
+                ▶️
+              </Text>
+            </View>
+          )}
+          {/* ======================================
+              📊 VIDEO PROGRESS BAR
+          ====================================== */}
+          {active && (
+            <View
+              pointerEvents={
+                controlsVisible ? "auto" : "none"
+              }
+              style={[
+                styles.progressContainer,
+                {
+                  opacity: controlsVisible ? 1 : 0,
+                },
+              ]}
+            >
+              <Pressable
+                style={styles.progressTrack}
+                onLayout={(event) => {
+                  setProgressBarWidth(
+                    event.nativeEvent.layout.width
+                  );
+                }}
+                onPress={(event) => {
+                  if (
+                    progressBarWidth <= 0 ||
+                    videoDuration <= 0
+                  ) {
+                    return;
+                  }
+                  const tapX =
+                    event.nativeEvent.locationX;
+                  const percentage = Math.max(
+                    0,
+                    Math.min(
+                      tapX / progressBarWidth,
+                      1
+                    )
+                  );
+                  seekVideo(
+                    percentage * videoDuration
+                  );
+                }}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${videoProgress}%`,
+                    },
+                  ]}
+                />
+              </Pressable>
+            </View>
+          )}
+        </Animated.View>
+      </View>
       {/* ======================================
           ⏳ LOADING INDICATOR
       ====================================== */}
       {loading && (
-        <View style={styles.loader}>
-          <ActivityIndicator color="white" size="large" />
+        <View
+          pointerEvents="none"
+          style={styles.loader}
+        >
+          <ActivityIndicator
+            color="white"
+            size="large"
+          />
         </View>
       )}
       {/* ======================================
@@ -807,20 +824,20 @@ const seekVideo = (value: number) => {
         !soundEnabled &&
         musicStatus.isLoaded &&
         musicPositioned && (
-        <View style={styles.soundButtonContainer}>
-          <Pressable
-            onPress={handleEnableSound}
-            style={styles.soundButton}
-          >
-            <Text style={styles.soundButtonIcon}>
-              🔊
-            </Text>
-            <Text style={styles.soundButtonText}>
-              Enable Sound
-            </Text>
-          </Pressable>
-        </View>
-      )}
+          <View style={styles.soundButtonContainer}>
+            <Pressable
+              onPress={handleEnableSound}
+              style={styles.soundButton}
+            >
+              <Text style={styles.soundButtonIcon}>
+                🔊
+              </Text>
+              <Text style={styles.soundButtonText}>
+                Enable Sound
+              </Text>
+            </Pressable>
+          </View>
+        )}
     </View>
   );
 }
@@ -834,27 +851,41 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
     overflow: "hidden",
   },
+  // ==========================================
+  // 🎬 VIDEO WRAPPER
+  // ==========================================
   videoWrapper: {
-  position: "absolute",
-  top: 0,
-  left: 0,
-  width: "100%",
-  height: "100%",
-  backgroundColor: "#000000",
-  zIndex: 2,
-},
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#000000",
+  },
   video: {
     width: "100%",
     height: "100%",
     backgroundColor: "#000000",
   },
+  // ==========================================
+  // 🖼️ THUMBNAIL
+  // ==========================================
+  thumbnail: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+    zIndex: 1,
+  },
+  // ==========================================
+  // ⏳ LOADER
+  // ==========================================
   loader: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#000000",
+    backgroundColor: "rgba(0,0,0,0.15)",
     zIndex: 5,
   },
+  // ==========================================
+  // ❌ VIDEO ERROR
+  // ==========================================
   errorContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
@@ -875,6 +906,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 8,
   },
+  // ==========================================
+  // 🔊 SOUND BUTTON
+  // ==========================================
   soundButtonContainer: {
     position: "absolute",
     top: "45%",
@@ -904,64 +938,53 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   // ==========================================
-// 🎬 TAP TO PAUSE / RESUME
-// ==========================================
-
-videoTapArea: {
-  ...StyleSheet.absoluteFillObject,
-  zIndex: 2,
-},
-
-pauseIndicator: {
-  position: "absolute",
-  top: "45%",
-  left: 0,
-  right: 0,
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 4,
-},
-
-pauseIcon: {
-  color: "#FFFFFF",
-  fontSize: 55,
-  fontWeight: "900",
-  backgroundColor: "rgba(0,0,0,0.45)",
-  overflow: "hidden",
-  paddingHorizontal: 24,
-  paddingVertical: 12,
-  borderRadius: 50,
-},
-
-// ==========================================
-// 📊 VIDEO PROGRESS BAR
-// ==========================================
-
-progressContainer: {
-  position: "absolute",
-  left: 12,
-  right: 12,
-  bottom: 8,
-  zIndex: 8,
-},
-
-progressTrack: {
-  height: 4,
-  backgroundColor: "rgba(255,255,255,0.35)",
-  borderRadius: 5,
-  overflow: "hidden",
-},
-
-progressFill: {
-  height: "100%",
-  backgroundColor: "#D6A83F",
-  borderRadius: 5,
-},
-thumbnail: {
-  ...StyleSheet.absoluteFillObject,
-  width: "100%",
-  height: "100%",
-  zIndex: 1,
-},
-
+  // ▶️ VIDEO TAP AREA
+  // ==========================================
+  videoTapArea: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+  },
+  // ==========================================
+  // ⏸️ PAUSE INDICATOR
+  // ==========================================
+  pauseIndicator: {
+    position: "absolute",
+    top: "45%",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 4,
+  },
+  pauseIcon: {
+    color: "#FFFFFF",
+    fontSize: 55,
+    fontWeight: "900",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    overflow: "hidden",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 50,
+  },
+  // ==========================================
+  // 📊 PROGRESS BAR
+  // ==========================================
+  progressContainer: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 8,
+    zIndex: 8,
+  },
+  progressTrack: {
+    height: 4,
+    backgroundColor: "rgba(255,255,255,0.35)",
+    borderRadius: 5,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#D6A83F",
+    borderRadius: 5,
+  },
 });
