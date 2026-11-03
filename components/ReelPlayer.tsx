@@ -883,7 +883,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
     overflow: "hidden",
   },
-  
+
+
   // ==========================================
   // 🎬 VIDEO WRAPPER
   // ==========================================
@@ -906,6 +907,7 @@ const styles = StyleSheet.create({
     height: "100%",
     zIndex: 1,
   },
+  
   // ==========================================
   // ⏳ LOADER
   // ==========================================
