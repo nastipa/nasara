@@ -2892,7 +2892,7 @@ trimSummaryText: {
 trimSummaryDuration: {
   color: "#8A6016",
   fontSize: 10,
-  fontWeight: "800",
+fontWeight: "800",
   marginTop: 5,
 },
 

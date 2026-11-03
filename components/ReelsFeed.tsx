@@ -4,7 +4,7 @@
    🟣 Modern TikTok-style interface
    ========================================================= */
 
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -83,6 +83,21 @@ export default function ReelsFeed({
   onDelete,
 }: Props) {
   const router = useRouter();
+  // ==========================================
+// 🎬 REELS SCREEN FOCUS CONTROL
+// ==========================================
+
+const [screenFocused, setScreenFocused] = useState(true);
+
+useFocusEffect(
+  useCallback(() => {
+    setScreenFocused(true);
+
+    return () => {
+      setScreenFocused(false);
+    };
+  }, [])
+);
 
   /* =======================================================
      🔵 REFS
@@ -197,43 +212,92 @@ const [soundEnabled, setSoundEnabled] = useState(false);
      🟢 VIEWABILITY CONFIGURATION
      ======================================================= */
 
-  const viewabilityConfig = {
-    itemVisiblePercentThreshold: 80,
-  };
+ const viewabilityConfig = useRef({
+  itemVisiblePercentThreshold: 80,
+}).current;
 
   /* =======================================================
-     🔵 VIDEO PRELOADING
-     ======================================================= */
-
-  const preloadVideos = useCallback(
-    (index: number) => {
-      const around = feed.slice(
-        Math.max(0, index - 1),
-        index + 2
-      );
-
-      around.forEach((item) => {
-        const src = item.media_url;
-
-        if (!src || preloaded.current.has(item.id)) return;
-
-        preloaded.current.add(item.id);
-
-        if (Platform.OS === "web") {
-          const v = document.createElement("video");
-
-          v.src = src;
-          v.preload = "metadata";
-          v.muted = true;
+   🔵 INTELLIGENT VIDEO PRELOADING
+   ======================================================= */
+// Keep references to browser video preload elements.
+const preloadElements = useRef<
+  Map<string, HTMLVideoElement>
+>(new Map());
+const preloadVideos = useCallback(
+  (index: number) => {
+    // Native playback remains managed by ReelPlayer.
+    if (Platform.OS !== "web" || typeof document === "undefined") {
+      return;
+    }
+    // Preload current, next two and previous Reel.
+    const targetIndexes = [
+      index - 1,
+      index,
+      index + 1,
+      index + 2,
+    ].filter(
+      (value) => value >= 0 && value < feed.length
+    );
+    const targetIds = new Set(
+      targetIndexes.map(
+        (targetIndex) => feed[targetIndex].id
+      )
+    );
+    // Remove videos that are no longer near the active Reel.
+    preloadElements.current.forEach(
+      (video, reelId) => {
+        if (!targetIds.has(reelId)) {
+          video.pause();
+          video.removeAttribute("src");
+          video.load();
+          preloadElements.current.delete(reelId);
+          preloaded.current.delete(reelId);
         }
-      });
-    },
-    [feed]
-  );
-
-  useEffect(() => {
-    preloadVideos(activeIndex);
-  }, [activeIndex, feed, preloadVideos]);
+      }
+    );
+    // Prepare nearby Reels.
+    targetIndexes.forEach((targetIndex) => {
+      const item = feed[targetIndex];
+      const src = item.media_url;
+      if (!src || !src.trim()) {
+        return;
+      }
+      // Reuse existing preload element.
+      if (preloadElements.current.has(item.id)) {
+        return;
+      }
+      const video = document.createElement("video");
+      video.preload =
+        targetIndex === index + 1
+          ? "auto"
+          : "metadata";
+      video.muted = true;
+      video.playsInline = true;
+      video.src = src;
+      preloadElements.current.set(item.id, video);
+      preloaded.current.add(item.id);
+      // Start loading the selected resource.
+      video.load();
+    });
+  },
+  [feed]
+);
+// Update preloading whenever the active Reel changes.
+useEffect(() => {
+  preloadVideos(activeIndex);
+}, [activeIndex, feed, preloadVideos]);
+// Release browser preload resources when the feed unmounts.
+useEffect(() => {
+  return () => {
+    preloadElements.current.forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    preloadElements.current.clear();
+    preloaded.current.clear();
+  };
+}, []);
 
   /* =======================================================
      🟣 REEL ITEM
@@ -246,7 +310,8 @@ const [soundEnabled, setSoundEnabled] = useState(false);
     item: ReelType;
     index: number;
   }) => {
-    const isActive = index === activeIndex;
+   const isActive =
+  index === activeIndex && screenFocused;
 
     return (
       <View style={styles.reelContainer}>
