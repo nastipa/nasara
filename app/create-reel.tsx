@@ -96,9 +96,10 @@ export default function CreateReel() {
 
   const [musicVolume, setMusicVolume] = useState(0.7);
   const [originalVolume, setOriginalVolume] = useState(1);
-
-  const [musicPreviewing, setMusicPreviewing] =
-    useState(false);
+// 🎵 COMBINED VIDEO + MUSIC PREVIEW
+const [previewPlaying, setPreviewPlaying] = useState(false);
+// 🎵 COMBINED VIDEO + MUSIC PREVIEW STATE
+const [musicPreviewing, setMusicPreviewing] = useState(false);
 
   // 🔵 VIDEO PLAYER
 
@@ -191,36 +192,52 @@ const maximumMusicStart = Math.max(
   }, []);
 
   // 🟡 =====================================================
-  // 🟡 VIDEO PLAYER CONFIGURATION
-  // 🟡 =====================================================
+// 🟡 VIDEO PLAYER CONFIGURATION
+// 🟡 VIDEO DOES NOT AUTOPLAY
+// 🟡 =====================================================
 
-  useEffect(() => {
-    if (video?.uri) {
-      player.replace(video.uri);
+useEffect(() => {
+  if (video?.uri) {
+    player.pause();
+    player.replace(video.uri);
 
-      player.loop = false;
-      player.muted = false;
-      player.volume = originalVolume;
-
-      const timer = setTimeout(() => {
-        player.play();
-      }, 300);
-
-      return () => clearTimeout(timer);
-    } else {
-      player.pause();
-      player.replace(null);
-    }
-  }, [video?.uri]);
-
-  // 🟡 =====================================================
-  // 🟡 UPDATE ORIGINAL VIDEO VOLUME
-  // 🟡 =====================================================
-
-  useEffect(() => {
+    player.loop = false;
+    player.muted = false;
     player.volume = originalVolume;
-  }, [originalVolume]);
 
+    setPreviewPlaying(false);
+  } else {
+    player.pause();
+    player.replace(null);
+    setPreviewPlaying(false);
+  }
+}, [video?.uri]);
+
+// 🟡 =====================================================
+// 🟡 STOP MUSIC WHEN VIDEO REACHES THE END
+// 🟡 =====================================================
+
+useEffect(() => {
+  const subscription = player.addListener("playToEnd", () => {
+    player.pause();
+    musicPlayer.pause();
+    setPreviewPlaying(false);
+  });
+
+  return () => subscription.remove();
+}, [player, musicPlayer]);
+
+  // 🎵 UPDATE MUSIC VOLUME
+
+useEffect(() => {
+  musicPlayer.volume = musicVolume;
+}, [musicVolume]);
+
+// 🔊 UPDATE ORIGINAL VIDEO VOLUME
+
+useEffect(() => {
+  player.volume = originalVolume;
+}, [originalVolume]);
   // 🟡 =====================================================
   // 🟡 UPDATE BACKGROUND MUSIC VOLUME
   // 🟡 =====================================================
@@ -229,96 +246,91 @@ const maximumMusicStart = Math.max(
     musicPlayer.volume = musicVolume;
   }, [musicVolume]);
 
-  // ==========================================
-// 🎵 SELECT MUSIC
-// ==========================================
+ // 🎵 =====================================================
+// 🎵 SELECT MUSIC FOR VIDEO PREVIEW
+// 🎵 =====================================================
 
 const selectMusic = (track: ReelMusic) => {
   if (loading) return;
 
-  try {
-    musicPlayer.pause();
-  } catch (error) {
-    console.log("Previous music pause error:", error);
-  }
+  player.pause();
+  musicPlayer.pause();
 
-  setMusicPreviewing(false);
-
-  previewPositioned.current = false;
+  setPreviewPlaying(false);
+  setSelectedMusic(track);
 
   setMusicStartTime(0);
-
   setMusicSegmentDuration(15);
-
-  setSelectedMusic(track);
 
   try {
     musicPlayer.replace(track.audio_url);
     musicPlayer.loop = false;
     musicPlayer.volume = musicVolume;
   } catch (error) {
-    console.log("Music selection error:", error);
+    console.error("Music selection error:", error);
   }
 };
-  // ==========================================
-// 🎵 PREVIEW SELECTED MUSIC SEGMENT
-// ==========================================
+  // 🎵 =====================================================
+// 🎵 PLAY VIDEO WITH SELECTED MUSIC
+// 🎵 BOTH PLAYERS START FROM THE SAME USER ACTION
+// 🎵 =====================================================
 
-const toggleMusicPreview = async () => {
-  if (loading) return;
+const toggleCombinedPreview = () => {
+  if (loading || !video?.uri) return;
 
-  if (!selectedMusic) {
-    Alert.alert(
-      "Select music",
-      "Please select a music track first."
-    );
-
-    return;
-  }
-
-  if (musicPreviewing) {
+  if (previewPlaying) {
+    player.pause();
     musicPlayer.pause();
-    setMusicPreviewing(false);
-    previewPositioned.current = false;
+    setPreviewPlaying(false);
     return;
   }
 
   try {
-    previewPositioned.current = false;
+    player.volume = originalVolume;
+    player.muted = false;
 
+    if (selectedMusic) {
+      if (!musicStatus.isLoaded) {
+        Alert.alert(
+          "Music loading",
+          "Please wait for the selected music to finish loading."
+        );
+        return;
+      }
+
+      musicPlayer.volume = musicVolume;
+
+      // The selected section is positioned before playback.
+      // Both play commands are initiated directly by this button.
+      musicPlayer.play();
+    }
+
+    player.play();
+    setPreviewPlaying(true);
+  } catch (error: any) {
+    console.error("Combined preview error:", error);
+
+    player.pause();
     musicPlayer.pause();
 
-    musicPlayer.loop = false;
-
-    musicPlayer.volume = musicVolume;
-
-    musicPlayer.replace(selectedMusic.audio_url);
-
-    setMusicPreviewing(true);
-
-  } catch (error: any) {
-    console.error("Music preview error:", error);
-
-    setMusicPreviewing(false);
+    setPreviewPlaying(false);
 
     Alert.alert(
-      "Music preview",
-      error?.message ||
-        "Unable to preview this music track."
+      "Preview error",
+      error?.message || "Unable to play the video preview."
     );
   }
 };
 
-// ==========================================
-// 🎵 POSITION MUSIC BEFORE PREVIEW
-// ==========================================
+// 🎵 =====================================================
+// 🎵 POSITION MUSIC WHEN IT IS LOADED OR TRIM IS CHANGED
+// 🎵 =====================================================
 
 useEffect(() => {
   if (
-    !musicPreviewing ||
     !selectedMusic ||
     !musicStatus.isLoaded ||
-    previewPositioned.current
+    previewPlaying
   ) {
     return;
   }
@@ -328,34 +340,24 @@ useEffect(() => {
     maximumMusicStart
   );
 
-  previewPositioned.current = true;
-
-  musicPlayer
-    .seekTo(safeStart)
-    .then(() => {
-      musicPlayer.play();
-    })
-    .catch((error) => {
-      console.error("Music preview positioning error:", error);
-      previewPositioned.current = false;
-      setMusicPreviewing(false);
-    });
-
+  musicPlayer.seekTo(safeStart).catch((error) => {
+    console.error("Music positioning error:", error);
+  });
 }, [
-  musicPreviewing,
   selectedMusic?.id,
   musicStatus.isLoaded,
   musicStartTime,
   maximumMusicStart,
+  previewPlaying,
 ]);
 
-// ==========================================
-// 🔁 LOOP SELECTED MUSIC DURING PREVIEW
-// ==========================================
+// 🎵 =====================================================
+// 🎵 LOOP THE SELECTED MUSIC SECTION WHILE VIDEO PLAYS
+// 🎵 =====================================================
 
 useEffect(() => {
   if (
-    !musicPreviewing ||
+    !previewPlaying ||
     !selectedMusic ||
     !musicStatus.isLoaded ||
     resettingPreview.current
@@ -369,23 +371,21 @@ useEffect(() => {
   if (musicStatus.currentTime >= segmentEnd) {
     resettingPreview.current = true;
 
-    musicPlayer
-      .seekTo(musicStartTime)
+    musicPlayer.seekTo(musicStartTime)
       .then(() => {
-        if (musicPreviewing) {
+        if (previewPlaying) {
           musicPlayer.play();
         }
       })
       .catch((error) => {
-        console.error("Music preview loop error:", error);
+        console.error("Music segment loop error:", error);
       })
       .finally(() => {
         resettingPreview.current = false;
       });
   }
-
 }, [
-  musicPreviewing,
+  previewPlaying,
   selectedMusic?.id,
   musicStatus.isLoaded,
   musicStatus.currentTime,
@@ -393,22 +393,19 @@ useEffect(() => {
   safeMusicSegmentDuration,
 ]);
 
-  // 🟡 =====================================================
-  // 🟡 REMOVE SELECTED MUSIC
-  // 🟡 =====================================================
+  // 🎵 =====================================================
+// 🎵 REMOVE SELECTED MUSIC
+// 🎵 =====================================================
 
-  const removeSelectedMusic = () => {
-    if (loading) return;
+const removeSelectedMusic = () => {
+  if (loading) return;
 
-    try {
-      musicPlayer.pause();
-    } catch (error) {
-      console.log("Music pause error:", error);
-    }
+  player.pause();
+  musicPlayer.pause();
 
-    setMusicPreviewing(false);
-    setSelectedMusic(null);
-  };
+  setPreviewPlaying(false);
+  setSelectedMusic(null);
+};
 
   // 🟡 =====================================================
   // 🟡 VOLUME CONTROLS
@@ -586,14 +583,14 @@ useEffect(() => {
 
     // Stop the music preview before publishing.
 
-    try {
-      musicPlayer.pause();
-    } catch (error) {
-      console.log("Music pause error:", error);
-    }
+   try {
+  player.pause();
+  musicPlayer.pause();
+} catch (error) {
+  console.log("Preview cleanup error:", error);
+}
 
-    setMusicPreviewing(false);
-
+setPreviewPlaying(false);
     try {
       // 🔵 GET AUTHENTICATED USER
 
@@ -1037,12 +1034,33 @@ useEffect(() => {
                 </View>
 
                 <VideoView
-                  key={video.uri}
-                  player={player}
-                  style={styles.preview}
-                  contentFit="contain"
-                  nativeControls
-                />
+  key={video.uri}
+  player={player}
+  style={styles.preview}
+  contentFit="contain"
+  nativeControls={false}
+/>
+
+{/* 🎬 VIDEO PREVIEW PLAYBACK CONTROL */}
+
+<TouchableOpacity
+  activeOpacity={0.85}
+  onPress={toggleCombinedPreview}
+  disabled={loading}
+  style={styles.combinedPreviewButton}
+>
+  <Text style={styles.combinedPreviewIcon}>
+    {previewPlaying ? "Ⅱ" : "▶️"}
+  </Text>
+
+  <Text style={styles.combinedPreviewText}>
+    {previewPlaying
+      ? "Pause video preview"
+      : selectedMusic
+        ? "Play video with music"
+        : "Play video preview"}
+  </Text>
+</TouchableOpacity>
 
                 <View style={styles.previewBottom}>
                   <Text style={styles.previewBottomText}>
@@ -1314,30 +1332,23 @@ useEffect(() => {
 
               </View>
 
-              {/* 🎵 MUSIC PREVIEW */}
+             {/* 🎵 ================================================= */}
+{/* 🎵 MUSIC PREVIEW STATUS */}
+{/* 🎵 ================================================= */}
 
-              {selectedMusic && (
+{selectedMusic && (
+  <View style={styles.musicInformation}>
+    <Text style={styles.musicInformationIcon}>
+      ♫
+    </Text>
 
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  onPress={toggleMusicPreview}
-                  disabled={loading}
-                  style={styles.musicPreviewButton}
-                >
-
-                  <Text style={styles.musicPreviewIcon}>
-                    {musicPreviewing ? "Ⅱ" : "▶️"}
-                  </Text>
-
-                  <Text style={styles.musicPreviewText}>
-                    {musicPreviewing
-                      ? "Stop music preview"
-                      : "Preview selected music"}
-                  </Text>
-
-                </TouchableOpacity>
-
-              )}
+    <Text style={styles.musicInformationText}>
+      Your selected music will play together with your
+      video when you press "Play video with music" above.
+      Pause the video to pause the music.
+    </Text>
+  </View>
+)}
 
               {/* ======================================
     🎵 MUSIC TRIMMING STUDIO
@@ -1374,10 +1385,9 @@ useEffect(() => {
             key={seconds}
             disabled={loading || disabled}
             onPress={() => {
-              musicPlayer.pause();
-              setMusicPreviewing(false);
-              previewPositioned.current = false;
-
+             player.pause();
+musicPlayer.pause();
+setPreviewPlaying(false);
               setMusicSegmentDuration(seconds);
 
               setMusicStartTime((current) =>
@@ -2891,5 +2901,31 @@ trimFootnote: {
   fontSize: 9,
   lineHeight: 15,
   marginTop: 11,
+},
+// 🎬 COMBINED VIDEO PREVIEW CONTROL
+
+combinedPreviewButton: {
+  backgroundColor: NAVY,
+  borderRadius: 13,
+  minHeight: 48,
+  marginTop: 12,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  borderWidth: 1,
+  borderColor: GOLD,
+},
+
+combinedPreviewIcon: {
+  color: GOLD,
+  fontSize: 19,
+  fontWeight: "900",
+  marginRight: 10,
+},
+
+combinedPreviewText: {
+  color: WHITE,
+  fontSize: 11,
+  fontWeight: "900",
 },
 });
