@@ -1,5 +1,10 @@
 import { useRouter } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+} from "react-native";
 import { useAdminGuard } from "../../hooks/useAdminGuard";
 
 export default function AdminDashboard() {
@@ -21,22 +26,34 @@ export default function AdminDashboard() {
     <ScrollView style={styles.container}>
       <Text style={styles.title}>Admin Dashboard</Text>
 
+      {/* ==========================================
+          🛡️ MODERATION
+      ========================================== */}
+
       <Text style={styles.section}>Moderation</Text>
       <Tile label="Approve Ads" route="/(admin)/ads" />
       <Tile label="Approve Banner" route="/(admin)/banner" />
       <Tile label="Approve Promotion" route="/(admin)/promoted" />
       <Tile label="Approve Boost" route="/(admin)/boost" />
       <Tile label="Approve Battle" route="/(admin)/battle" />
-     
-     <Text style={styles.section}>Delivery</Text>
+
+      {/* ==========================================
+          🚚 DELIVERY
+      ========================================== */}
+
+      <Text style={styles.section}>Delivery</Text>
       <Tile label="Delivery-Analytics" route="/(admin)/delivery-analytics" />
       <Tile label="Delivery-Payments" route="/(admin)/delivery-payments" />
-      <Tile label=" Logistics" route="/(admin)/logistics" />
-      <Tile label=" Rider Earnings" route="/(admin)/rider-earnings" />
-      <Tile label=" Rider Applications" route="/(admin)/rider-applications" />
-      <Tile label=" Rider Withdrawals" route="/(admin)/rider-withdrawals" />
-      <Tile label=" Rider Request Withdrawals" route="/(admin)/withdrawals" />
- 
+      <Tile label="Logistics" route="/(admin)/logistics" />
+      <Tile label="Rider Earnings" route="/(admin)/rider-earnings" />
+      <Tile label="Rider Applications" route="/(admin)/rider-applications" />
+      <Tile label="Rider Withdrawals" route="/(admin)/rider-withdrawals" />
+      <Tile label="Rider Request Withdrawals" route="/(admin)/withdrawals" />
+
+      {/* ==========================================
+          👥 USERS
+      ========================================== */}
+
       <Text style={styles.section}>Users</Text>
       <Tile label="View Users" route="/(admin)/users" />
       <Tile label="Ban / Unban User" route="/(admin)/users" />
@@ -44,39 +61,72 @@ export default function AdminDashboard() {
       <Tile label="Verify Badges" route="/(admin)/verifications" />
       <Tile label="Match Mentor" route="/(admin)/mentor-matches" />
       <Tile label="Approve Mentor" route="/(admin)/approve-mentors" />
-      
+
+      {/* ==========================================
+          🌾 FARM
+      ========================================== */}
+
       <Text style={styles.section}>Farm</Text>
       <Tile label="Farm Boost" route="/(admin)/farm-boost" />
       <Tile label="Farm Verification" route="/(admin)/farm-verification" />
       <Tile label="Farm Featured" route="/(admin)/farm-featured" />
       <Tile label="Farm Suppliers" route="/(admin)/farm-suppliers" />
       <Tile label="Farm Ad" route="/(admin)/farm-ads" />
-      
-      <Text style={styles.section}> Add/Remove Admin</Text>
+
+      {/* ==========================================
+          👨‍💼 ADMIN MANAGEMENT
+      ========================================== */}
+
+      <Text style={styles.section}>Add/Remove Admin</Text>
       <Tile label="Add Admin" route="/(admin)/add-admin" />
       <Tile label="Remove Admin" route="/(admin)/remove-admin" />
-      <Tile label="Add Restaurant Owner" route="/(admin)/add-restaurant-owner" />
+      <Tile
+        label="Add Restaurant Owner"
+        route="/(admin)/add-restaurant-owner"
+      />
       <Tile label="Subscriptions" route="/(admin)/subscriptions" />
 
-
-      
-      
-
+      {/* ==========================================
+          🛍️ MARKETPLACE
+      ========================================== */}
 
       <Text style={styles.section}>Marketplace</Text>
       <Tile label="Delete Listings" route="/(admin)/delete-listings" />
       <Tile label="Remove Fake Items" route="/(admin)/remove-fake-items" />
 
+      {/* ==========================================
+          🎵 REELS & MUSIC
+      ========================================== */}
+
+      <Text style={styles.section}>Reels & Music</Text>
+      <Tile label="🎵 Music Management" route="/(admin)/music" />
+
+      {/* ==========================================
+          📡 LIVE SYSTEM
+      ========================================== */}
+
       <Text style={styles.section}>Live System</Text>
       <Tile label="Stop Live Stream" route="/(admin)/stop-live-stream" />
       <Tile label="End Auction" route="/(admin)/end-auction" />
+
+      {/* ==========================================
+          💰 FINANCE
+      ========================================== */}
 
       <Text style={styles.section}>Finance</Text>
       <Tile label="MoMo Payouts" route="/(admin)/momo-payouts" />
       <Tile label="Revenue" route="/(admin)/revenue" />
 
+      {/* ==========================================
+          📊 ANALYTICS
+      ========================================== */}
+
       <Text style={styles.section}>Analytics</Text>
       <Tile label="Platform Stats" route="/(admin)/analytics" />
+
+      {/* ==========================================
+          🏠 BACK TO HOME
+      ========================================== */}
 
       <TouchableOpacity
         style={styles.home}
@@ -84,43 +134,45 @@ export default function AdminDashboard() {
       >
         <Text style={{ color: "white" }}>Back to Home</Text>
       </TouchableOpacity>
-
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container:{ flex:1, padding:20 },
-
-  title:{
-    fontSize:26,
-    fontWeight:"bold",
-    marginBottom:20
+  container: {
+    flex: 1,
+    padding: 20,
   },
 
-  section:{
-    marginTop:20,
-    fontWeight:"700",
-    fontSize:16
+  title: {
+    fontSize: 26,
+    fontWeight: "bold",
+    marginBottom: 20,
   },
 
-  tile:{
-    backgroundColor:"#111827",
-    padding:16,
-    borderRadius:10,
-    marginTop:8
+  section: {
+    marginTop: 20,
+    fontWeight: "700",
+    fontSize: 16,
   },
 
-  tileText:{
-    color:"white",
-    fontWeight:"600"
+  tile: {
+    backgroundColor: "#111827",
+    padding: 16,
+    borderRadius: 10,
+    marginTop: 8,
   },
 
-  home:{
-    marginTop:40,
-    backgroundColor:"#2563eb",
-    padding:16,
-    borderRadius:10,
-    alignItems:"center"
-  }
+  tileText: {
+    color: "white",
+    fontWeight: "600",
+  },
+
+  home: {
+    marginTop: 40,
+    backgroundColor: "#2563eb",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+  },
 });

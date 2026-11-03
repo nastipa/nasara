@@ -43,6 +43,16 @@ type ReelType = {
   user_id: string;
   views?: number;
   thumbnail_url?: string | null;
+
+  // 🎵 BACKGROUND MUSIC
+  music_id?: string | null;
+  music_url?: string | null;
+  music_title?: string | null;
+  music_artist?: string | null;
+  music_start_time?: number | null;
+  music_duration?: number | null;
+  music_volume?: number | null;
+  original_volume?: number | null;
 };
 
 /* =========================================================
@@ -242,13 +252,20 @@ export default function ReelsFeed({
             =============================================== */}
 
         <ReelPlayer
-          key={item.id + "_" + isActive}
-          id={item.id}
-          url={item.media_url}
-          localUri={item.local_uri}
-          active={isActive}
-          thumbnail={item.thumbnail_url}
-        />
+  key={item.id + "_" + isActive}
+  id={item.id}
+  url={item.media_url}
+  localUri={item.local_uri}
+  active={isActive}
+  thumbnail={item.thumbnail_url}
+
+  // 🎵 BACKGROUND MUSIC
+  music_url={item.music_url}
+  music_volume={item.music_volume}
+  original_volume={item.original_volume}
+  music_start_time={item.music_start_time}
+  music_duration={item.music_duration}
+/>
 
         {/* ===============================================
             🔵 TOP VIDEO OVERLAY
