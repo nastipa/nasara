@@ -302,6 +302,7 @@ if (Platform.OS === "web") {
        player.volume = originalVolume;
 
 // 🌐 Keep Safari muted until sound is enabled.
+player.volume = originalVolume;
 player.muted = Platform.OS === "web"
   ? !soundEnabled
   : false;
