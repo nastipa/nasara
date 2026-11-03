@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -52,6 +53,7 @@ export default function ReelPlayer({
   id,
   url,
   active,
+  thumbnail,
   music_url,
   music_volume,
   original_volume,
@@ -87,7 +89,7 @@ const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [musicPositioned, setMusicPositioned] = useState(false);
-  const opacity = useRef(new Animated.Value(0)).current;
+ const opacity = useRef(new Animated.Value(1)).current;
   const isResettingMusicSegment = useRef(false);
   const mounted = useRef(true);
   // ==========================================
@@ -174,20 +176,22 @@ const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
         if (!mounted.current) {
           return;
         }
-        if (event.status === "readyToPlay") {
-          setVideoReady(true);
-          setLoading(false);
-          setVideoError(null);
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 250,
-            useNativeDriver: true,
-          }).start();
-        }
+       if (event.status === "readyToPlay") {
+  setVideoReady(true);
+  setLoading(false);
+  setVideoError(null);
+
+  // 🎬 MAKE VIDEO VISIBLE WHEN READY
+  Animated.timing(opacity, {
+    toValue: 1,
+    duration: 200,
+    useNativeDriver: true,
+  }).start();
+}
         if (event.status === "loading") {
           setVideoReady(false);
           setLoading(true);
-          opacity.setValue(0);
+         
         }
         if (event.status === "error") {
           setVideoReady(false);
@@ -675,6 +679,18 @@ const seekVideo = (value: number) => {
   // ==========================================
   return (
     <View style={styles.container}>
+
+    {/* ======================================
+    🖼️ INSTANT REEL THUMBNAIL
+====================================== */}
+
+{!!thumbnail && (
+  <Image
+    source={{ uri: thumbnail }}
+    style={styles.thumbnail}
+    resizeMode="cover"
+  />
+)}
       {/* ======================================
           🎬 VIDEO VIEW
       ====================================== */}
@@ -937,4 +953,11 @@ progressFill: {
   backgroundColor: "#D6A83F",
   borderRadius: 5,
 },
+thumbnail: {
+  ...StyleSheet.absoluteFillObject,
+  width: "100%",
+  height: "100%",
+  zIndex: 1,
+},
+
 });

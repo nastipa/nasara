@@ -16,7 +16,7 @@ import {
   StyleSheet,
   Text,
   View,
-  ViewToken,
+  ViewToken
 } from "react-native";
 
 import { supabase } from "../lib/supabase";
@@ -515,9 +515,10 @@ const [soundEnabled, setSoundEnabled] = useState(false);
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
 
-        initialNumToRender={2}
-        maxToRenderPerBatch={2}
-        windowSize={3}
+       initialNumToRender={3}
+maxToRenderPerBatch={3}
+windowSize={5}
+updateCellsBatchingPeriod={30}
 
         removeClippedSubviews={Platform.OS === "android"}
 
