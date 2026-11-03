@@ -216,6 +216,8 @@ export default function ReelPlayer({
   // ==========================================
   useEffect(() => {
     let cancelled = false;
+    // 🌐 SAFARI VIDEO READINESS FALLBACK
+let safariFallbackTimer: ReturnType<typeof setTimeout> | null = null;
     setLoading(true);
     setVideoReady(false);
     setVideoError(null);
@@ -223,8 +225,13 @@ export default function ReelPlayer({
     try {
       // 🎬 CONFIGURE PLAYER BEFORE LOADING
       player.loop = true;
-      player.muted = false;
-      player.volume = originalVolume;
+
+// 🌐 Safari must start muted to allow autoplay.
+player.muted = Platform.OS === "web"
+  ? true
+  : false;
+
+player.volume = originalVolume;
       if (safeUrl) {
         console.log(
           "LOADING REEL VIDEO:",
@@ -234,6 +241,21 @@ export default function ReelPlayer({
         // 🎬 LOAD VIDEO SOURCE
         // Playback is controlled separately.
         player.replace(safeUrl);
+        // 🌐 Prevent Safari from displaying the thumbnail indefinitely.
+if (Platform.OS === "web") {
+  safariFallbackTimer = setTimeout(() => {
+    if (!cancelled && mounted.current) {
+      setVideoReady(true);
+      setLoading(false);
+
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, 5000);
+}
       } else {
         player.replace(null);
         setLoading(false);
@@ -255,6 +277,10 @@ export default function ReelPlayer({
     }
     return () => {
       cancelled = true;
+
+      if (safariFallbackTimer) {
+        clearTimeout(safariFallbackTimer);
+      }
     };
   }, [
     safeUrl,
@@ -273,9 +299,14 @@ export default function ReelPlayer({
     try {
       if (active && !isPaused) {
         // 🎬 PLAY ACTIVE VIDEO
-        player.volume = originalVolume;
-        player.muted = false;
-        player.play();
+       player.volume = originalVolume;
+
+// 🌐 Keep Safari muted until sound is enabled.
+player.muted = Platform.OS === "web"
+  ? !soundEnabled
+  : false;
+
+player.play();
       } else {
         // ⏸️ PAUSE INACTIVE VIDEO
         player.pause();
