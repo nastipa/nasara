@@ -303,8 +303,9 @@ if (Platform.OS === "web") {
 
 // 🌐 Keep Safari muted until sound is enabled.
 player.volume = originalVolume;
-player.muted = false;
-
+player.muted = Platform.OS === "web"
+  ? !soundEnabled
+  : false;
 player.play();
       } else {
         // ⏸️ PAUSE INACTIVE VIDEO
