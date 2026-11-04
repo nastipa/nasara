@@ -4,7 +4,11 @@
 // 🟡 WITH BACKGROUND MUSIC LIBRARY
 // 🟡 =====================================================
 
-import { useAudioPlayer, useAudioPlayerStatus, } from "expo-audio";
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+} from "expo-audio";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
@@ -191,6 +195,30 @@ const maximumMusicStart = Math.max(
     };
   }, []);
 
+  // 🎵 =====================================================
+// 🎵 CONFIGURE NASARA REEL AUDIO SESSION
+// 🎵 ALLOW MUSIC PLAYBACK ON IPHONE
+// 🎵 =====================================================
+
+useEffect(() => {
+  const configureAudio = async () => {
+    try {
+      await setAudioModeAsync({
+        playsInSilentMode: true,
+        interruptionMode: "mixWithOthers",
+      });
+
+      console.log("🎵 Nasara Reel audio session configured.");
+    } catch (error) {
+      console.error(
+        "🔴 Audio session configuration error:",
+        error
+      );
+    }
+  };
+
+  configureAudio();
+}, []);
   // 🟡 =====================================================
 // 🟡 VIDEO PLAYER CONFIGURATION
 // 🟡 VIDEO DOES NOT AUTOPLAY
@@ -227,12 +255,7 @@ useEffect(() => {
   return () => subscription.remove();
 }, [player, musicPlayer]);
 
-  // 🎵 UPDATE MUSIC VOLUME
-
-useEffect(() => {
-  musicPlayer.volume = musicVolume;
-}, [musicVolume]);
-
+  
 // 🔊 UPDATE ORIGINAL VIDEO VOLUME
 
 useEffect(() => {
@@ -271,11 +294,11 @@ const selectMusic = (track: ReelMusic) => {
   }
 };
   // 🎵 =====================================================
-// 🎵 PLAY VIDEO WITH SELECTED MUSIC
-// 🎵 BOTH PLAYERS START FROM THE SAME USER ACTION
+// 🎵 PLAY VIDEO WITH SELECTED BACKGROUND MUSIC
+// 🎵 WAIT FOR AUDIO SESSION BEFORE PLAYBACK
 // 🎵 =====================================================
 
-const toggleCombinedPreview = () => {
+const toggleCombinedPreview = async () => {
   if (loading || !video?.uri) return;
 
   if (previewPlaying) {
@@ -286,29 +309,53 @@ const toggleCombinedPreview = () => {
   }
 
   try {
+    // 🔊 CONFIGURE AUDIO BEFORE PLAYBACK
+
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      interruptionMode: "mixWithOthers",
+    });
+
+    // 🎬 CONFIGURE ORIGINAL VIDEO AUDIO
+
     player.volume = originalVolume;
     player.muted = false;
+
+    // 🎵 PLAY SELECTED BACKGROUND MUSIC
 
     if (selectedMusic) {
       if (!musicStatus.isLoaded) {
         Alert.alert(
-          "Music loading",
-          "Please wait for the selected music to finish loading."
+          "Music still loading",
+          "Please wait a moment for the selected track to finish loading, then try again."
         );
+
         return;
       }
 
+      const safeStart = Math.min(
+        musicStartTime,
+        maximumMusicStart
+      );
+
+      await musicPlayer.seekTo(safeStart);
+
       musicPlayer.volume = musicVolume;
 
-      // The selected section is positioned before playback.
-      // Both play commands are initiated directly by this button.
       musicPlayer.play();
     }
 
+    // 🎬 START VIDEO
+
     player.play();
+
     setPreviewPlaying(true);
+
   } catch (error: any) {
-    console.error("Combined preview error:", error);
+    console.error(
+      "🔴 Combined Reel preview error:",
+      error
+    );
 
     player.pause();
     musicPlayer.pause();
@@ -317,7 +364,8 @@ const toggleCombinedPreview = () => {
 
     Alert.alert(
       "Preview error",
-      error?.message || "Unable to play the video preview."
+      error?.message ||
+        "Unable to play the video and background music."
     );
   }
 };
