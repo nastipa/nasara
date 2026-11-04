@@ -113,6 +113,8 @@ const [musicPreviewing, setMusicPreviewing] = useState(false);
   // 🎵 BACKGROUND MUSIC PLAYER
 
   const musicPlayer = useAudioPlayer(null);
+  // 🌐 BROWSER MUSIC PLAYER FOR SAFARI PWA
+const webMusicRef = useRef<HTMLAudioElement | null>(null);
 
   // ==========================================
 // 🎵 MUSIC TRIMMING AND PREVIEW
@@ -196,12 +198,12 @@ const maximumMusicStart = Math.max(
     };
   }, []);
 
-  // 🎵 =====================================================
-// 🎵 CONFIGURE NASARA REEL AUDIO SESSION
-// 🎵 ALLOW MUSIC PLAYBACK ON IPHONE
-// 🎵 =====================================================
+  // 🎵 CONFIGURE NASARA REEL AUDIO SESSION
 
 useEffect(() => {
+  // Browser Safari uses its native HTML audio player.
+  if (Platform.OS === "web") return;
+
   const configureAudio = async () => {
     try {
       await setAudioModeAsync({
@@ -211,10 +213,7 @@ useEffect(() => {
 
       console.log("🎵 Nasara Reel audio session configured.");
     } catch (error) {
-      console.error(
-        "🔴 Audio session configuration error:",
-        error
-      );
+      console.error("Audio session configuration error:", error);
     }
   };
 
@@ -250,6 +249,8 @@ useEffect(() => {
   const subscription = player.addListener("playToEnd", () => {
     player.pause();
     musicPlayer.pause();
+    webMusicRef.current?.pause();
+
     setPreviewPlaying(false);
   });
 
@@ -262,23 +263,26 @@ useEffect(() => {
 useEffect(() => {
   player.volume = originalVolume;
 }, [originalVolume]);
-  // 🟡 =====================================================
-  // 🟡 UPDATE BACKGROUND MUSIC VOLUME
-  // 🟡 =====================================================
+  
+// 🎵 UPDATE BACKGROUND MUSIC VOLUME
 
-  useEffect(() => {
-    musicPlayer.volume = musicVolume;
-  }, [musicVolume]);
+useEffect(() => {
+  musicPlayer.volume = musicVolume;
 
- // 🎵 =====================================================
-// 🎵 SELECT MUSIC FOR VIDEO PREVIEW
-// 🎵 =====================================================
+  if (webMusicRef.current) {
+    webMusicRef.current.volume = musicVolume;
+  }
+}, [musicVolume]);
+
+ // 🎵 SELECT MUSIC FOR VIDEO PREVIEW
 
 const selectMusic = (track: ReelMusic) => {
   if (loading) return;
 
   player.pause();
   musicPlayer.pause();
+
+  webMusicRef.current?.pause();
 
   setPreviewPlaying(false);
   setSelectedMusic(track);
@@ -287,48 +291,113 @@ const selectMusic = (track: ReelMusic) => {
   setMusicSegmentDuration(15);
 
   try {
-    musicPlayer.replace(track.audio_url);
-    musicPlayer.loop = false;
-    musicPlayer.volume = musicVolume;
+    if (Platform.OS === "web") {
+      const audio = new Audio(track.audio_url);
+
+      audio.preload = "auto";
+      audio.volume = musicVolume;
+
+      webMusicRef.current = audio;
+    } else {
+      musicPlayer.replace(track.audio_url);
+      musicPlayer.loop = false;
+      musicPlayer.volume = musicVolume;
+    }
   } catch (error) {
     console.error("Music selection error:", error);
   }
 };
-  // 🎵 =====================================================
-// 🎵 PLAY VIDEO WITH SELECTED BACKGROUND MUSIC
-// 🎵 WAIT FOR AUDIO SESSION BEFORE PLAYBACK
-// 🎵 =====================================================
+  // 🎵 PLAY VIDEO WITH SELECTED BACKGROUND MUSIC
 
 const toggleCombinedPreview = async () => {
   if (loading || !video?.uri) return;
 
+  // ⏸️ STOP PREVIEW
   if (previewPlaying) {
     player.pause();
     musicPlayer.pause();
+    webMusicRef.current?.pause();
+
     setPreviewPlaying(false);
     return;
   }
 
-  try {
-    // 🔊 CONFIGURE AUDIO BEFORE PLAYBACK
+  // 🌐 SAFARI / WEB PLAYBACK
+  if (Platform.OS === "web") {
+    try {
+      player.volume = originalVolume;
+      player.muted = false;
 
+      if (selectedMusic) {
+        let audio = webMusicRef.current;
+
+        if (!audio) {
+          audio = new Audio(selectedMusic.audio_url);
+          audio.preload = "auto";
+          webMusicRef.current = audio;
+        }
+
+        audio.volume = musicVolume;
+
+        const safeStart = Math.min(
+          musicStartTime,
+          maximumMusicStart
+        );
+
+        try {
+          audio.currentTime = safeStart;
+        } catch (error) {
+          console.log("Music positioning will retry:", error);
+        }
+
+        // IMPORTANT: Do not await before this call.
+        void audio.play().catch((error) => {
+          console.error("Safari music playback error:", error);
+
+          Alert.alert(
+            "Music playback failed",
+            "Please tap Play video with music again."
+          );
+        });
+      }
+
+      // Start video from the same user interaction.
+      player.play();
+
+      setPreviewPlaying(true);
+      return;
+    } catch (error: any) {
+      console.error("Safari preview error:", error);
+
+      player.pause();
+      webMusicRef.current?.pause();
+
+      setPreviewPlaying(false);
+
+      Alert.alert(
+        "Preview error",
+        error?.message || "Unable to play the preview."
+      );
+
+      return;
+    }
+  }
+
+  // 📱 NATIVE EXPO PLAYBACK
+  try {
     await setAudioModeAsync({
       playsInSilentMode: true,
       interruptionMode: "mixWithOthers",
     });
 
-    // 🎬 CONFIGURE ORIGINAL VIDEO AUDIO
-
     player.volume = originalVolume;
     player.muted = false;
-
-    // 🎵 PLAY SELECTED BACKGROUND MUSIC
 
     if (selectedMusic) {
       if (!musicStatus.isLoaded) {
         Alert.alert(
           "Music still loading",
-          "Please wait a moment for the selected track to finish loading, then try again."
+          "Please wait a moment for the selected track to finish loading."
         );
 
         return;
@@ -342,21 +411,14 @@ const toggleCombinedPreview = async () => {
       await musicPlayer.seekTo(safeStart);
 
       musicPlayer.volume = musicVolume;
-
       musicPlayer.play();
     }
-
-    // 🎬 START VIDEO
 
     player.play();
 
     setPreviewPlaying(true);
-
   } catch (error: any) {
-    console.error(
-      "🔴 Combined Reel preview error:",
-      error
-    );
+    console.error("Combined Reel preview error:", error);
 
     player.pause();
     musicPlayer.pause();
@@ -365,17 +427,16 @@ const toggleCombinedPreview = async () => {
 
     Alert.alert(
       "Preview error",
-      error?.message ||
-        "Unable to play the video and background music."
+      error?.message || "Unable to play the video and background music."
     );
   }
 };
-
 // 🎵 =====================================================
 // 🎵 POSITION MUSIC WHEN IT IS LOADED OR TRIM IS CHANGED
 // 🎵 =====================================================
 
 useEffect(() => {
+  if (Platform.OS === "web") return;
   if (
     !selectedMusic ||
     !musicStatus.isLoaded ||
@@ -442,6 +503,49 @@ useEffect(() => {
   safeMusicSegmentDuration,
 ]);
 
+
+// 🌐 LOOP SELECTED MUSIC SEGMENT IN SAFARI
+
+useEffect(() => {
+  if (
+    Platform.OS !== "web" ||
+    !previewPlaying ||
+    !selectedMusic
+  ) {
+    return;
+  }
+
+  const audio = webMusicRef.current;
+
+  if (!audio) return;
+
+  const handleTimeUpdate = () => {
+    const segmentEnd =
+      musicStartTime + safeMusicSegmentDuration;
+
+    if (
+      audio.currentTime >= segmentEnd &&
+      !audio.paused
+    ) {
+      audio.currentTime = musicStartTime;
+
+      void audio.play().catch((error) => {
+        console.error("Safari music loop error:", error);
+      });
+    }
+  };
+
+  audio.addEventListener("timeupdate", handleTimeUpdate);
+
+  return () => {
+    audio.removeEventListener("timeupdate", handleTimeUpdate);
+  };
+}, [
+  previewPlaying,
+  selectedMusic?.id,
+  musicStartTime,
+  safeMusicSegmentDuration,
+]);
   // 🎵 =====================================================
 // 🎵 REMOVE SELECTED MUSIC
 // 🎵 =====================================================
@@ -635,6 +739,8 @@ const removeSelectedMusic = () => {
    try {
   player.pause();
   musicPlayer.pause();
+  webMusicRef.current?.pause();
+webMusicRef.current = null;
 } catch (error) {
   console.log("Preview cleanup error:", error);
 }
