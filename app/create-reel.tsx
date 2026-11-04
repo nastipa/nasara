@@ -108,6 +108,7 @@ const [musicPreviewing, setMusicPreviewing] = useState(false);
   // 🔵 VIDEO PLAYER
 
   const player = useVideoPlayer(null);
+  
 
   // 🎵 BACKGROUND MUSIC PLAYER
 
@@ -1087,6 +1088,7 @@ setPreviewPlaying(false);
   style={styles.preview}
   contentFit="contain"
   nativeControls={false}
+  playsInline
 />
 
 {/* 🎬 VIDEO PREVIEW PLAYBACK CONTROL */}
