@@ -1042,7 +1042,6 @@ const styles = StyleSheet.create({
     scrollSnapType: "y mandatory",
     overscrollBehaviorY: "contain",
   } as any,
-
   webReelsContent: {
     flexGrow: 1,
   },
