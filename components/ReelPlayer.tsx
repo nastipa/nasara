@@ -2,21 +2,26 @@
 // 🎬 NASARA REEL PLAYER
 // 🔵 RESTORED VIDEO RENDERING
 // 🟣 BACKGROUND MUSIC + SAFARI AUDIO SUPPORT
+// 🟢 RECOMMENDATION ENGINE TRACKING
 // ==========================================
+
 import {
   useAudioPlayer,
   useAudioPlayerStatus,
 } from "expo-audio";
+
 import {
   VideoView,
   useVideoPlayer,
 } from "expo-video";
+
 import {
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+
 import {
   ActivityIndicator,
   Animated,
@@ -28,43 +33,76 @@ import {
   Text,
   View,
 } from "react-native";
+
 const { width, height } = Dimensions.get("window");
+
 // ==========================================
 // 🎵 REEL PLAYER PROPS
 // ==========================================
+
 type ReelPlayerProps = {
   id?: string;
   url: string | null;
   localUri?: string | null;
   active: boolean;
   thumbnail?: string | null;
+
   music_url?: string | null;
   music_volume?: number | null;
   original_volume?: number | null;
   music_start_time?: number | null;
   music_duration?: number | null;
+
   soundEnabled: boolean;
   onEnableSound: () => void;
+
+  // ==========================================
+  // 📊 RECOMMENDATION ENGINE CALLBACKS
+  // ==========================================
+
+  onWatchProgress?: (
+    reelId: string,
+    currentTime: number,
+    duration: number
+  ) => void;
+
+  onCompleted?: (
+    reelId: string
+  ) => void;
+
+  onReplay?: (
+    reelId: string
+  ) => void;
 };
+
 // ==========================================
 // 🎬 MAIN REEL PLAYER
 // ==========================================
+
 export default function ReelPlayer({
   id,
   url,
   active,
   thumbnail,
+
   music_url,
   music_volume,
   original_volume,
   music_start_time,
   music_duration,
+
   soundEnabled,
   onEnableSound,
+
+  onWatchProgress,
+  onCompleted,
+  onReplay,
 }: ReelPlayerProps) {
+
   // ==========================================
   // 📦 VIDEO STATES
   // ==========================================
+
   const [loading, setLoading] = useState(true);
   const [videoReady, setVideoReady] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -73,25 +111,42 @@ export default function ReelPlayer({
   const [videoDuration, setVideoDuration] = useState(0);
   const [progressBarWidth, setProgressBarWidth] = useState(0);
   const [controlsVisible, setControlsVisible] = useState(true);
+
   // ==========================================
   // 🎵 MUSIC STATES
   // ==========================================
+
   const [musicPositioned, setMusicPositioned] = useState(false);
+
   // ==========================================
   // 🧰 REFS
   // ==========================================
+
   const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
   const isResettingMusicSegment = useRef(false);
   const mounted = useRef(true);
+
+  // ==========================================
+  // 📊 RECOMMENDATION TRACKING REFS
+  // ==========================================
+
+  const lastReportedSecond = useRef(0);
+  const completedRef = useRef(false);
+  const replayReportedRef = useRef(false);
+  const previousPlaybackTime = useRef(0);
+
   // ==========================================
   // 🔒 SAFE VIDEO URL
   // ==========================================
+
   const safeUrl = useMemo(() => {
     if (!url || typeof url !== "string") {
       return null;
     }
+
     const value = url.trim();
+
     if (
       !value ||
       value.includes("undefined") ||
@@ -99,16 +154,21 @@ export default function ReelPlayer({
     ) {
       return null;
     }
+
     return value;
   }, [url]);
+
   // ==========================================
   // 🎵 SAFE MUSIC URL
   // ==========================================
+
   const safeMusicUrl = useMemo(() => {
     if (!music_url || typeof music_url !== "string") {
       return null;
     }
+
     const value = music_url.trim();
+
     if (
       !value ||
       value.includes("undefined") ||
@@ -116,46 +176,63 @@ export default function ReelPlayer({
     ) {
       return null;
     }
+
     return value;
   }, [music_url]);
+
   // ==========================================
   // 🔊 VOLUME SETTINGS
   // ==========================================
+
   const musicVolume = useMemo(() => {
     const value = Number(music_volume);
+
     if (!Number.isFinite(value)) {
       return 0.7;
     }
+
     return Math.max(0, Math.min(1, value));
   }, [music_volume]);
+
   const originalVolume = useMemo(() => {
     const value = Number(original_volume);
+
     if (!Number.isFinite(value)) {
       return 1;
     }
+
     return Math.max(0, Math.min(1, value));
   }, [original_volume]);
+
   // ==========================================
   // 🎬 VIDEO PLAYER
   // ==========================================
+
   const player = useVideoPlayer(null);
+
   // ==========================================
   // 🎵 BACKGROUND MUSIC PLAYER
   // ==========================================
+
   const musicPlayer = useAudioPlayer(null);
   const musicStatus = useAudioPlayerStatus(musicPlayer);
+
   // ==========================================
   // 🧹 COMPONENT MOUNT STATUS
   // ==========================================
+
   useEffect(() => {
     mounted.current = true;
+
     return () => {
       mounted.current = false;
     };
   }, []);
+
   // ==========================================
   // 🎬 LISTEN TO VIDEO PLAYER STATUS
   // ==========================================
+
   useEffect(() => {
     const subscription = player.addListener(
       "statusChange",
@@ -165,40 +242,50 @@ export default function ReelPlayer({
           id,
           event.status
         );
+
         if (!mounted.current) {
           return;
         }
+
         // ==========================================
         // ✅ VIDEO READY
         // ==========================================
+
         if (event.status === "readyToPlay") {
           setVideoReady(true);
           setLoading(false);
           setVideoError(null);
+
           Animated.timing(opacity, {
             toValue: 1,
             duration: 250,
             useNativeDriver: true,
           }).start();
         }
+
         // ==========================================
         // ⏳ VIDEO LOADING
         // ==========================================
+
         if (event.status === "loading") {
           setVideoReady(false);
           setLoading(true);
           opacity.setValue(0);
         }
+
         // ==========================================
         // ❌ VIDEO ERROR
         // ==========================================
+
         if (event.status === "error") {
           setVideoReady(false);
           setLoading(false);
+
           setVideoError(
             event.error?.message ||
             "Unable to load this video."
           );
+
           console.error(
             "REEL VIDEO ERROR:",
             id,
@@ -207,55 +294,88 @@ export default function ReelPlayer({
         }
       }
     );
+
     return () => {
       subscription.remove();
     };
   }, [player, id, opacity]);
+
   // ==========================================
   // 🎬 LOAD VIDEO SOURCE
   // ==========================================
+
   useEffect(() => {
     let cancelled = false;
+
     // 🌐 SAFARI VIDEO READINESS FALLBACK
-let safariFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    let safariFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
     setLoading(true);
     setVideoReady(false);
     setVideoError(null);
+
+    setVideoProgress(0);
+    setVideoDuration(0);
+
     opacity.setValue(0);
+
+    // ==========================================
+    // 📊 RESET RECOMMENDATION TRACKING
+    // ==========================================
+
+    lastReportedSecond.current = 0;
+    completedRef.current = false;
+    replayReportedRef.current = false;
+    previousPlaybackTime.current = 0;
+
     try {
+      // ==========================================
       // 🎬 CONFIGURE PLAYER BEFORE LOADING
+      // ==========================================
+
       player.loop = true;
 
-// 🌐 Safari must start muted to allow autoplay.
-player.muted = Platform.OS === "web"
-  ? true
-  : false;
+      // 🌐 Safari must start muted to allow autoplay.
 
-player.volume = originalVolume;
+      player.muted = Platform.OS === "web"
+        ? true
+        : false;
+
+      player.volume = originalVolume;
+
       if (safeUrl) {
         console.log(
           "LOADING REEL VIDEO:",
           id,
           safeUrl
         );
+
+        // ==========================================
         // 🎬 LOAD VIDEO SOURCE
         // Playback is controlled separately.
-        player.replace(safeUrl);
-        // 🌐 Prevent Safari from displaying the thumbnail indefinitely.
-if (Platform.OS === "web") {
-  safariFallbackTimer = setTimeout(() => {
-    if (!cancelled && mounted.current) {
-      setVideoReady(true);
-      setLoading(false);
+        // ==========================================
 
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, 5000);
-}
+        player.replace(safeUrl);
+
+        // ==========================================
+        // 🌐 SAFARI READINESS FALLBACK
+        // ==========================================
+
+        if (Platform.OS === "web") {
+          safariFallbackTimer = setTimeout(() => {
+            if (!cancelled && mounted.current) {
+              setVideoReady(true);
+              setLoading(false);
+
+              Animated.timing(opacity, {
+                toValue: 1,
+                duration: 250,
+                useNativeDriver: true,
+              }).start();
+            }
+          }, 5000);
+        }
       } else {
         player.replace(null);
         setLoading(false);
@@ -266,15 +386,18 @@ if (Platform.OS === "web") {
         "VIDEO SOURCE ERROR:",
         error
       );
+
       if (!cancelled) {
         setLoading(false);
         setVideoReady(false);
+
         setVideoError(
           error?.message ||
           "Video source error."
         );
       }
     }
+
     return () => {
       cancelled = true;
 
@@ -289,59 +412,71 @@ if (Platform.OS === "web") {
     opacity,
     id,
   ]);
+
   // ==========================================
-// ▶️ CONTROL REEL PLAYBACK AND SOUND
-// ==========================================
-useEffect(() => {
-  if (!safeUrl || !videoReady) {
-    return;
-  }
+  // ▶️ CONTROL REEL PLAYBACK AND SOUND
+  // ==========================================
 
-  try {
-    if (active && !isPaused) {
-      // 🔊 CONTROL VIDEO VOLUME
-      player.volume = originalVolume;
-
-      // 🌐 SAFARI AUTOPLAY CONTROL
-      player.muted =
-        Platform.OS === "web"
-          ? !soundEnabled
-          : false;
-
-      // ▶️ PLAY ACTIVE REEL
-      player.play();
-
-    } else {
-      // ⏸️ PAUSE INACTIVE REEL
-      player.pause();
-
-      // 🎵 PAUSE BACKGROUND MUSIC
-      musicPlayer.pause();
+  useEffect(() => {
+    if (!safeUrl || !videoReady) {
+      return;
     }
 
-  } catch (error) {
-    console.error("REEL PLAYBACK ERROR:", id, error);
-  }
+    try {
+      if (active && !isPaused) {
+        // 🔊 CONTROL VIDEO VOLUME
 
-}, [
-  active,
-  safeUrl,
-  videoReady,
-  isPaused,
-  soundEnabled,
-  originalVolume,
-  player,
-  musicPlayer,
-  id,
-]);
+        player.volume = originalVolume;
+
+        // 🌐 SAFARI AUTOPLAY CONTROL
+
+        player.muted =
+          Platform.OS === "web"
+            ? !soundEnabled
+            : false;
+
+        // ▶️ PLAY ACTIVE REEL
+
+        player.play();
+      } else {
+        // ⏸️ PAUSE INACTIVE REEL
+
+        player.pause();
+
+        // 🎵 PAUSE BACKGROUND MUSIC
+
+        musicPlayer.pause();
+      }
+    } catch (error) {
+      console.error(
+        "REEL PLAYBACK ERROR:",
+        id,
+        error
+      );
+    }
+  }, [
+    active,
+    safeUrl,
+    videoReady,
+    isPaused,
+    soundEnabled,
+    originalVolume,
+    player,
+    musicPlayer,
+    id,
+  ]);
+
   // ==========================================
   // 🎵 LOAD BACKGROUND MUSIC
   // ==========================================
+
   useEffect(() => {
     setMusicPositioned(false);
     isResettingMusicSegment.current = false;
+
     try {
       musicPlayer.pause();
+
       if (safeMusicUrl) {
         musicPlayer.replace(safeMusicUrl);
         musicPlayer.loop = false;
@@ -353,6 +488,7 @@ useEffect(() => {
         error
       );
     }
+
     return () => {
       try {
         musicPlayer.pause();
@@ -368,11 +504,14 @@ useEffect(() => {
     musicVolume,
     musicPlayer,
   ]);
+
   // ==========================================
   // 🎵 POSITION SELECTED MUSIC SEGMENT
   // ==========================================
+
   useEffect(() => {
     let cancelled = false;
+
     const positionMusic = async () => {
       if (
         !safeMusicUrl ||
@@ -381,21 +520,26 @@ useEffect(() => {
       ) {
         return;
       }
+
       try {
         const segmentDuration = Math.max(
           0,
           Number(music_duration ?? 0)
         );
+
         const audioDuration = Math.max(
           0,
           Number(musicStatus.duration ?? 0)
         );
+
         const requestedStart = Math.max(
           0,
           Number(music_start_time ?? 0)
         );
+
         if (segmentDuration > 0) {
           musicPlayer.loop = false;
+
           const maximumStart =
             audioDuration > 0
               ? Math.max(
@@ -403,17 +547,21 @@ useEffect(() => {
                   audioDuration - segmentDuration
                 )
               : requestedStart;
+
           const safeStart = Math.min(
             requestedStart,
             maximumStart
           );
+
           await musicPlayer.seekTo(safeStart);
         } else {
           musicPlayer.loop = true;
+
           if (requestedStart > 0) {
             await musicPlayer.seekTo(requestedStart);
           }
         }
+
         if (!cancelled && mounted.current) {
           setMusicPositioned(true);
         }
@@ -424,7 +572,9 @@ useEffect(() => {
         );
       }
     };
+
     positionMusic();
+
     return () => {
       cancelled = true;
     };
@@ -437,9 +587,11 @@ useEffect(() => {
     musicPositioned,
     musicPlayer,
   ]);
+
   // ==========================================
   // 🔁 LOOP SELECTED MUSIC SEGMENT
   // ==========================================
+
   useEffect(() => {
     if (
       !active ||
@@ -451,19 +603,24 @@ useEffect(() => {
     ) {
       return;
     }
+
     if (isResettingMusicSegment.current) {
       return;
     }
+
     const audioDuration = Number(
       musicStatus.duration ?? 0
     );
+
     const segmentDuration = Number(
       music_duration
     );
+
     const requestedStart = Math.max(
       0,
       Number(music_start_time ?? 0)
     );
+
     const maximumStart =
       audioDuration > 0
         ? Math.max(
@@ -471,10 +628,12 @@ useEffect(() => {
             audioDuration - segmentDuration
           )
         : requestedStart;
+
     const segmentStart = Math.min(
       requestedStart,
       maximumStart
     );
+
     const segmentEnd =
       audioDuration > 0
         ? Math.min(
@@ -482,13 +641,16 @@ useEffect(() => {
             audioDuration
           )
         : segmentStart + segmentDuration;
+
     if (
       musicStatus.currentTime >= segmentEnd
     ) {
       isResettingMusicSegment.current = true;
+
       const resetMusic = async () => {
         try {
           await musicPlayer.seekTo(segmentStart);
+
           if (
             active &&
             soundEnabled &&
@@ -505,6 +667,7 @@ useEffect(() => {
           isResettingMusicSegment.current = false;
         }
       };
+
       resetMusic();
     }
   }, [
@@ -519,9 +682,11 @@ useEffect(() => {
     musicStatus.duration,
     musicPlayer,
   ]);
+
   // ==========================================
   // 🎵 CONTROL BACKGROUND MUSIC
   // ==========================================
+
   useEffect(() => {
     try {
       if (
@@ -551,40 +716,50 @@ useEffect(() => {
     musicVolume,
     musicPlayer,
   ]);
+
   // ==========================================
-// 🔊 ENABLE SOUND AFTER USER INTERACTION
-// ==========================================
-const handleEnableSound = async () => {
-  try {
-    // 🔊 UNMUTE THE ORIGINAL REEL VIDEO
-    player.muted = false;
-    player.volume = originalVolume;
+  // 🔊 ENABLE SOUND AFTER USER INTERACTION
+  // ==========================================
 
-    // ▶️ PLAY THE VIDEO
-    if (active) {
-      player.play();
+  const handleEnableSound = async () => {
+    try {
+      // 🔊 UNMUTE THE ORIGINAL REEL VIDEO
+
+      player.muted = false;
+      player.volume = originalVolume;
+
+      // ▶️ PLAY THE VIDEO
+
+      if (active) {
+        player.play();
+      }
+
+      // 🎵 PLAY BACKGROUND MUSIC IF AVAILABLE
+
+      if (
+        safeMusicUrl &&
+        musicStatus.isLoaded &&
+        musicPositioned
+      ) {
+        musicPlayer.volume = musicVolume;
+        musicPlayer.play();
+      }
+
+      // 🌍 ENABLE SOUND GLOBALLY
+
+      onEnableSound();
+    } catch (error) {
+      console.error(
+        "ENABLE REEL SOUND ERROR:",
+        error
+      );
     }
+  };
 
-    // 🎵 PLAY BACKGROUND MUSIC IF AVAILABLE
-    if (
-      safeMusicUrl &&
-      musicStatus.isLoaded &&
-      musicPositioned
-    ) {
-      musicPlayer.volume = musicVolume;
-      musicPlayer.play();
-    }
-
-    // 🌍 ENABLE SOUND GLOBALLY
-    onEnableSound();
-
-  } catch (error) {
-    console.error("ENABLE REEL SOUND ERROR:", error);
-  }
-};
   // ==========================================
   // 🧹 SAFE REEL PLAYER CLEANUP
   // ==========================================
+
   useEffect(() => {
     return () => {
       try {
@@ -601,9 +776,11 @@ const handleEnableSound = async () => {
     player,
     musicPlayer,
   ]);
+
   // ==========================================
   // 📊 TRACK VIDEO PLAYBACK PROGRESS
   // ==========================================
+
   useEffect(() => {
     if (
       !active ||
@@ -612,15 +789,19 @@ const handleEnableSound = async () => {
     ) {
       return;
     }
+
     const timer = setInterval(() => {
       const duration = Number(
         player.duration || 0
       );
+
       const currentTime = Number(
         player.currentTime || 0
       );
+
       if (duration > 0) {
         setVideoDuration(duration);
+
         setVideoProgress(
           Math.min(
             100,
@@ -632,6 +813,7 @@ const handleEnableSound = async () => {
         );
       }
     }, 250);
+
     return () => {
       clearInterval(timer);
     };
@@ -641,13 +823,121 @@ const handleEnableSound = async () => {
     isPaused,
     player,
   ]);
+
+  // ==========================================
+  // 📊 RECOMMENDATION ENGINE: WATCH PROGRESS
+  // ==========================================
+
+  useEffect(() => {
+    if (
+      !id ||
+      !active ||
+      !videoReady ||
+      isPaused
+    ) {
+      return;
+    }
+
+    // 🎬 REPORT VIDEO TIME UPDATES
+
+    player.timeUpdateEventInterval = 1;
+
+    const subscription = player.addListener(
+      "timeUpdate",
+      (event) => {
+        if (!mounted.current) {
+          return;
+        }
+
+        const currentTime = Number(
+          event.currentTime || 0
+        );
+
+        const duration = Number(
+          player.duration || 0
+        );
+
+        if (
+          !Number.isFinite(currentTime) ||
+          !Number.isFinite(duration) ||
+          duration <= 0
+        ) {
+          return;
+        }
+
+        // ==========================================
+        // 📊 REPORT WATCH PROGRESS
+        // ==========================================
+
+        const currentSecond = Math.floor(currentTime);
+
+        if (
+          currentSecond > lastReportedSecond.current
+        ) {
+          lastReportedSecond.current = currentSecond;
+
+          onWatchProgress?.(
+            id,
+            currentTime,
+            duration
+          );
+        }
+
+        // ==========================================
+        // 🏁 DETECT COMPLETED REEL
+        // ==========================================
+
+        if (
+          currentTime >= duration - 0.5 &&
+          !completedRef.current
+        ) {
+          completedRef.current = true;
+
+          onCompleted?.(id);
+        }
+
+        // ==========================================
+        // 🔁 DETECT REPLAY
+        // ==========================================
+
+        if (
+          completedRef.current &&
+          currentTime < 1.5 &&
+          previousPlaybackTime.current > duration * 0.8 &&
+          !replayReportedRef.current
+        ) {
+          replayReportedRef.current = true;
+
+          onReplay?.(id);
+        }
+
+        previousPlaybackTime.current = currentTime;
+      }
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, [
+    id,
+    active,
+    videoReady,
+    isPaused,
+    player,
+    onWatchProgress,
+    onCompleted,
+    onReplay,
+  ]);
+
   // ==========================================
   // ▶️ TAP VIDEO TO PAUSE / RESUME
   // ==========================================
+
   const toggleVideoPlayback = () => {
     if (!active || !videoReady) {
       return;
     }
+
     try {
       if (isPaused) {
         player.play();
@@ -663,24 +953,30 @@ const handleEnableSound = async () => {
       );
     }
   };
+
   // ==========================================
   // 🎬 AUTO-HIDE REEL CONTROLS
   // ==========================================
+
   useEffect(() => {
     if (controlsTimer.current) {
       clearTimeout(controlsTimer.current);
       controlsTimer.current = null;
     }
+
     if (!active) {
       setControlsVisible(false);
       return;
     }
+
     setControlsVisible(true);
+
     if (!isPaused) {
       controlsTimer.current = setTimeout(() => {
         setControlsVisible(false);
       }, 2500);
     }
+
     return () => {
       if (controlsTimer.current) {
         clearTimeout(controlsTimer.current);
@@ -691,29 +987,37 @@ const handleEnableSound = async () => {
     active,
     isPaused,
   ]);
+
   // ==========================================
   // 🎬 SEEK VIDEO TO SELECTED POSITION
   // ==========================================
+
   const seekVideo = (value: number) => {
     const duration = player.duration;
+
     if (
       !Number.isFinite(duration) ||
       duration <= 0
     ) {
       return;
     }
+
     const newTime = Math.max(
       0,
       Math.min(value, duration)
     );
+
     player.currentTime = newTime;
+
     setVideoProgress(
       (newTime / duration) * 100
     );
   };
+
   // ==========================================
   // 🚫 INVALID VIDEO
   // ==========================================
+
   if (!safeUrl) {
     return (
       <View style={styles.container}>
@@ -723,14 +1027,18 @@ const handleEnableSound = async () => {
       </View>
     );
   }
+
   // ==========================================
   // 🎬 RENDER REEL
   // ==========================================
+
   return (
     <View style={styles.container}>
+
       {/* ======================================
           🖼️ VIDEO THUMBNAIL
       ====================================== */}
+
       {!!thumbnail && !videoReady && (
         <Image
           source={{ uri: thumbnail }}
@@ -738,9 +1046,11 @@ const handleEnableSound = async () => {
           resizeMode="cover"
         />
       )}
+
       {/* ======================================
           🎬 ANDROID VIDEO FIX WRAPPER
       ====================================== */}
+
       <View style={styles.videoWrapper}>
         <Animated.View
           style={[
@@ -756,16 +1066,20 @@ const handleEnableSound = async () => {
             nativeControls={false}
             allowsFullscreen={false}
           />
+
           {/* ======================================
               ▶️ TAP TO PAUSE / RESUME
           ====================================== */}
+
           <Pressable
             style={styles.videoTapArea}
             onPress={toggleVideoPlayback}
           />
+
           {/* ======================================
               ⏸️ PAUSE INDICATOR
           ====================================== */}
+
           {isPaused && active && controlsVisible && (
             <View
               pointerEvents="none"
@@ -776,9 +1090,11 @@ const handleEnableSound = async () => {
               </Text>
             </View>
           )}
+
           {/* ======================================
               📊 VIDEO PROGRESS BAR
           ====================================== */}
+
           {active && (
             <View
               pointerEvents={
@@ -805,8 +1121,10 @@ const handleEnableSound = async () => {
                   ) {
                     return;
                   }
+
                   const tapX =
                     event.nativeEvent.locationX;
+
                   const percentage = Math.max(
                     0,
                     Math.min(
@@ -814,6 +1132,7 @@ const handleEnableSound = async () => {
                       1
                     )
                   );
+
                   seekVideo(
                     percentage * videoDuration
                   );
@@ -832,9 +1151,11 @@ const handleEnableSound = async () => {
           )}
         </Animated.View>
       </View>
+
       {/* ======================================
           ⏳ LOADING INDICATOR
       ====================================== */}
+
       {loading && (
         <View
           pointerEvents="none"
@@ -846,25 +1167,30 @@ const handleEnableSound = async () => {
           />
         </View>
       )}
+
       {/* ======================================
           ❌ VIDEO ERROR
       ====================================== */}
+
       {!!videoError && (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>
             Unable to play this Reel
           </Text>
+
           <Text style={styles.errorDetail}>
             {videoError}
           </Text>
         </View>
       )}
+
       {/* ======================================
           🔊 SAFARI ENABLE SOUND BUTTON
       ====================================== */}
+
       {Platform.OS === "web" &&
-  active &&
-  !soundEnabled && (
+        active &&
+        !soundEnabled && (
           <View style={styles.soundButtonContainer}>
             <Pressable
               onPress={handleEnableSound}
@@ -873,12 +1199,14 @@ const handleEnableSound = async () => {
               <Text style={styles.soundButtonIcon}>
                 🔊
               </Text>
+
               <Text style={styles.soundButtonText}>
                 Enable Sound
               </Text>
             </Pressable>
           </View>
         )}
+
     </View>
   );
 }
@@ -886,7 +1214,9 @@ const handleEnableSound = async () => {
 // ==========================================
 // 🎨 STYLES
 // ==========================================
+
 const styles = StyleSheet.create({
+
   container: {
     width,
     height,
@@ -894,33 +1224,37 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
 
-
   // ==========================================
   // 🎬 VIDEO WRAPPER
   // ==========================================
+
   videoWrapper: {
     width: "100%",
     height: "100%",
     backgroundColor: "#000000",
   },
+
   video: {
     width: "100%",
     height: "100%",
     backgroundColor: "#000000",
   },
+
   // ==========================================
   // 🖼️ THUMBNAIL
   // ==========================================
+
   thumbnail: {
     ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
     zIndex: 1,
   },
-  
+
   // ==========================================
   // ⏳ LOADER
   // ==========================================
+
   loader: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
@@ -928,9 +1262,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.15)",
     zIndex: 5,
   },
+
   // ==========================================
   // ❌ VIDEO ERROR
   // ==========================================
+
   errorContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
@@ -939,21 +1275,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#000000",
     zIndex: 6,
   },
+
   errorText: {
     color: "#FFFFFF",
     fontSize: 15,
     fontWeight: "800",
     textAlign: "center",
   },
+
   errorDetail: {
     color: "#BBBBBB",
     fontSize: 11,
     textAlign: "center",
     marginTop: 8,
   },
+
   // ==========================================
   // 🔊 SOUND BUTTON
   // ==========================================
+
   soundButtonContainer: {
     position: "absolute",
     top: "45%",
@@ -962,6 +1302,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     zIndex: 50,
   },
+
   soundButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -974,24 +1315,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     gap: 10,
   },
+
   soundButtonIcon: {
     fontSize: 20,
   },
+
   soundButtonText: {
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
   },
+
   // ==========================================
   // ▶️ VIDEO TAP AREA
   // ==========================================
+
   videoTapArea: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 2,
   },
+
   // ==========================================
   // ⏸️ PAUSE INDICATOR
   // ==========================================
+
   pauseIndicator: {
     position: "absolute",
     top: "45%",
@@ -1001,6 +1348,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     zIndex: 4,
   },
+
   pauseIcon: {
     color: "#FFFFFF",
     fontSize: 55,
@@ -1011,9 +1359,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 50,
   },
+
   // ==========================================
   // 📊 PROGRESS BAR
   // ==========================================
+
   progressContainer: {
     position: "absolute",
     left: 12,
@@ -1021,15 +1371,18 @@ const styles = StyleSheet.create({
     bottom: 8,
     zIndex: 8,
   },
+
   progressTrack: {
     height: 4,
     backgroundColor: "rgba(255,255,255,0.35)",
     borderRadius: 5,
     overflow: "hidden",
   },
+
   progressFill: {
     height: "100%",
     backgroundColor: "#D6A83F",
     borderRadius: 5,
   },
+
 });

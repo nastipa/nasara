@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+// =========================================================
+// 🟢 NASARA REELS 2.0 — FEED ENGINE
+// 🔵 For You | Following | Friends | My Reels
+// 🟣 Uses existing posts and follows tables
+// =========================================================
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,53 +15,288 @@ import {
 
 import ReelsFeed from "../../components/ReelsFeed";
 import { supabase } from "../../lib/supabase";
+import { getUserSafe } from "../../lib/auth";
+
+// =========================================================
+// 🟢 CONFIGURATION
+// =========================================================
 
 const PAGE_SIZE = 8;
 
+export type ReelFeedMode =
+  | "for_you"
+  | "following"
+  | "friends"
+  | "my_reels";
+
+// =========================================================
+// 🔵 MAIN COMPONENT
+// =========================================================
+
 export default function Reels() {
   const [posts, setPosts] = useState<any[]>([]);
+  const [feedMode, setFeedMode] =
+    useState<ReelFeedMode>("for_you");
+
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
-  const [myOnly, setMyOnly] = useState(false);
 
-  const userIdRef = useRef<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
   const loadingMore = useRef(false);
   const channelRef = useRef<any>(null);
   const ids = useRef(new Set<string>());
   const mounted = useRef(false);
+  const requestVersion = useRef(0);
+  const pageRef = useRef(0);
+  const feedModeRef = useRef<ReelFeedMode>("for_you");
+  const userIdRef = useRef<string | null>(null);
 
-  /* ================= USER ================= */
+  // =====================================================
+  // 🟢 KEEP CURRENT VALUES AVAILABLE TO ASYNC FUNCTIONS
+  // =====================================================
+
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      userIdRef.current = data?.user?.id ?? null;
-    });
+    feedModeRef.current = feedMode;
+  }, [feedMode]);
+
+  useEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
+
+  // =====================================================
+  // 🔵 LOAD LOGGED-IN USER
+  // =====================================================
+
+  useEffect(() => {
+    let active = true;
+
+    const loadUser = async () => {
+      try {
+        const user = await getUserSafe();
+
+        if (!active) return;
+
+        const id = user?.id ?? null;
+
+        userIdRef.current = id;
+        setUserId(id);
+      } catch (error) {
+        console.log("REELS USER ERROR:", error);
+      }
+    };
+
+    loadUser();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
-  /* ================= RESET ================= */
-  useEffect(() => {
-    setActiveIndex(0);
-    setPage(0);
-    ids.current.clear();
-    setPosts([]);
-  }, [myOnly]);
+  // =====================================================
+  // 🟣 GET USER IDS FOR SELECTED FEED
+  // =====================================================
 
-  /* ================= REALTIME (FINAL PRODUCTION FIX) ================= */
+  const getFeedUserIds = useCallback(
+    async (mode: ReelFeedMode, currentUserId: string) => {
+      // 🟢 FOR YOU: no user filter
+      if (mode === "for_you") {
+        return null;
+      }
+
+      // 🟢 MY REELS
+      if (mode === "my_reels") {
+        return [currentUserId];
+      }
+
+      // 🔵 ACCOUNTS I FOLLOW
+      const { data: followingRows, error: followingError } =
+        await supabase
+          .from("follows")
+          .select("following_id")
+          .eq("follower_id", currentUserId);
+
+      if (followingError) {
+        throw followingError;
+      }
+
+      const followingIds = [
+        ...new Set(
+          (followingRows || [])
+            .map((row: any) => row.following_id)
+            .filter(Boolean)
+        ),
+      ];
+
+      if (mode === "following") {
+        return followingIds;
+      }
+
+      // 🟣 FRIENDS: MUTUAL FOLLOWERS
+      const { data: followerRows, error: followerError } =
+        await supabase
+          .from("follows")
+          .select("follower_id")
+          .eq("following_id", currentUserId);
+
+      if (followerError) {
+        throw followerError;
+      }
+
+      const followerIds = new Set(
+        (followerRows || [])
+          .map((row: any) => row.follower_id)
+          .filter(Boolean)
+      );
+
+      return followingIds.filter((id) => followerIds.has(id));
+    },
+    []
+  );
+
+  // =====================================================
+  // 🟢 LOAD REELS
+  // =====================================================
+
+  const loadPosts = useCallback(
+    async (reset = false) => {
+      if (loadingMore.current) return;
+
+      const currentUserId = userIdRef.current;
+      const currentMode = feedModeRef.current;
+
+      if (!currentUserId) {
+        setLoading(false);
+        return;
+      }
+
+      loadingMore.current = true;
+
+      const version = requestVersion.current;
+      const currentPage = reset ? 0 : pageRef.current;
+
+      try {
+        const userIds = await getFeedUserIds(
+          currentMode,
+          currentUserId
+        );
+
+        // Ignore results from an old feed selection.
+        if (
+          !mounted.current ||
+          version !== requestVersion.current
+        ) {
+          return;
+        }
+
+        // An empty list means there are no accounts to display.
+        if (userIds !== null && userIds.length === 0) {
+          if (reset) {
+            setPosts([]);
+            ids.current.clear();
+            pageRef.current = 0;
+            setPage(0);
+          }
+
+          setLoading(false);
+          return;
+        }
+
+        const from = currentPage * PAGE_SIZE;
+        const to = from + PAGE_SIZE - 1;
+
+        let query = supabase
+          .from("posts")
+          .select("*")
+          .eq("status", "ready")
+          .order("created_at", { ascending: false })
+          .range(from, to);
+
+        if (userIds !== null) {
+          query = query.in("user_id", userIds);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.log("REELS LOAD ERROR:", error);
+          return;
+        }
+
+        if (
+          !mounted.current ||
+          version !== requestVersion.current
+        ) {
+          return;
+        }
+
+        const formatted = (data || [])
+          .filter((item: any) => !ids.current.has(item.id))
+          .map((item: any) => {
+            ids.current.add(item.id);
+
+            return {
+              ...item,
+              views: item.views ?? 0,
+            };
+          });
+
+        setPosts((previous) =>
+          reset ? formatted : [...previous, ...formatted]
+        );
+
+        pageRef.current = currentPage;
+        setPage(currentPage);
+        setLoading(false);
+      } catch (error) {
+        console.log("REELS LOAD ERROR:", error);
+      } finally {
+        if (version === requestVersion.current) {
+          loadingMore.current = false;
+        }
+      }
+    },
+    [getFeedUserIds]
+  );
+
+  // =====================================================
+  // 🔵 RESET WHEN FEED CHANGES
+  // =====================================================
+
+  useEffect(() => {
+    if (!userId) return;
+
+    requestVersion.current += 1;
+    loadingMore.current = false;
+
+    ids.current.clear();
+    pageRef.current = 0;
+
+    setPage(0);
+    setPosts([]);
+    setActiveIndex(0);
+    setLoading(true);
+
+    loadPosts(true);
+  }, [feedMode, userId, loadPosts]);
+
+  // =====================================================
+  // 🟣 REALTIME POSTS
+  // =====================================================
+
   useEffect(() => {
     mounted.current = true;
 
-    const setup = async () => {
+    const setupRealtime = async () => {
       try {
-        // 🔥 CLEAN OLD CHANNEL FIRST
         if (channelRef.current) {
           await supabase.removeChannel(channelRef.current);
           channelRef.current = null;
         }
 
-        // 🔥 CREATE CHANNEL
-        const channel = supabase.channel("reels-global");
+        const channel = supabase.channel("nasara-reels-global");
 
-        // 🔥 ADD LISTENER BEFORE SUBSCRIBE
         channel.on(
           "postgres_changes",
           {
@@ -69,30 +310,54 @@ export default function Reels() {
             const newRow = payload.new;
             const oldRow = payload.old;
 
-            // ✅ INSERT
+            // 🟢 INSERT
             if (payload.eventType === "INSERT") {
-              setPosts((prev) => {
-                if (prev.some((p) => p.id === newRow.id)) return prev;
+              if (newRow?.status !== "ready") return;
 
-                ids.current.add(newRow.id);
+              const mode = feedModeRef.current;
+              const currentUserId = userIdRef.current;
 
-                return [{ ...newRow, views: 0 }, ...prev];
-              });
+              if (!currentUserId) return;
+
+              // For You can accept any ready post.
+              // Other feeds are refreshed on next load.
+              if (mode === "for_you") {
+                setPosts((previous) => {
+                  if (previous.some((p) => p.id === newRow.id)) {
+                    return previous;
+                  }
+
+                  ids.current.add(newRow.id);
+
+                  return [
+                    { ...newRow, views: newRow.views ?? 0 },
+                    ...previous,
+                  ];
+                });
+              }
+
+              return;
             }
 
-            // ✅ UPDATE
+            // 🔵 UPDATE
             if (payload.eventType === "UPDATE") {
-              setPosts((prev) =>
-                prev.map((p) =>
-                  p.id === newRow.id ? { ...p, ...newRow } : p
-                )
+              setPosts((previous) =>
+                previous
+                  .map((item) =>
+                    item.id === newRow.id
+                      ? { ...item, ...newRow }
+                      : item
+                  )
+                  .filter((item) => item.status === "ready")
               );
+
+              return;
             }
 
-            // ✅ DELETE
+            // 🟣 DELETE
             if (payload.eventType === "DELETE") {
-              setPosts((prev) =>
-                prev.filter((p) => p.id !== oldRow.id)
+              setPosts((previous) =>
+                previous.filter((item) => item.id !== oldRow.id)
               );
 
               ids.current.delete(oldRow.id);
@@ -100,17 +365,17 @@ export default function Reels() {
           }
         );
 
-        // 🔥 SUBSCRIBE ONLY ONCE
-        const status = await channel.subscribe();
-        console.log("Realtime:", status);
+        channel.subscribe((status) => {
+          console.log("NASARA REELS REALTIME:", status);
+        });
 
         channelRef.current = channel;
-      } catch (err) {
-        console.log("Realtime error:", err);
+      } catch (error) {
+        console.log("REELS REALTIME ERROR:", error);
       }
     };
 
-    setup();
+    setupRealtime();
 
     return () => {
       mounted.current = false;
@@ -122,112 +387,116 @@ export default function Reels() {
     };
   }, []);
 
-  /* ================= LOAD POSTS ================= */
-  const loadPosts = async (reset = false) => {
-    if (loadingMore.current) return;
-    loadingMore.current = true;
+  // =====================================================
+  // 🟢 LOAD MORE
+  // =====================================================
 
-    try {
-      const from = reset ? 0 : page * PAGE_SIZE;
-      const to = from + PAGE_SIZE - 1;
+  const handleLoadMore = () => {
+    if (loadingMore.current || loading) return;
 
-      let query = supabase
-        .from("posts")
-        .select("*")
-        .eq("status", "ready")
-        .order("created_at", { ascending: false })
-        .range(from, to);
-
-      if (myOnly && userIdRef.current) {
-        query = query.eq("user_id", userIdRef.current);
-      }
-
-      const { data, error } = await query;
-
-      if (error) {
-        console.log(error);
-        return;
-      }
-
-      if (data) {
-        setLoading(false);
-
-        const formatted = data
-          .filter((p: any) => !ids.current.has(p.id))
-          .map((p: any) => {
-            ids.current.add(p.id);
-
-            return {
-              ...p,
-              views: p.views ?? 0,
-            };
-          });
-
-        setPosts((prev) => (reset ? formatted : [...prev, ...formatted]));
-      }
-    } catch (err) {
-      console.log("Load error:", err);
-    } finally {
-      loadingMore.current = false;
-    }
+    pageRef.current += 1;
+    setPage(pageRef.current);
   };
 
-  /* ================= INIT ================= */
   useEffect(() => {
-    loadPosts(true);
-  }, [myOnly]);
+    if (page > 0) {
+      loadPosts();
+    }
+  }, [page, loadPosts]);
 
-  useEffect(() => {
-    if (page !== 0) loadPosts();
-  }, [page]);
+  // =====================================================
+  // 🔵 DELETE REEL
+  // =====================================================
 
-  /* ================= DELETE ================= */
   const handleDelete = async (id: string) => {
     const ok =
       Platform.OS === "web"
-        ? window.confirm("Delete reel?")
-        : await new Promise<boolean>((res) => {
-            Alert.alert("Delete", "Are you sure?", [
-              { text: "Cancel", onPress: () => res(false) },
-              { text: "Delete", style: "destructive", onPress: () => res(true) },
-            ]);
+        ? window.confirm("Delete this Reel?")
+        : await new Promise<boolean>((resolve) => {
+            Alert.alert(
+              "Delete Reel",
+              "Are you sure you want to delete this video?",
+              [
+                {
+                  text: "Cancel",
+                  style: "cancel",
+                  onPress: () => resolve(false),
+                },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => resolve(true),
+                },
+              ]
+            );
           });
 
     if (!ok) return;
 
-    setPosts((p) => p.filter((x) => x.id !== id));
+    const previousPosts = posts;
+
+    setPosts((current) =>
+      current.filter((item) => item.id !== id)
+    );
+
     ids.current.delete(id);
 
-    await supabase.from("posts").delete().eq("id", id);
+    const { error } = await supabase
+      .from("posts")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.log("REEL DELETE ERROR:", error);
+
+      setPosts(previousPosts);
+      ids.current.add(id);
+
+      if (Platform.OS === "web") {
+        window.alert(error.message);
+      } else {
+        Alert.alert("Delete Failed", error.message);
+      }
+    }
   };
 
-  /* ================= LOADER ================= */
+  // =====================================================
+  // 🟣 LOADER
+  // =====================================================
+
   if (loading && posts.length === 0) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="white" />
+        <ActivityIndicator size="large" color="#D6A83F" />
       </View>
     );
   }
 
-  /* ================= UI ================= */
+  // =====================================================
+  // 🟢 REELS INTERFACE
+  // =====================================================
+
   return (
     <ReelsFeed
       reels={posts}
       activeIndex={activeIndex}
       setActiveIndex={setActiveIndex}
-      loadMore={() => setPage((p) => p + 1)}
-      myOnly={myOnly}
-      setMyOnly={setMyOnly}
+      loadMore={handleLoadMore}
+      feedMode={feedMode}
+      setFeedMode={setFeedMode}
       onDelete={handleDelete}
     />
   );
 }
 
+// =========================================================
+// 🟢 STYLES
+// =========================================================
+
 const styles = StyleSheet.create({
   loader: {
     flex: 1,
-    backgroundColor: "black",
+    backgroundColor: "#000000",
     justifyContent: "center",
     alignItems: "center",
   },
