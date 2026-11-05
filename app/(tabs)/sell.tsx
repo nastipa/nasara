@@ -252,7 +252,7 @@ export default function Sell() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [location, setLocation] = useState("");
-
+  const [sellerPhone, setSellerPhone] = useState("");
   const [category, setCategory] = useState("");
 
   // ----------------------------------------------------------
@@ -813,10 +813,12 @@ export default function Sell() {
             ? end.toISOString()
             : null,
 
-          location: location.trim(),
+         location: location.trim(),
 
-          latitude,
-          longitude,
+seller_phone: sellerPhone.trim() || null,
+
+latitude,
+longitude,
 
           image_url:
             uploadedImages[0] || null,
@@ -857,6 +859,7 @@ export default function Sell() {
       setDescription("");
       setPrice("");
       setLocation("");
+      setSellerPhone("");
       setCategory("");
       setIsDeal(false);
       setDealPrice("");
@@ -1204,6 +1207,40 @@ export default function Sell() {
             />
           )}
         </View>
+
+        {/* ------------------------------------------------ */}
+{/* 📞 OPTIONAL PHONE NUMBER */}
+{/* ------------------------------------------------ */}
+
+<InputLabel title="Contact Phone Number (Optional)" />
+
+<View style={styles.locationInputContainer}>
+  <Ionicons
+    name="call-outline"
+    size={21}
+    color={COLORS.gold}
+  />
+
+  <TextInput
+    placeholder="Enter your contact number"
+    placeholderTextColor={COLORS.muted}
+    style={styles.locationInput}
+    value={sellerPhone}
+    onChangeText={setSellerPhone}
+    keyboardType="phone-pad"
+    maxLength={20}
+  />
+</View>
+
+<Text
+  style={{
+    color: COLORS.muted,
+    fontSize: 10,
+    marginTop: 6,
+  }}
+>
+  Optional. Add a phone number buyers can use to contact you.
+</Text>
 
         {/* ------------------------------------------------ */}
         {/* 🗂️ CATEGORY */}

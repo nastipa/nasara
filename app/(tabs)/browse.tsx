@@ -1949,6 +1949,52 @@ export default function BrowseScreen() {
                 </Text>
               </View>
 
+              {/* 🟡 SELLER PHONE NUMBER */}
+
+              {item.type === "item" && item.seller_phone ? (
+                <View style={styles.sellerPhoneContainer}>
+                  <Text style={styles.sellerPhoneIcon}>
+                    📞
+                  </Text>
+
+                  <Text
+                    numberOfLines={1}
+                    style={styles.sellerPhoneText}
+                  >
+                    {item.seller_phone}
+                  </Text>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+
+                      const phone = String(
+                        item.seller_phone || ""
+                      ).trim();
+
+                      if (!phone) return;
+
+                      Linking.openURL("tel:" + phone).catch(
+                        (error) => {
+                          console.log("Phone call error:", error);
+
+                          Alert.alert(
+                            "Call Error",
+                            "Could not open the phone dialer."
+                          );
+                        }
+                      );
+                    }}
+                    style={styles.sellerCallButton}
+                  >
+                    <Text style={styles.sellerCallButtonText}>
+                      Call
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
+
               {/* 🟡 ACTIONS */}
 
               <View style={styles.productActions}>
@@ -3009,6 +3055,45 @@ const styles = StyleSheet.create({
   resetButtonText: {
     color: WHITE,
     fontSize: 11,
+    fontWeight: "900",
+  },
+  // 🟡 SELLER PHONE NUMBER
+
+  sellerPhoneContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 9,
+    marginTop: 9,
+  },
+
+  sellerPhoneIcon: {
+    fontSize: 14,
+    marginRight: 7,
+  },
+
+  sellerPhoneText: {
+    flex: 1,
+    color: "#166534",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  sellerCallButton: {
+    backgroundColor: "#07865B",
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    marginLeft: 7,
+  },
+
+  sellerCallButtonText: {
+    color: "#FFFFFF",
+    fontSize: 10,
     fontWeight: "900",
   },
 });
