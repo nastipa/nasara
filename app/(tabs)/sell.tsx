@@ -1212,7 +1212,7 @@ longitude,
 {/* 📞 OPTIONAL PHONE NUMBER */}
 {/* ------------------------------------------------ */}
 
-<InputLabel title="Contact Phone Number (Optional)" />
+<InputLabel title="Seller Phone Number (Optional)" />
 
 <View style={styles.locationInputContainer}>
   <Ionicons

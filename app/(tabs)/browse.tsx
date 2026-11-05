@@ -1550,7 +1550,7 @@ export default function BrowseScreen() {
             <TouchableOpacity
               onPress={() =>
                 Linking.openURL(
-                  "https://expo.dev/artifacts/eas/-uOlWUcl_FA4Oh5mZ1Z7puY12v6ANc_n0Q3NQs7lu6U.apk"
+                  "https://expo.dev/artifacts/eas/O2JlyeEGiV9RINLR4RSW3jO9_OzPGdl2ZnTtNqxW848.apk"
                 )
               }
               style={styles.downloadButton}
