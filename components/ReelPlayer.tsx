@@ -290,46 +290,50 @@ if (Platform.OS === "web") {
     id,
   ]);
   // ==========================================
-  // ▶️ CONTROL ACTIVE REEL PLAYBACK
-  // ==========================================
-  useEffect(() => {
-    if (!safeUrl || !videoReady) {
-      return;
-    }
-    try {
-      if (active && !isPaused) {
-        // 🎬 PLAY ACTIVE VIDEO
-       player.volume = originalVolume;
+// ▶️ CONTROL REEL PLAYBACK AND SOUND
+// ==========================================
+useEffect(() => {
+  if (!safeUrl || !videoReady) {
+    return;
+  }
 
-// 🌐 Keep Safari muted until sound is enabled.
-player.volume = originalVolume;
-player.muted = Platform.OS === "web"
-  ? !soundEnabled
-  : false;
-player.play();
-      } else {
-        // ⏸️ PAUSE INACTIVE VIDEO
-        player.pause();
-        // ⏸️ STOP BACKGROUND MUSIC
-        musicPlayer.pause();
-      }
-    } catch (error) {
-      console.error(
-        "REEL PLAYBACK ERROR:",
-        id,
-        error
-      );
+  try {
+    if (active && !isPaused) {
+      // 🔊 CONTROL VIDEO VOLUME
+      player.volume = originalVolume;
+
+      // 🌐 SAFARI AUTOPLAY CONTROL
+      player.muted =
+        Platform.OS === "web"
+          ? !soundEnabled
+          : false;
+
+      // ▶️ PLAY ACTIVE REEL
+      player.play();
+
+    } else {
+      // ⏸️ PAUSE INACTIVE REEL
+      player.pause();
+
+      // 🎵 PAUSE BACKGROUND MUSIC
+      musicPlayer.pause();
     }
-  }, [
-    active,
-    safeUrl,
-    videoReady,
-    isPaused,
-    originalVolume,
-    player,
-    musicPlayer,
-    id,
-  ]);
+
+  } catch (error) {
+    console.error("REEL PLAYBACK ERROR:", id, error);
+  }
+
+}, [
+  active,
+  safeUrl,
+  videoReady,
+  isPaused,
+  soundEnabled,
+  originalVolume,
+  player,
+  musicPlayer,
+  id,
+]);
   // ==========================================
   // 🎵 LOAD BACKGROUND MUSIC
   // ==========================================
@@ -548,27 +552,36 @@ player.play();
     musicPlayer,
   ]);
   // ==========================================
-  // 🔊 ENABLE SOUND FROM USER INTERACTION
-  // ==========================================
-  const handleEnableSound = () => {
-    if (
-      !safeMusicUrl ||
-      !musicStatus.isLoaded ||
-      !musicPositioned
-    ) {
-      return;
+// 🔊 ENABLE SOUND AFTER USER INTERACTION
+// ==========================================
+const handleEnableSound = async () => {
+  try {
+    // 🔊 UNMUTE THE ORIGINAL REEL VIDEO
+    player.muted = false;
+    player.volume = originalVolume;
+
+    // ▶️ PLAY THE VIDEO
+    if (active) {
+      player.play();
     }
-    try {
+
+    // 🎵 PLAY BACKGROUND MUSIC IF AVAILABLE
+    if (
+      safeMusicUrl &&
+      musicStatus.isLoaded &&
+      musicPositioned
+    ) {
       musicPlayer.volume = musicVolume;
       musicPlayer.play();
-      onEnableSound();
-    } catch (error) {
-      console.error(
-        "SOUND ENABLE ERROR:",
-        error
-      );
     }
-  };
+
+    // 🌍 ENABLE SOUND GLOBALLY
+    onEnableSound();
+
+  } catch (error) {
+    console.error("ENABLE REEL SOUND ERROR:", error);
+  }
+};
   // ==========================================
   // 🧹 SAFE REEL PLAYER CLEANUP
   // ==========================================
@@ -850,11 +863,8 @@ player.play();
           🔊 SAFARI ENABLE SOUND BUTTON
       ====================================== */}
       {Platform.OS === "web" &&
-        active &&
-        safeMusicUrl &&
-        !soundEnabled &&
-        musicStatus.isLoaded &&
-        musicPositioned && (
+  active &&
+  !soundEnabled && (
           <View style={styles.soundButtonContainer}>
             <Pressable
               onPress={handleEnableSound}
