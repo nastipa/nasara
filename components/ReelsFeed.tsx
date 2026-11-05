@@ -515,12 +515,16 @@ const [soundEnabled, setSoundEnabled] = useState(false);
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
 
-       initialNumToRender={3}
-maxToRenderPerBatch={3}
-windowSize={5}
-updateCellsBatchingPeriod={30}
+       // ==========================================
+// 🎬 OPTIMIZE REEL VIDEO PLAYER LOADING
+// ==========================================
+initialNumToRender={1}
+maxToRenderPerBatch={1}
+windowSize={3}
+updateCellsBatchingPeriod={50}
 
-        removeClippedSubviews={Platform.OS === "android"}
+// 🌐 KEEP VIDEO VIEWS MOUNTED RELIABLY
+removeClippedSubviews={false}
 
         getItemLayout={(_, index) => ({
           length: height,
