@@ -8,10 +8,14 @@ export default {
 
     platforms: ["ios", "android", "web"],
 
-    /* ✅ App Icon */
+    /* ===================================================== */
+    /* 🟢 APP ICON */
+    /* ===================================================== */
     icon: "./assets/images/icon.png",
 
-    /* ✅ Splash Screen */
+    /* ===================================================== */
+    /* 🟢 SPLASH SCREEN */
+    /* ===================================================== */
     splash: {
       image: "./assets/images/splash.png",
       resizeMode: "contain",
@@ -19,7 +23,7 @@ export default {
     },
 
     /* ===================================================== */
-    /* ✅ WEB (PWA SUPPORT) */
+    /* 🟢 WEB (PWA SUPPORT) */
     /* ===================================================== */
     web: {
       bundler: "metro",
@@ -28,37 +32,52 @@ export default {
     },
 
     /* ===================================================== */
-    /* ✅ PLUGINS */
+    /* 🟢 PLUGINS */
     /* ===================================================== */
-   plugins: [
-  "expo-router",
-  "expo-video",
-  "expo-asset",
-  "expo-audio",
-  "expo-font",
+    plugins: [
+      "expo-router",
+      "expo-video",
+      "expo-asset",
+      "expo-audio",
+      "expo-font",
 
-  [
-    "expo-notifications",
-    {
-      sounds: [
-        "./assets/sounds/message.mp3",
+      /* 🔵 LIVEKIT */
+      [
+        "@livekit/react-native-expo-plugin",
+        {
+          android: {
+            audioType: "communication",
+          },
+        },
       ],
-      enableBackgroundRemoteNotifications: true,
-    },
-  ],
+     
 
-  "@react-native-community/datetimepicker",
+      /* 🟢 NOTIFICATIONS */
+      [
+        "expo-notifications",
+        {
+          sounds: [
+            "./assets/sounds/message.mp3",
+          ],
+          enableBackgroundRemoteNotifications: true,
+        },
+      ],
+
+      "@react-native-community/datetimepicker",
+
+      /* 🟢 CAMERA */
       [
         "expo-camera",
         {
           cameraPermission:
-            "Allow Nasara to access your camera",
+            "Allow Nasara to access your camera for Reels and live video broadcasting.",
 
           microphonePermission:
-            "Allow Nasara to record audio with videos",
+            "Allow Nasara to access your microphone for videos and live broadcasting.",
         },
       ],
 
+      /* 🟢 LOCATION */
       [
         "expo-location",
         {
@@ -69,7 +88,7 @@ export default {
     ],
 
     /* ===================================================== */
-    /* ✅ ANDROID */
+    /* 🟢 ANDROID */
     /* ===================================================== */
     android: {
       package: "com.nastipa.nasara",
@@ -80,7 +99,6 @@ export default {
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
       ],
@@ -94,20 +112,19 @@ export default {
     },
 
     /* ===================================================== */
-    /* ✅ IOS */
+    /* 🟢 IOS */
     /* ===================================================== */
     ios: {
-      bundleIdentifier:
-        "com.nastipa.nasara",
+      bundleIdentifier: "com.nastipa.nasara",
 
       supportsTablet: true,
 
       infoPlist: {
         NSCameraUsageDescription:
-          "Nasara needs camera access to record reels.",
+          "Nasara needs camera access for Reels and live video broadcasting.",
 
         NSMicrophoneUsageDescription:
-          "Nasara needs microphone access to record audio in reels, voice notes, and voice statuses.",
+          "Nasara needs microphone access for Reels, voice notes, voice statuses and live broadcasting.",
 
         NSPhotoLibraryUsageDescription:
           "Nasara needs access to your gallery to upload videos.",
@@ -117,15 +134,16 @@ export default {
 
         NSLocationWhenInUseUsageDescription:
           "Nasara needs your location to help locate your property for utility services.",
-    UIBackgroundModes: [
-      "audio",
-      "remote-notification",
-      ],
+
+        UIBackgroundModes: [
+          "audio",
+          "remote-notification",
+        ],
       },
     },
 
     /* ===================================================== */
-    /* ✅ ENV + EAS PROJECT */
+    /* 🟢 ENV + EAS PROJECT */
     /* ===================================================== */
     extra: {
       supabaseUrl:

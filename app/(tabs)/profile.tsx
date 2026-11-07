@@ -33,6 +33,8 @@ import {
 import EnableBrowserNotifications from "../../components/EnableBrowserNotifications";
 import { supabase } from "../../lib/supabase";
 
+
+
 /* =========================================================
    🟢 COLOUR SYSTEM
    ========================================================= */
@@ -220,6 +222,7 @@ export default function ProfileScreen() {
   const [liveSessionId, setLiveSessionId] = useState<number | null>(null);
   const [liveStreamId, setLiveStreamId] = useState<string | null>(null);
 
+  
   /* =======================================================
      🟣 BATTLE STATISTICS
      ======================================================= */
@@ -1409,7 +1412,12 @@ export default function ProfileScreen() {
     }}
   />
 </View>
-              {/* =======================================
+
+
+             
+             
+             
+             {/* =======================================
                   🟣 WATCH AND AUCTIONS
                   ======================================= */}
 
@@ -1649,6 +1657,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
+      
     </SafeAreaView>
   );
 }

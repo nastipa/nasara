@@ -1,16 +1,16 @@
-// ==========================================
-// 📦 IMPORTS
-// ==========================================
+// 🔴 ==================================================
+// 🔴 NASARA — GO LIVE
+// 🔴 WEB + ANDROID + IOS
+// 🔴 LIVEKIT VIDEO BROADCASTING
+// 🔴 ==================================================
 
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
-  FlatList,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -21,161 +21,216 @@ import {
   View,
 } from "react-native";
 
-import { WebView } from "react-native-webview";
+import LiveKitHost from "../components/LiveKitHost";
+import { fetchLiveKitToken } from "../lib/livekit";
 import { supabase } from "../lib/supabase";
 
-// ==========================================
-// 🎨 NASARA PREMIUM COLOURS
-// ==========================================
+// 🟡 ==================================================
+// 🟡 CONFIGURATION
+// 🟡 ==================================================
+
+const UPLOAD_SERVER =
+  "https://nasara-upload-server.onrender.com";
 
 const COLORS = {
-  navy: "#14213D",
-  navyLight: "#203354",
-  gold: "#D6A84F",
-  goldLight: "#F8EFD9",
-  background: "#F5F6FA",
+  background: "#07111F",
+  card: "#101E30",
+  cardLight: "#16263A",
+  gold: "#E8B84A",
   white: "#FFFFFF",
-  text: "#172238",
-  muted: "#7C8799",
-  border: "#E5E9F0",
-  green: "#16865B",
-  greenLight: "#EAF7F0",
-  red: "#D94B4B",
-  redLight: "#FFF0F0",
+  muted: "#9AA9BB",
+  green: "#21C17A",
+  red: "#EF4444",
+  border: "#26374B",
 };
 
-// ==========================================
-// 🎥 SELLER LIVE DASHBOARD
-// ==========================================
+// 🟡 ==================================================
+// 🟡 TYPES
+// 🟡 ==================================================
+
+type LiveMessage = {
+  id: string;
+  room_id: string;
+  text: string;
+  created_at: string;
+};
+
+type ActiveStream = {
+  id: string;
+  title: string;
+};
+
+type RoomConfig = {
+  streamId: string;
+  token: string;
+  url: string;
+};
+
+// 🟡 ==================================================
+// 🟡 MAIN SCREEN
+// 🟡 ==================================================
 
 export default function GoLiveScreen() {
   const router = useRouter();
 
-  const screenWidth = Dimensions.get("window").width;
-  const videoRef = useRef<any>(null);
-
   // ==========================================
-  // 📝 LIVE FORM STATES
+  // 📝 FORM AND SCREEN STATES
   // ==========================================
 
   const [title, setTitle] = useState("");
-  const [youtubeUrl, setYoutubeUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   // ==========================================
-  // 🔴 ACTIVE LIVE STATES
+  // 🔴 LIVE STREAM STATES
   // ==========================================
 
-  const [activeLiveId, setActiveLiveId] = useState<string | null>(null);
-  const [activeYoutubeUrl, setActiveYoutubeUrl] = useState<string | null>(null);
+  const [activeLiveId, setActiveLiveId] =
+    useState<string | null>(null);
+
+  const [activeTitle, setActiveTitle] = useState("");
+
+  const [roomConfig, setRoomConfig] =
+    useState<RoomConfig | null>(null);
+
+  const [connected, setConnected] = useState(false);
 
   // ==========================================
   // 💬 CHAT STATES
   // ==========================================
 
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<LiveMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [lastSent, setLastSent] = useState(0);
 
   // ==========================================
-  // 🎬 EXTRACT YOUTUBE VIDEO ID
+  // 🔒 REFS
   // ==========================================
 
-  const getVideoId = (url: string) => {
-    if (!url) return null;
+  const notifiedStreams = useRef<Set<string>>(new Set());
+  const notificationInProgress = useRef<Set<string>>(new Set());
+  const endingStream = useRef(false);
 
-    const match = url.match(
-      /(?:watch\?v=|live\/|youtu\.be\/)([^&?/]+)/
-    );
+  // 🟡 ==================================================
+  // 🟡 MESSAGE HELPER
+  // 🟡 ==================================================
 
-    return match ? match[1] : null;
+  const showMessage = (
+    messageTitle: string,
+    message: string
+  ) => {
+    Alert.alert(messageTitle, message);
   };
 
-  const videoId = activeYoutubeUrl
-    ? getVideoId(activeYoutubeUrl)
-    : null;
+  // 🟡 ==================================================
+  // 🟡 SEND WEB + MOBILE NOTIFICATIONS
+  // 🟡 ==================================================
 
-  const embedUrl = videoId
-    ? `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1`
-    : null;
-
-  // ==========================================
-  // 💬 MESSAGE HELPER
-  // ==========================================
-
-  const showMessage = (heading: string, message?: string) => {
-    Alert.alert(heading, message);
-  };
-
-  // ==========================================
-  // 🔄 LOAD ACTIVE LIVE SESSION
-  // ==========================================
-
-  const findActiveLive = async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const { data, error } = await (supabase as any)
-        .from("live_streams")
-        .select("id, youtube_url")
-        .eq("user_id", user.id)
-        .eq("status", "live")
-        .maybeSingle();
-
-      if (error) {
-        console.error("Load active live error:", error);
+  const sendLiveNotifications = useCallback(
+    async (streamId: string) => {
+      if (
+        notifiedStreams.current.has(streamId) ||
+        notificationInProgress.current.has(streamId)
+      ) {
         return;
       }
 
-      if (data) {
-        setActiveLiveId(data.id);
-        setActiveYoutubeUrl(data.youtube_url);
+      notificationInProgress.current.add(streamId);
 
-        await loadMessages(data.id);
+      try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.access_token) {
+          console.warn(
+            "Live notifications skipped: no active session."
+          );
+          return;
+        }
+
+        const response = await fetch(
+          `${UPLOAD_SERVER}/live-started-notification`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              stream_id: streamId,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          console.warn(
+            "Live notification failed:",
+            result?.error || response.status
+          );
+          return;
+        }
+
+        notifiedStreams.current.add(streamId);
+
+        console.log(
+          "Nasara live notifications processed:",
+          result
+        );
+      } catch (error) {
+        console.warn(
+          "Live notification error:",
+          error
+        );
+      } finally {
+        notificationInProgress.current.delete(streamId);
       }
-    } catch (error) {
-      console.error("Find active live error:", error);
-    }
-  };
+    },
+    []
+  );
 
-  // ==========================================
-  // 💬 LOAD OLD CHAT MESSAGES
-  // ==========================================
+  // 🟡 ==================================================
+  // 🟡 LOAD LIVE CHAT
+  // 🟡 ==================================================
 
-  const loadMessages = async (liveId: string) => {
-    try {
+  const loadMessages = useCallback(
+    async (streamId: string) => {
       const { data, error } = await supabase
         .from("messages")
         .select("*")
-        .eq("room_id", liveId)
-        .order("created_at", { ascending: false })
-        .limit(50);
+        .eq("room_id", streamId)
+        .order("created_at", { ascending: true })
+        .limit(100);
 
       if (error) {
-        console.error("Load messages error:", error);
+        console.warn(
+          "Live chat loading error:",
+          error.message
+        );
         return;
       }
 
-      setMessages(data ?? []);
-    } catch (error) {
-      console.error("Message history error:", error);
-    }
-  };
+      setMessages((data || []) as LiveMessage[]);
+    },
+    []
+  );
 
-  // ==========================================
-  // 🔔 REALTIME CHAT SUBSCRIPTION
-  // ==========================================
+  // 🟡 ==================================================
+  // 🟡 LIVE CHAT REALTIME
+  // 🟡 ==================================================
 
   useEffect(() => {
-    if (!activeLiveId) return;
+    if (!activeLiveId) {
+      return;
+    }
+
+    loadMessages(activeLiveId);
 
     const channel = supabase
-      .channel("seller-live-" + activeLiveId)
+      .channel(`nasara-live-chat-${activeLiveId}`)
       .on(
         "postgres_changes",
         {
@@ -184,16 +239,19 @@ export default function GoLiveScreen() {
           table: "messages",
           filter: `room_id=eq.${activeLiveId}`,
         },
-        (payload: any) => {
-          setMessages((prev) => {
-            const exists = prev.some(
-              (message) =>
-                String(message.id) === String(payload.new.id)
-            );
+        (payload) => {
+          const incoming = payload.new as LiveMessage;
 
-            if (exists) return prev;
+          setMessages((previous) => {
+            if (
+              previous.some(
+                (message) => message.id === incoming.id
+              )
+            ) {
+              return previous;
+            }
 
-            return [payload.new, ...prev];
+            return [...previous, incoming].slice(-100);
           });
         }
       )
@@ -202,75 +260,50 @@ export default function GoLiveScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [activeLiveId]);
+  }, [activeLiveId, loadMessages]);
 
-  // ==========================================
-  // 🚀 LOAD LIVE SESSION ON SCREEN OPEN
-  // ==========================================
-
-  useEffect(() => {
-    findActiveLive();
-  }, []);
-
-  // ==========================================
-  // 💬 SEND CHAT MESSAGE
-  // ==========================================
+  // 🟡 ==================================================
+  // 🟡 SEND CHAT MESSAGE
+  // 🟡 ==================================================
 
   const sendMessage = async () => {
-    const now = Date.now();
+    const messageText = newMessage.trim();
 
-    if (now - lastSent < 1000) return;
+    if (!messageText || !activeLiveId || sending) {
+      return;
+    }
 
-    if (!newMessage.trim() || !activeLiveId || sending) return;
-
-    setLastSent(now);
     setSending(true);
 
-    const textValue = newMessage.trim();
-
-    const tempId = `temp-${now}`;
-
-    const tempMessage = {
-      id: tempId,
-      text: textValue,
-      room_id: activeLiveId,
-      created_at: new Date().toISOString(),
-    };
-
-    // ==========================================
-    // ⚡ OPTIMISTIC CHAT UPDATE
-    // ==========================================
-
-    setMessages((prev) => [tempMessage, ...prev]);
-    setNewMessage("");
-
     try {
-      const { data, error } = await (supabase as any)
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        showMessage(
+          "Login required",
+          "Please log in to send a live chat message."
+        );
+        return;
+      }
+
+      const { error } = await (supabase as any)
         .from("messages")
         .insert({
           room_id: activeLiveId,
-          text: textValue,
-        })
-        .select()
-        .single();
+          text: messageText,
+        });
 
-      if (error) throw error;
-
-      // Replace the temporary message with the saved message.
-      if (data) {
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id === tempId ? data : message
-          )
-        );
+      if (error) {
+        throw error;
       }
-    } catch (error: any) {
-      setMessages((prev) =>
-        prev.filter((message) => message.id !== tempId)
-      );
 
+      setNewMessage("");
+    } catch (error: any) {
       showMessage(
-        "Send Failed",
+        "Message failed",
         error?.message || "Could not send your message."
       );
     } finally {
@@ -278,1500 +311,1098 @@ export default function GoLiveScreen() {
     }
   };
 
-  // ==========================================
-  // 🔴 START LIVE SESSION
-  // ==========================================
+  // 🟡 ==================================================
+  // 🟡 CONNECT TO EXISTING LIVE STREAM
+  // 🟡 ==================================================
+
+  const connectToStream = useCallback(
+    async (stream: ActiveStream) => {
+      setActiveLiveId(stream.id);
+      setActiveTitle(stream.title || "Nasara Live");
+      setConnected(false);
+
+      try {
+        const tokenData = await fetchLiveKitToken(stream.id);
+
+        setRoomConfig({
+          streamId: stream.id,
+          token: tokenData.token,
+          url: tokenData.url,
+        });
+      } catch (error: any) {
+        console.error(
+          "LiveKit reconnection failed:",
+          error
+        );
+
+        showMessage(
+          "Live connection failed",
+          error?.message ||
+            "Unable to reconnect to this live stream."
+        );
+
+        setActiveLiveId(null);
+        setActiveTitle("");
+        setRoomConfig(null);
+      }
+    },
+    []
+  );
+
+  // 🟡 ==================================================
+  // 🟡 CHECK FOR EXISTING LIVE STREAM
+  // 🟡 ==================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkActiveStream = async () => {
+      try {
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError || !user || !mounted) {
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("live_streams")
+          .select("id, title")
+          .eq("user_id", user.id)
+          .eq("status", "live")
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) {
+          console.warn(
+            "Active live lookup failed:",
+            error.message
+          );
+          return;
+        }
+
+        if (data && mounted) {
+          await connectToStream(data as ActiveStream);
+        }
+      } catch (error) {
+        console.warn(
+          "Active live check failed:",
+          error
+        );
+      } finally {
+        if (mounted) {
+          setChecking(false);
+        }
+      }
+    };
+
+    checkActiveStream();
+
+    return () => {
+      mounted = false;
+    };
+  }, [connectToStream]);
+
+  // 🟡 ==================================================
+  // 🟡 START LIVE BROADCAST
+  // 🟡 ==================================================
 
   const startLive = async () => {
-    if (!title.trim() || !youtubeUrl.trim()) {
+    if (!title.trim()) {
       showMessage(
-        "Missing Information",
-        "Please enter your live title and YouTube Live link."
+        "Live title required",
+        "Enter a title for your live broadcast."
       );
       return;
     }
 
-    const extractedId = getVideoId(youtubeUrl.trim());
-
-    if (!extractedId) {
-      showMessage(
-        "Invalid YouTube Link",
-        "Please enter a valid YouTube video or live-stream link."
-      );
+    if (loading) {
       return;
     }
 
     setLoading(true);
 
-    try {
-      // ==========================================
-      // 🔐 CHECK USER LOGIN
-      // ==========================================
+    let createdStreamId: string | null = null;
 
+    try {
       const {
         data: { user },
-        error: authError,
+        error: userError,
       } = await supabase.auth.getUser();
 
-      if (authError) throw authError;
-
-      if (!user) {
-        showMessage(
-          "Login Required",
-          "Please login before starting a live session."
+      if (userError || !user) {
+        throw new Error(
+          "Please log in before going live."
         );
-        return;
       }
 
       // ==========================================
-      // ⏹️ END PREVIOUS ACTIVE LIVE SESSIONS
+      // 🔴 END PREVIOUS ACTIVE STREAMS
       // ==========================================
 
-      const { error: updateError } = await (supabase as any)
+      const { error: previousError } = await (supabase as any)
         .from("live_streams")
-        .update({ status: "ended" })
+        .update({
+          status: "ended",
+          is_active: false,
+        })
         .eq("user_id", user.id)
         .eq("status", "live");
 
-      if (updateError) throw updateError;
-
-      // ==========================================
-      // 💾 CREATE NEW LIVE SESSION
-      // ==========================================
-
-      const { data, error } = await (supabase as any)
-        .from("live_streams")
-        .insert({
-          user_id: user.id,
-          title: title.trim(),
-          status: "live",
-          youtube_url: youtubeUrl.trim(),
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (!data) {
-        throw new Error("Could not create your live session.");
+      if (previousError) {
+        throw previousError;
       }
 
       // ==========================================
-      // ✅ SET ACTIVE LIVE
+      // 🔴 CREATE NEW LIVE STREAM
       // ==========================================
 
-      setActiveLiveId(data.id);
-      setActiveYoutubeUrl(data.youtube_url);
-      setMessages([]);
+      const { data: stream, error: insertError } =
+        await (supabase as any)
+          .from("live_streams")
+          .insert({
+            user_id: user.id,
+            title: title.trim(),
+            status: "live",
+            is_active: true,
+          })
+          .select("id, title")
+          .single();
 
-      showMessage(
-        "You Are Live!",
-        "Your live session has started successfully."
-      );
+      if (insertError || !stream) {
+        throw insertError || new Error(
+          "Could not create the live stream."
+        );
+      }
+
+      createdStreamId = stream.id;
+
+      // ==========================================
+      // 🔴 REQUEST LIVEKIT HOST TOKEN
+      // ==========================================
+
+      const tokenData = await fetchLiveKitToken(stream.id);
+
+      if (!tokenData.canPublish) {
+        throw new Error(
+          "LiveKit did not authorize host publishing."
+        );
+      }
+
+      // ==========================================
+      // 🔴 PREPARE LIVEKIT CONNECTION
+      // ==========================================
+
+      setActiveLiveId(stream.id);
+      setActiveTitle(stream.title);
+      setConnected(false);
+
+      setRoomConfig({
+        streamId: stream.id,
+        token: tokenData.token,
+        url: tokenData.url,
+      });
+
+      setTitle("");
     } catch (error: any) {
-      console.error("Start live error:", error);
+      console.error(
+        "Start live error:",
+        error
+      );
+
+      // ==========================================
+      // 🔴 CLEAN UP FAILED STREAM CREATION
+      // ==========================================
+
+      if (createdStreamId) {
+        await (supabase as any)
+          .from("live_streams")
+          .update({
+            status: "ended",
+            is_active: false,
+          })
+          .eq("id", createdStreamId);
+      }
+
+      setRoomConfig(null);
+      setActiveLiveId(null);
+      setActiveTitle("");
+      setConnected(false);
 
       showMessage(
-        "Unable to Start Live",
-        error?.message || "Something went wrong."
+        "Unable to go live",
+        error?.message ||
+          "Something went wrong while starting your broadcast."
       );
     } finally {
       setLoading(false);
     }
   };
 
-  // ==========================================
-  // ⛔ END LIVE SESSION
-  // ==========================================
+  // 🟡 ==================================================
+  // 🟡 LIVEKIT CONNECTION SUCCESS
+  // 🟡 ==================================================
 
-  const endLive = async () => {
-    if (!activeLiveId) return;
+  const handleConnected = useCallback(() => {
+    if (!roomConfig) {
+      return;
+    }
+
+    setConnected(true);
+
+    // Notifications are sent once per stream after connection.
+    sendLiveNotifications(roomConfig.streamId);
+  }, [roomConfig, sendLiveNotifications]);
+
+  // 🟡 ==================================================
+  // 🟡 END LIVE BROADCAST
+  // 🟡 ==================================================
+
+  const confirmEndLive = async () => {
+    if (!activeLiveId || endingStream.current) {
+      return;
+    }
+
+    endingStream.current = true;
+    setLoading(true);
+
+    const streamId = activeLiveId;
+
+    try {
+      const { error } = await (supabase as any)
+        .from("live_streams")
+        .update({
+          status: "ended",
+          is_active: false,
+        })
+        .eq("id", streamId);
+
+      if (error) {
+        throw error;
+      }
+
+      // Removing the room config unmounts LiveKitRoom.
+      setRoomConfig(null);
+      setActiveLiveId(null);
+      setActiveTitle("");
+      setConnected(false);
+      setMessages([]);
+      setNewMessage("");
+
+      router.replace("/browse" as any);
+    } catch (error: any) {
+      showMessage(
+        "Could not end live",
+        error?.message || "Please try again."
+      );
+    } finally {
+      endingStream.current = false;
+      setLoading(false);
+    }
+  };
+
+  const endLive = () => {
+    if (Platform.OS === "web") {
+      const accepted =
+        typeof window !== "undefined" &&
+        window.confirm(
+          "End your live broadcast? Viewers will no longer be able to join."
+        );
+
+      if (accepted) {
+        confirmEndLive();
+      }
+
+      return;
+    }
 
     Alert.alert(
-      "End Live Session?",
-      "Are you sure you want to end your live session?",
+      "End live broadcast?",
+      "Your live video will stop and viewers will no longer be able to join.",
       [
         {
-          text: "Continue Live",
+          text: "Cancel",
           style: "cancel",
         },
         {
           text: "End Live",
           style: "destructive",
-          onPress: async () => {
-            setLoading(true);
-
-            try {
-              const { error } = await (supabase as any)
-                .from("live_streams")
-                .update({ status: "ended" })
-                .eq("id", activeLiveId);
-
-              if (error) throw error;
-
-              setActiveLiveId(null);
-              setActiveYoutubeUrl(null);
-              setMessages([]);
-
-              router.replace("/browse");
-            } catch (error: any) {
-              showMessage(
-                "Could Not End Live",
-                error?.message || "Something went wrong."
-              );
-            } finally {
-              setLoading(false);
-            }
-          },
+          onPress: confirmEndLive,
         },
       ]
     );
   };
 
-  // ==========================================
-  // 🕒 MESSAGE TIME
-  // ==========================================
+  // 🟡 ==================================================
+  // 🟡 LOADING SCREEN
+  // 🟡 ==================================================
 
-  const formatMessageTime = (createdAt?: string) => {
-    if (!createdAt) return "";
-
-    const date = new Date(createdAt);
-
-    if (Number.isNaN(date.getTime())) return "";
-
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  // ==========================================
-  // 🖥️ MAIN UI
-  // ==========================================
-
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.screen}
-    >
-      {/* ======================================
-          🔵 HEADER
-      ====================================== */}
-
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.replace("/browse")}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={21}
-            color={COLORS.white}
-          />
-        </TouchableOpacity>
-
-        <View style={styles.headerContent}>
-          <Text style={styles.headerEyebrow}>
-            NASARA MARKETPLACE
-          </Text>
-
-          <Text style={styles.headerTitle}>
-            Seller Live
-          </Text>
-
-          <Text style={styles.headerSubtitle}>
-            Your live-stream control centre.
-          </Text>
-        </View>
-
-        <View style={styles.headerIcon}>
-          <Ionicons
-            name="radio-outline"
-            size={27}
-            color={COLORS.gold}
-          />
-        </View>
+  if (checking) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator
+          size="large"
+          color={COLORS.gold}
+        />
+        <Text style={styles.loadingText}>
+          Checking your live broadcast...
+        </Text>
       </View>
+    );
+  }
 
-      {/* ======================================
-          🔴 LIVE STATUS
-      ====================================== */}
+  // 🟡 ==================================================
+  // 🟡 ACTIVE LIVE DASHBOARD
+  // 🟡 ==================================================
 
-      <View
-        style={[
-          styles.statusCard,
-          activeLiveId && styles.statusCardLive,
-        ]}
+  if (activeLiveId) {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={
+          Platform.OS === "ios" ? "padding" : undefined
+        }
       >
-        <View
-          style={[
-            styles.statusIcon,
-            activeLiveId && styles.statusIconLive,
-          ]}
-        >
-          <Ionicons
-            name="videocam"
-            size={23}
-            color={activeLiveId ? COLORS.green : COLORS.navy}
-          />
-        </View>
-
-        <View style={styles.statusContent}>
-          <Text style={styles.statusTitle}>
-            {activeLiveId
-              ? "Your broadcast is active"
-              : "Ready to broadcast?"}
-          </Text>
-
-          <Text style={styles.statusDescription}>
-            {activeLiveId
-              ? "Your YouTube stream is connected to Nasara."
-              : "Connect your YouTube Live stream to reach buyers."}
-          </Text>
-        </View>
-
-        <View
-          style={[
-            styles.statusBadge,
-            activeLiveId && styles.statusBadgeLive,
-          ]}
-        >
-          <View
-            style={[
-              styles.statusDot,
-              activeLiveId && styles.statusDotLive,
-            ]}
-          />
-
-          <Text
-            style={[
-              styles.statusBadgeText,
-              activeLiveId && styles.statusBadgeTextLive,
-            ]}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backButton}
           >
-            {activeLiveId ? "LIVE" : "OFFLINE"}
-          </Text>
+            <Ionicons
+              name="arrow-back"
+              size={23}
+              color={COLORS.white}
+            />
+          </TouchableOpacity>
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>
+              NASARA LIVE
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              Your live broadcast studio
+            </Text>
+          </View>
+
+          <View style={styles.liveBadge}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveBadgeText}>
+              LIVE
+            </Text>
+          </View>
         </View>
-      </View>
 
-      {/* ======================================
-          📝 CREATE LIVE FORM
-      ====================================== */}
-
-      {!activeLiveId && (
         <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+          style={styles.dashboardScroll}
+          contentContainerStyle={styles.dashboardContent}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.introCard}>
-            <View style={styles.introIcon}>
+          <Text style={styles.streamTitle}>
+            {activeTitle}
+          </Text>
+
+          {/* 🔴 LIVE VIDEO */}
+
+          <View style={styles.videoContainer}>
+            {roomConfig ? (
+              <LiveKitHost
+                serverUrl={roomConfig.url}
+                token={roomConfig.token}
+                onConnected={handleConnected}
+              />
+            ) : (
+              <View style={styles.videoPlaceholder}>
+                <ActivityIndicator
+                  size="large"
+                  color={COLORS.gold}
+                />
+                <Text style={styles.videoPlaceholderText}>
+                  Connecting to LiveKit...
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* 🔴 CONNECTION STATUS */}
+
+          <View style={styles.connectionRow}>
+            <View
+              style={[
+                styles.connectionDot,
+                {
+                  backgroundColor: connected
+                    ? COLORS.green
+                    : COLORS.gold,
+                },
+              ]}
+            />
+
+            <Text style={styles.connectionText}>
+              {connected
+                ? "Connected — your broadcast is running"
+                : "Connecting your camera and microphone..."}
+            </Text>
+          </View>
+
+          {/* 💬 LIVE CHAT */}
+
+          <View style={styles.chatCard}>
+            <View style={styles.chatHeader}>
               <Ionicons
-                name="flash"
-                size={26}
+                name="chatbubbles"
+                size={20}
                 color={COLORS.gold}
               />
-            </View>
 
-            <Text style={styles.introTitle}>
-              Take your business live
-            </Text>
+              <Text style={styles.chatTitle}>
+                Live Chat
+              </Text>
 
-            <Text style={styles.introDescription}>
-              Stream directly from YouTube and engage with your
-              buyers through Nasara's live chat.
-            </Text>
-          </View>
-
-          <View style={styles.section}>
-            <View style={styles.sectionHeading}>
-              <View style={styles.sectionIcon}>
-                <Ionicons
-                  name="create-outline"
-                  size={20}
-                  color={COLORS.navy}
-                />
-              </View>
-
-              <View>
-                <Text style={styles.sectionTitle}>
-                  Broadcast Details
-                </Text>
-
-                <Text style={styles.sectionSubtitle}>
-                  Set up your live session.
-                </Text>
-              </View>
-            </View>
-
-            {/* ======================================
-                📝 LIVE TITLE
-            ====================================== */}
-
-            <Text style={styles.inputLabel}>
-              Live Session Title
-            </Text>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons
-                name="text-outline"
-                size={19}
-                color={COLORS.muted}
-              />
-
-              <TextInput
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Example: Live Product Showcase"
-                placeholderTextColor="#A5ADBA"
-                style={styles.input}
-                maxLength={100}
-              />
-            </View>
-
-            <Text style={styles.characterCount}>
-              {title.length}/100 characters
-            </Text>
-
-            {/* ======================================
-                ▶️ YOUTUBE URL
-            ====================================== */}
-
-            <Text style={[styles.inputLabel, styles.urlLabel]}>
-              YouTube Live Link
-            </Text>
-
-            <View style={styles.inputWrapper}>
-              <Ionicons
-                name="logo-youtube"
-                size={20}
-                color={COLORS.red}
-              />
-
-              <TextInput
-                value={youtubeUrl}
-                onChangeText={setYoutubeUrl}
-                placeholder="Paste your YouTube Live URL"
-                placeholderTextColor="#A5ADBA"
-                style={styles.input}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-              />
-            </View>
-
-            <View style={styles.urlHint}>
-              <Ionicons
-                name="information-circle-outline"
-                size={16}
-                color={COLORS.muted}
-              />
-
-              <Text style={styles.urlHintText}>
-                Start your broadcast on YouTube first, then paste
-                its live link here.
+              <Text style={styles.chatCount}>
+                {messages.length} messages
               </Text>
             </View>
-          </View>
 
-          {/* ======================================
-              ℹ️ HOW IT WORKS
-          ====================================== */}
-
-          <View style={styles.stepsCard}>
-            <Text style={styles.stepsTitle}>
-              How to go live
-            </Text>
-
-            <View style={styles.stepRow}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>1</Text>
-              </View>
-
-              <View style={styles.stepContent}>
-                <Text style={styles.stepHeading}>
-                  Start streaming on YouTube
-                </Text>
-
-                <Text style={styles.stepDescription}>
-                  Open YouTube and start your live broadcast.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.stepRow}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>2</Text>
-              </View>
-
-              <View style={styles.stepContent}>
-                <Text style={styles.stepHeading}>
-                  Copy your live link
-                </Text>
-
-                <Text style={styles.stepDescription}>
-                  Copy the URL of your YouTube live broadcast.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.stepRow}>
-              <View style={styles.stepNumber}>
-                <Text style={styles.stepNumberText}>3</Text>
-              </View>
-
-              <View style={styles.stepContent}>
-                <Text style={styles.stepHeading}>
-                  Connect to Nasara
-                </Text>
-
-                <Text style={styles.stepDescription}>
-                  Enter your title and YouTube link above.
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* ======================================
-              🔴 GO LIVE BUTTON
-          ====================================== */}
-
-          <TouchableOpacity
-            onPress={startLive}
-            disabled={loading}
-            style={[
-              styles.startButton,
-              loading && styles.disabledButton,
-            ]}
-            activeOpacity={0.85}
-          >
-            {loading ? (
-              <ActivityIndicator
-                color={COLORS.white}
-                size="small"
-              />
-            ) : (
-              <Ionicons
-                name="radio"
-                size={21}
-                color={COLORS.white}
-              />
-            )}
-
-            <Text style={styles.startButtonText}>
-              {loading ? "Connecting..." : "Go Live on Nasara"}
-            </Text>
-
-            {!loading && (
-              <Ionicons
-                name="arrow-forward"
-                size={19}
-                color={COLORS.white}
-              />
-            )}
-          </TouchableOpacity>
-        </ScrollView>
-      )}
-
-      {/* ======================================
-          🔴 ACTIVE LIVE DASHBOARD
-      ====================================== */}
-
-      {activeLiveId && (
-        <View style={styles.activeDashboard}>
-          {/* ======================================
-              🎥 STREAM PREVIEW
-          ====================================== */}
-
-          <View style={styles.previewSection}>
-            <View style={styles.previewHeading}>
-              <View>
-                <Text style={styles.previewTitle}>
-                  Live Broadcast
-                </Text>
-
-                <Text style={styles.previewSubtitle}>
-                  Your YouTube stream preview
-                </Text>
-              </View>
-
-              <View style={styles.liveNowBadge}>
-                <View style={styles.liveNowDot} />
-
-                <Text style={styles.liveNowText}>
-                  LIVE NOW
-                </Text>
-              </View>
-            </View>
-
-            {embedUrl ? (
-              <View
-                style={[
-                  styles.videoContainer,
-                  {
-                    width: "100%",
-                  },
-                ]}
-              >
-                {Platform.OS === "web" ? (
-                  <iframe
-                    src={embedUrl}
-                    width="100%"
-                    height="100%"
-                    style={{
-                      border: 0,
-                    }}
-                    allow="autoplay; encrypted-media; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : (
-                  <WebView
-                    ref={videoRef}
-                    source={{ uri: embedUrl }}
-                    style={styles.webView}
-                    javaScriptEnabled
-                    domStorageEnabled
-                    allowsFullscreenVideo
-                    mediaPlaybackRequiresUserAction={false}
-                  />
-                )}
-              </View>
-            ) : (
-              <View style={styles.invalidVideo}>
-                <Ionicons
-                  name="alert-circle-outline"
-                  size={35}
-                  color={COLORS.gold}
-                />
-
-                <Text style={styles.invalidVideoText}>
-                  Unable to display this YouTube stream.
-                </Text>
-              </View>
-            )}
-
-            <Text style={styles.broadcastTitle}>
-              {title}
-            </Text>
-
-            <View style={styles.broadcastDetails}>
-              <View style={styles.broadcastDetail}>
-                <Ionicons
-                  name="radio-outline"
-                  size={15}
-                  color={COLORS.green}
-                />
-
-                <Text style={styles.broadcastDetailText}>
-                  Connected to YouTube
-                </Text>
-              </View>
-
-              <View style={styles.broadcastDetail}>
-                <Ionicons
-                  name="chatbubbles-outline"
-                  size={15}
-                  color={COLORS.gold}
-                />
-
-                <Text style={styles.broadcastDetailText}>
-                  Live chat enabled
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* ======================================
-              💬 LIVE CHAT
-          ====================================== */}
-
-          <View style={styles.chatSection}>
-            <View style={styles.chatHeading}>
-              <View style={styles.chatHeadingLeft}>
-                <View style={styles.chatIcon}>
-                  <Ionicons
-                    name="chatbubbles"
-                    size={19}
-                    color={COLORS.navy}
-                  />
-                </View>
-
-                <View>
-                  <Text style={styles.chatTitle}>
-                    Buyer Chat
-                  </Text>
-
-                  <Text style={styles.chatSubtitle}>
-                    Messages from your audience
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.messageCountBadge}>
-                <Text style={styles.messageCountText}>
-                  {messages.length}
-                </Text>
-              </View>
-            </View>
-
-            {/* ======================================
-                💬 MESSAGE LIST
-            ====================================== */}
-
-            <FlatList
-              data={messages}
-              inverted
-              keyExtractor={(item) => item.id.toString()}
+            <ScrollView
               style={styles.messageList}
-              contentContainerStyle={styles.messageListContent}
+              nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
-                <View style={styles.messageRow}>
-                  <View style={styles.messageAvatar}>
-                    <Ionicons
-                      name="person"
-                      size={15}
-                      color={COLORS.navy}
-                    />
-                  </View>
-
-                  <View style={styles.messageBubble}>
+            >
+              {messages.length === 0 ? (
+                <Text style={styles.emptyChat}>
+                  No messages yet. Your viewers can chat here.
+                </Text>
+              ) : (
+                messages.map((item) => (
+                  <View
+                    key={item.id}
+                    style={styles.messageBubble}
+                  >
                     <Text style={styles.messageText}>
                       {item.text}
                     </Text>
-
-                    <Text style={styles.messageTime}>
-                      {formatMessageTime(item.created_at)}
-                    </Text>
                   </View>
-                </View>
+                ))
               )}
-              ListEmptyComponent={
-                <View style={styles.emptyChat}>
-                  <View style={styles.emptyChatIcon}>
-                    <Ionicons
-                      name="chatbubble-ellipses-outline"
-                      size={27}
-                      color={COLORS.muted}
-                    />
-                  </View>
+            </ScrollView>
 
-                  <Text style={styles.emptyChatTitle}>
-                    No messages yet
-                  </Text>
-
-                  <Text style={styles.emptyChatText}>
-                    Buyer messages will appear here.
-                  </Text>
-                </View>
-              }
-            />
-
-            {/* ======================================
-                ✍️ CHAT INPUT
-            ====================================== */}
-
-            <View style={styles.chatInputContainer}>
+            <View style={styles.chatInputRow}>
               <TextInput
                 value={newMessage}
                 onChangeText={setNewMessage}
-                placeholder="Reply to a buyer..."
-                placeholderTextColor="#A5ADBA"
+                placeholder="Send a message..."
+                placeholderTextColor={COLORS.muted}
                 style={styles.chatInput}
-                multiline
-                maxLength={1000}
-                editable={!sending}
+                returnKeyType="send"
                 onSubmitEditing={sendMessage}
               />
 
               <TouchableOpacity
                 onPress={sendMessage}
-                disabled={sending || !newMessage.trim()}
+                disabled={
+                  sending || !newMessage.trim()
+                }
                 style={[
                   styles.sendButton,
-                  (sending || !newMessage.trim()) &&
-                    styles.sendButtonDisabled,
+                  {
+                    opacity:
+                      sending || !newMessage.trim()
+                        ? 0.5
+                        : 1,
+                  },
                 ]}
               >
                 {sending ? (
                   <ActivityIndicator
-                    color={COLORS.white}
-                    size="small"
+                    color={COLORS.background}
                   />
                 ) : (
                   <Ionicons
                     name="send"
                     size={18}
-                    color={COLORS.white}
+                    color={COLORS.background}
                   />
                 )}
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* ======================================
-              ⛔ END LIVE
-          ====================================== */}
+          {/* 🔴 END LIVE */}
 
           <TouchableOpacity
+            style={styles.endButton}
             onPress={endLive}
             disabled={loading}
-            style={styles.endLiveButton}
-            activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator
-                color={COLORS.red}
-                size="small"
-              />
+              <ActivityIndicator color={COLORS.white} />
             ) : (
-              <Ionicons
-                name="stop-circle-outline"
-                size={21}
-                color={COLORS.red}
-              />
+              <>
+                <Ionicons
+                  name="stop-circle"
+                  size={21}
+                  color={COLORS.white}
+                />
+
+                <Text style={styles.endButtonText}>
+                  End Live Broadcast
+                </Text>
+              </>
             )}
-
-            <Text style={styles.endLiveButtonText}>
-              End Live Broadcast
-            </Text>
           </TouchableOpacity>
+
+          <Text style={styles.footerText}>
+            Keep your audience engaged. Stay safe and follow
+            Nasara community guidelines.
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // 🟡 ==================================================
+  // 🟡 GO LIVE SETUP SCREEN
+  // 🟡 ==================================================
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons
+            name="arrow-back"
+            size={23}
+            color={COLORS.white}
+          />
+        </TouchableOpacity>
+
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>
+            NASARA LIVE
+          </Text>
+          <Text style={styles.headerSubtitle}>
+            Connect with your customers
+          </Text>
         </View>
-      )}
 
-      {/* ======================================
-          🏷️ FOOTER
-      ====================================== */}
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          POWERED BY NASARA
-        </Text>
+        <Ionicons
+          name="videocam"
+          size={27}
+          color={COLORS.gold}
+        />
       </View>
-    </KeyboardAvoidingView>
+
+      <ScrollView
+        contentContainerStyle={styles.formContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.heroCard}>
+          <View style={styles.heroIcon}>
+            <Ionicons
+              name="radio"
+              size={42}
+              color={COLORS.gold}
+            />
+          </View>
+
+          <Text style={styles.heroTitle}>
+            Go Live on Nasara
+          </Text>
+
+          <Text style={styles.heroDescription}>
+            Showcase your products, demonstrate your services
+            and connect with customers in real time.
+          </Text>
+        </View>
+
+        <Text style={styles.fieldLabel}>
+          LIVE BROADCAST TITLE
+        </Text>
+
+        <TextInput
+          value={title}
+          onChangeText={setTitle}
+          placeholder="What are you showcasing today?"
+          placeholderTextColor={COLORS.muted}
+          style={styles.titleInput}
+          maxLength={100}
+        />
+
+        <View style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <Ionicons
+              name="globe-outline"
+              size={21}
+              color={COLORS.gold}
+            />
+
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoTitle}>
+                Web and mobile viewers
+              </Text>
+
+              <Text style={styles.infoDescription}>
+                Broadcast using LiveKit on browsers,
+                Android and iOS.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.infoDivider} />
+
+          <View style={styles.infoRow}>
+            <Ionicons
+              name="notifications-outline"
+              size={21}
+              color={COLORS.gold}
+            />
+
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoTitle}>
+                Notify your audience
+              </Text>
+
+              <Text style={styles.infoDescription}>
+                Browser subscribers and app users can receive
+                a notification when you go live.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.infoDivider} />
+
+          <View style={styles.infoRow}>
+            <Ionicons
+              name="chatbubbles-outline"
+              size={21}
+              color={COLORS.gold}
+            />
+
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoTitle}>
+                Live customer interaction
+              </Text>
+
+              <Text style={styles.infoDescription}>
+                Keep your Nasara live chat available
+                during your broadcast.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.startButton,
+            {
+              opacity:
+                loading || !title.trim() ? 0.6 : 1,
+            },
+          ]}
+          onPress={startLive}
+          disabled={loading || !title.trim()}
+        >
+          {loading ? (
+            <>
+              <ActivityIndicator
+                color={COLORS.background}
+              />
+
+              <Text style={styles.startButtonText}>
+                Preparing your broadcast...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Ionicons
+                name="videocam"
+                size={22}
+                color={COLORS.background}
+              />
+
+              <Text style={styles.startButtonText}>
+                Start Go Live
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <Text style={styles.footerText}>
+          Make sure your camera and microphone permissions
+          are enabled before starting.
+        </Text>
+      </ScrollView>
+    </View>
   );
 }
 
-// ==========================================
-// 🎨 STYLES
-// ==========================================
+// 🟡 ==================================================
+// 🟡 STYLES
+// 🟡 ==================================================
 
 const styles = StyleSheet.create({
-  screen: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
 
-  scrollContent: {
-    paddingBottom: 30,
+  loadingScreen: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
-  // ==========================================
-  // 🔵 HEADER
-  // ==========================================
+  loadingText: {
+    color: COLORS.muted,
+    marginTop: 14,
+    fontSize: 14,
+  },
 
   header: {
-    backgroundColor: COLORS.navy,
-    paddingTop: Platform.OS === "ios" ? 57 : 40,
+    minHeight: 76,
     paddingHorizontal: 18,
-    paddingBottom: 26,
-    borderBottomLeftRadius: 27,
-    borderBottomRightRadius: 27,
+    paddingVertical: 14,
     flexDirection: "row",
     alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: 13,
   },
 
   backButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-
-  headerContent: {
-    flex: 1,
-  },
-
-  headerEyebrow: {
-    color: COLORS.gold,
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 2,
-    marginBottom: 5,
-  },
-
-  headerTitle: {
-    color: COLORS.white,
-    fontSize: 26,
-    fontWeight: "900",
-  },
-
-  headerSubtitle: {
-    color: "#C6CDDA",
-    fontSize: 11,
-    marginTop: 5,
-  },
-
-  headerIcon: {
-    width: 47,
-    height: 47,
-    borderRadius: 15,
-    backgroundColor: "rgba(214,168,79,0.13)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
-  },
-
-  // ==========================================
-  // 🔴 STATUS
-  // ==========================================
-
-  statusCard: {
-    marginHorizontal: 17,
-    marginTop: 17,
-    padding: 13,
-    backgroundColor: COLORS.white,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  statusCardLive: {
-    borderColor: "#B9E4CE",
-    backgroundColor: "#F7FCF9",
-  },
-
-  statusIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: COLORS.goldLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-
-  statusIconLive: {
-    backgroundColor: COLORS.greenLight,
-  },
-
-  statusContent: {
-    flex: 1,
-  },
-
-  statusTitle: {
-    fontSize: 13,
-    fontWeight: "900",
-    color: COLORS.navy,
-  },
-
-  statusDescription: {
-    fontSize: 10,
-    color: COLORS.muted,
-    marginTop: 4,
-    lineHeight: 15,
-  },
-
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F1F3F7",
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 20,
-    marginLeft: 5,
-  },
-
-  statusBadgeLive: {
-    backgroundColor: COLORS.greenLight,
-  },
-
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 5,
-    backgroundColor: COLORS.muted,
-    marginRight: 5,
-  },
-
-  statusDotLive: {
-    backgroundColor: COLORS.green,
-  },
-
-  statusBadgeText: {
-    fontSize: 9,
-    color: COLORS.muted,
-    fontWeight: "900",
-  },
-
-  statusBadgeTextLive: {
-    color: COLORS.green,
-  },
-
-  // ==========================================
-  // 🟡 INTRO
-  // ==========================================
-
-  introCard: {
-    marginHorizontal: 17,
-    marginTop: 20,
-    padding: 19,
-    borderRadius: 19,
-    backgroundColor: COLORS.navy,
-  },
-
-  introIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
-    backgroundColor: "rgba(214,168,79,0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 14,
-  },
-
-  introTitle: {
-    color: COLORS.white,
-    fontSize: 19,
-    fontWeight: "900",
-  },
-
-  introDescription: {
-    color: "#D0D7E3",
-    fontSize: 12,
-    lineHeight: 19,
-    marginTop: 7,
-  },
-
-  // ==========================================
-  // 📦 FORM SECTION
-  // ==========================================
-
-  section: {
-    marginHorizontal: 17,
-    marginTop: 18,
-    padding: 17,
-    backgroundColor: COLORS.white,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  sectionHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-
-  sectionIcon: {
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: COLORS.goldLight,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 11,
+    backgroundColor: COLORS.card,
   },
 
-  sectionTitle: {
-    color: COLORS.navy,
-    fontSize: 15,
+  headerTitle: {
+    color: COLORS.gold,
+    fontSize: 17,
     fontWeight: "900",
+    letterSpacing: 1.2,
   },
 
-  sectionSubtitle: {
+  headerSubtitle: {
     color: COLORS.muted,
-    fontSize: 10,
-    marginTop: 4,
+    fontSize: 11,
+    marginTop: 3,
   },
 
-  // ==========================================
-  // 📝 INPUTS
-  // ==========================================
-
-  inputLabel: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: "800",
-    marginBottom: 8,
-  },
-
-  inputWrapper: {
-    minHeight: 52,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 13,
-    backgroundColor: "#FAFBFD",
-    paddingHorizontal: 13,
+  liveBadge: {
     flexDirection: "row",
     alignItems: "center",
-  },
-
-  input: {
-    flex: 1,
-    fontSize: 13,
-    color: COLORS.text,
-    marginLeft: 10,
-    paddingVertical: 12,
-  },
-
-  characterCount: {
-    textAlign: "right",
-    color: COLORS.muted,
-    fontSize: 10,
-    marginTop: 7,
-  },
-
-  urlLabel: {
-    marginTop: 19,
-  },
-
-  urlHint: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 11,
-  },
-
-  urlHintText: {
-    flex: 1,
-    fontSize: 10,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginLeft: 7,
-  },
-
-  // ==========================================
-  // 📋 HOW IT WORKS
-  // ==========================================
-
-  stepsCard: {
-    marginHorizontal: 17,
-    marginTop: 17,
-    padding: 17,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  stepsTitle: {
-    color: COLORS.navy,
-    fontSize: 15,
-    fontWeight: "900",
-    marginBottom: 17,
-  },
-
-  stepRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 17,
-  },
-
-  stepNumber: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    backgroundColor: COLORS.goldLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 11,
-  },
-
-  stepNumberText: {
-    color: COLORS.navy,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  stepContent: {
-    flex: 1,
-  },
-
-  stepHeading: {
-    color: COLORS.text,
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  stepDescription: {
-    color: COLORS.muted,
-    fontSize: 10,
-    lineHeight: 16,
-    marginTop: 4,
-  },
-
-  // ==========================================
-  // 🔴 START BUTTON
-  // ==========================================
-
-  startButton: {
-    marginHorizontal: 17,
-    marginTop: 20,
-    minHeight: 56,
-    backgroundColor: COLORS.navy,
-    borderRadius: 15,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-
-  startButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: "900",
-  },
-
-  disabledButton: {
-    opacity: 0.65,
-  },
-
-  // ==========================================
-  // 🎥 ACTIVE DASHBOARD
-  // ==========================================
-
-  activeDashboard: {
-    flex: 1,
-    paddingBottom: 10,
-  },
-
-  previewSection: {
-    marginHorizontal: 15,
-    marginTop: 17,
-    padding: 13,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-
-  previewHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 13,
-  },
-
-  previewTitle: {
-    color: COLORS.navy,
-    fontSize: 15,
-    fontWeight: "900",
-  },
-
-  previewSubtitle: {
-    color: COLORS.muted,
-    fontSize: 10,
-    marginTop: 4,
-  },
-
-  liveNowBadge: {
-    backgroundColor: COLORS.redLight,
+    backgroundColor: "#3A1820",
     borderRadius: 20,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 7,
-    flexDirection: "row",
-    alignItems: "center",
+    gap: 6,
   },
 
-  liveNowDot: {
+  liveDot: {
     width: 7,
     height: 7,
     borderRadius: 5,
     backgroundColor: COLORS.red,
-    marginRight: 6,
   },
 
-  liveNowText: {
-    color: COLORS.red,
-    fontSize: 9,
+  liveBadgeText: {
+    color: COLORS.white,
     fontWeight: "900",
-    letterSpacing: 1,
+    fontSize: 11,
   },
 
-  videoContainer: {
-    height: 205,
-    backgroundColor: "#000000",
-    borderRadius: 13,
-    overflow: "hidden",
+  formContent: {
+    padding: 20,
+    paddingBottom: 45,
   },
 
-  webView: {
-    flex: 1,
-    backgroundColor: "#000000",
+  heroCard: {
+    alignItems: "center",
+    paddingVertical: 27,
+    paddingHorizontal: 20,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 27,
   },
 
-  invalidVideo: {
-    height: 205,
-    backgroundColor: COLORS.navy,
-    borderRadius: 13,
+  heroIcon: {
+    width: 75,
+    height: 75,
+    borderRadius: 24,
+    backgroundColor: "#263044",
     alignItems: "center",
     justifyContent: "center",
-    padding: 20,
+    marginBottom: 15,
   },
 
-  invalidVideoText: {
+  heroTitle: {
     color: COLORS.white,
-    fontSize: 12,
-    marginTop: 10,
+    fontSize: 23,
+    fontWeight: "900",
     textAlign: "center",
   },
 
-  broadcastTitle: {
-    color: COLORS.navy,
-    fontSize: 16,
-    fontWeight: "900",
-    marginTop: 14,
-  },
-
-  broadcastDetails: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 13,
-    marginTop: 12,
-  },
-
-  broadcastDetail: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  broadcastDetailText: {
+  heroDescription: {
     color: COLORS.muted,
-    fontSize: 10,
-    marginLeft: 5,
+    fontSize: 13,
+    lineHeight: 21,
+    textAlign: "center",
+    marginTop: 9,
   },
 
-  // ==========================================
-  // 💬 CHAT SECTION
-  // ==========================================
+  fieldLabel: {
+    color: COLORS.gold,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 1,
+    marginBottom: 10,
+  },
 
-  chatSection: {
+  titleInput: {
+    minHeight: 54,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 13,
+    color: COLORS.white,
+    paddingHorizontal: 15,
+    fontSize: 14,
+    marginBottom: 20,
+  },
+
+  infoCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 17,
+    padding: 17,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: 25,
+  },
+
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 13,
+  },
+
+  infoTextContainer: {
     flex: 1,
-    minHeight: 250,
-    marginHorizontal: 15,
-    marginTop: 15,
-    padding: 14,
-    backgroundColor: COLORS.white,
-    borderRadius: 18,
+  },
+
+  infoTitle: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  infoDescription: {
+    color: COLORS.muted,
+    fontSize: 12,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+
+  infoDivider: {
+    height: 1,
+    backgroundColor: COLORS.border,
+    marginVertical: 15,
+  },
+
+  startButton: {
+    minHeight: 56,
+    borderRadius: 14,
+    backgroundColor: COLORS.gold,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  startButtonText: {
+    color: COLORS.background,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  dashboardScroll: {
+    flex: 1,
+  },
+
+  dashboardContent: {
+    padding: 16,
+    paddingBottom: 35,
+  },
+
+  streamTitle: {
+    color: COLORS.white,
+    fontSize: 19,
+    fontWeight: "900",
+    marginBottom: 14,
+  },
+
+  videoContainer: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    backgroundColor: "#000000",
+    borderRadius: 16,
+    overflow: "hidden",
     borderWidth: 1,
     borderColor: COLORS.border,
   },
 
-  chatHeading: {
+  videoPlaceholder: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  videoPlaceholderText: {
+    color: COLORS.muted,
+    marginTop: 12,
+    fontSize: 12,
+  },
+
+  connectionRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 13,
+    marginBottom: 20,
+  },
+
+  connectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 5,
+  },
+
+  connectionText: {
+    color: COLORS.muted,
+    fontSize: 12,
+  },
+
+  chatCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 20,
+    minHeight: 260,
+  },
+
+  chatHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     paddingBottom: 13,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
 
-  chatHeadingLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  chatIcon: {
-    width: 39,
-    height: 39,
-    borderRadius: 12,
-    backgroundColor: COLORS.goldLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-
   chatTitle: {
-    color: COLORS.navy,
-    fontSize: 14,
+    color: COLORS.white,
+    fontSize: 15,
     fontWeight: "900",
+    flex: 1,
   },
 
-  chatSubtitle: {
+  chatCount: {
     color: COLORS.muted,
-    fontSize: 10,
-    marginTop: 3,
-  },
-
-  messageCountBadge: {
-    minWidth: 29,
-    height: 29,
-    borderRadius: 15,
-    backgroundColor: COLORS.goldLight,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 7,
-  },
-
-  messageCountText: {
-    color: COLORS.navy,
     fontSize: 11,
-    fontWeight: "900",
   },
 
   messageList: {
-    flex: 1,
-    minHeight: 150,
-    maxHeight: 270,
-    marginTop: 7,
-  },
-
-  messageListContent: {
-    paddingVertical: 8,
-    flexGrow: 1,
-  },
-
-  messageRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginVertical: 6,
-  },
-
-  messageAvatar: {
-    width: 30,
-    height: 30,
-    borderRadius: 11,
-    backgroundColor: COLORS.goldLight,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
+    maxHeight: 220,
+    minHeight: 130,
   },
 
   messageBubble: {
-    flex: 1,
-    backgroundColor: "#F5F6FA",
-    borderRadius: 12,
-    paddingHorizontal: 11,
+    backgroundColor: COLORS.cardLight,
+    borderRadius: 11,
+    paddingHorizontal: 12,
     paddingVertical: 9,
+    alignSelf: "flex-start",
+    maxWidth: "95%",
+    marginTop: 8,
   },
 
   messageText: {
-    color: COLORS.text,
-    fontSize: 12,
-    lineHeight: 18,
+    color: COLORS.white,
+    fontSize: 13,
+    lineHeight: 19,
   },
-
-  messageTime: {
-    color: COLORS.muted,
-    fontSize: 9,
-    marginTop: 5,
-    textAlign: "right",
-  },
-
-  // ==========================================
-  // 💬 EMPTY CHAT
-  // ==========================================
 
   emptyChat: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 23,
-  },
-
-  emptyChatIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 17,
-    backgroundColor: "#F1F3F7",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  emptyChatTitle: {
-    color: COLORS.navy,
-    fontSize: 13,
-    fontWeight: "900",
-    marginTop: 10,
-  },
-
-  emptyChatText: {
     color: COLORS.muted,
-    fontSize: 10,
-    marginTop: 5,
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 35,
   },
 
-  // ==========================================
-  // ✍️ CHAT INPUT
-  // ==========================================
-
-  chatInputContainer: {
+  chatInputRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 10,
-    paddingTop: 10,
+    gap: 9,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+    paddingTop: 12,
   },
 
   chatInput: {
     flex: 1,
-    minHeight: 45,
+    minHeight: 43,
     maxHeight: 90,
-    backgroundColor: "#F5F6FA",
     borderRadius: 12,
+    backgroundColor: COLORS.cardLight,
+    color: COLORS.white,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: COLORS.text,
-    fontSize: 12,
+    fontSize: 13,
   },
 
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: COLORS.navy,
+    width: 43,
+    height: 43,
+    borderRadius: 12,
+    backgroundColor: COLORS.gold,
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: 8,
   },
 
-  sendButtonDisabled: {
-    backgroundColor: "#A5ADBA",
-  },
-
-  // ==========================================
-  // ⛔ END LIVE
-  // ==========================================
-
-  endLiveButton: {
-    marginHorizontal: 15,
-    marginTop: 15,
-    minHeight: 52,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#F0CACA",
-    backgroundColor: COLORS.redLight,
+  endButton: {
+    minHeight: 53,
+    borderRadius: 13,
+    backgroundColor: "#A92732",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 9,
   },
 
-  endLiveButtonText: {
-    color: COLORS.red,
-    fontSize: 13,
+  endButtonText: {
+    color: COLORS.white,
+    fontSize: 14,
     fontWeight: "900",
-  },
-
-  // ==========================================
-  // 🏷️ FOOTER
-  // ==========================================
-
-  footer: {
-    alignItems: "center",
-    paddingVertical: 12,
   },
 
   footerText: {
-    color: "#A5ADBA",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 2,
+    color: COLORS.muted,
+    fontSize: 11,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 17,
   },
 });
