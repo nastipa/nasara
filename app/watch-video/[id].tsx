@@ -132,132 +132,137 @@ export default function WatchVideoScreen() {
     setProduct(data ?? null);
   };
 
-  // ==================================================
-  // 💬 LOAD CHAT
-  // ==================================================
+ // ==================================================
+// 💬 LOAD LIVE CHAT
+// ==================================================
 
-  const loadMessages = async () => {
-    if (!id) return;
+const loadMessages = async () => {
+  if (!id) return;
 
-    const { data, error } = await supabase
-      .from("messages")
+  const { data, error } = await supabase
+    .from("live_chat_messages")
+    .select("*")
+    .eq("stream_id", String(id))
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    console.log("Live chat load error:", error.message);
+    return;
+  }
+
+  setMessages(data ?? []);
+};
+
+ // ==================================================
+// 🔄 LIVE CHAT REALTIME + INITIAL LOAD
+// ==================================================
+
+useEffect(() => {
+  if (!id) return;
+
+  loadLive();
+  loadMessages();
+
+  const channel = supabase
+    .channel("live-chat-" + String(id))
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "live_chat_messages",
+        filter: `stream_id=eq.${String(id)}`,
+      },
+      (payload: any) => {
+        setMessages((previous) => {
+          const incoming = payload.new;
+
+          if (
+            previous.some(
+              (message) => message.id === incoming.id
+            )
+          ) {
+            return previous;
+          }
+
+          return [incoming, ...previous].slice(0, 50);
+        });
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [id]);
+  // ==================================================
+// 💬 SEND LIVE CHAT MESSAGE — VIEWER
+// ==================================================
+
+const sendMessage = async () => {
+  const now = Date.now();
+
+  if (now - lastSent < 1000) return;
+  if (!chatText.trim() || !id) return;
+
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("Please log in to send a message.");
+    }
+
+    const textValue = chatText.trim();
+
+    const { data: insertedMessage, error } = await (supabase as any)
+      .from("live_chat_messages")
+      .insert({
+        stream_id: String(id),
+        sender_id: user.id,
+        text: textValue,
+      })
       .select("*")
-      .eq("room_id", id)
-      .order("created_at", { ascending: false })
-      .limit(50);
+      .single();
 
     if (error) {
-      console.log("Chat load error:", error.message);
-      return;
+      throw error;
     }
 
-    setMessages(data ?? []);
-  };
+    setLastSent(now);
+    setChatText("");
 
-  // ==================================================
-  // 🔄 REALTIME + INITIAL LOAD
-  // ==================================================
-
-  useEffect(() => {
-    if (!id) return;
-
-    loadLive();
-    loadMessages();
-
-    const channel = (supabase as any)
-      .channel("live-chat-" + id)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `room_id=eq.${id}`,
-        },
-        (payload: any) => {
-          setMessages((previous) => [
-            payload.new,
-            ...previous,
-          ]);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [id]);
-
-  // 🟡 ==================================================
-  // 🟡 SEND LIVE CHAT MESSAGE — VIEWER
-  // 🟡 ==================================================
-
-  const sendMessage = async () => {
-    const now = Date.now();
-
-    if (now - lastSent < 1000) return;
-    if (!chatText.trim() || !id) return;
-
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        throw new Error("Please log in to send a message.");
+    setMessages((previous) => {
+      if (
+        previous.some(
+          (message) => message.id === insertedMessage.id
+        )
+      ) {
+        return previous;
       }
 
-      const textValue = chatText.trim();
+      return [insertedMessage, ...previous].slice(0, 50);
+    });
+  } catch (error: any) {
+    console.error("Viewer chat error:", error);
 
-      const { data: insertedMessage, error } = await (
-        supabase as any
-      )
-        .from("messages")
-        .insert({
-          room_id: id,
-          sender_id: user.id,
-          text: textValue,
-        })
-        .select("*")
-        .single();
+    if (Platform.OS === "web") {
+      window.alert(
+        error?.message || "Could not send your message."
+      );
+    } else {
+      const { Alert } = require("react-native");
 
-      if (error) {
-        throw error;
-      }
-
-      setLastSent(now);
-      setChatText("");
-
-      // Display the confirmed database message immediately.
-      setMessages((previous) => {
-        if (
-          previous.some(
-            (message) => message.id === insertedMessage.id
-          )
-        ) {
-          return previous;
-        }
-
-        return [insertedMessage, ...previous];
-      });
-    } catch (error: any) {
-      console.error("Viewer chat error:", error);
-
-      // Keep the message in the input if sending fails.
-      if (Platform.OS === "web") {
-        window.alert(
-          error?.message || "Could not send your message."
-        );
-      } else {
-        const { Alert } = require("react-native");
-        Alert.alert(
-          "Message failed",
-          error?.message || "Could not send your message."
-        );
-      }
+      Alert.alert(
+        "Message failed",
+        error?.message || "Could not send your message."
+      );
     }
-  };
+  }
+};
   // ==================================================
   // 📺 YOUTUBE FALLBACK
   // ==================================================

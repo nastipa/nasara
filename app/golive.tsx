@@ -49,12 +49,12 @@ const COLORS = {
 // 🟡 ==================================================
 
 type LiveMessage = {
-  id: string;
-  room_id: string;
+  id: number;
+  stream_id: string;
+  sender_id: string;
   text: string;
   created_at: string;
 };
-
 type ActiveStream = {
   id: string;
   title: string;
@@ -193,139 +193,134 @@ export default function GoLiveScreen() {
   );
 
   // 🟡 ==================================================
-  // 🟡 LOAD LIVE CHAT
-  // 🟡 ==================================================
+// 🟡 LOAD LIVE CHAT
+// 🟡 ==================================================
 
-  const loadMessages = useCallback(
-    async (streamId: string) => {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("room_id", streamId)
-        .order("created_at", { ascending: true })
-        .limit(100);
+const loadMessages = useCallback(
+  async (streamId: string) => {
+    const { data, error } = await supabase
+      .from("live_chat_messages")
+      .select("*")
+      .eq("stream_id", streamId)
+      .order("created_at", { ascending: true })
+      .limit(100);
 
-      if (error) {
-        console.warn(
-          "Live chat loading error:",
-          error.message
-        );
-        return;
-      }
-
-      setMessages((data || []) as LiveMessage[]);
-    },
-    []
-  );
-
-  // 🟡 ==================================================
-  // 🟡 LIVE CHAT REALTIME
-  // 🟡 ==================================================
-
-  useEffect(() => {
-    if (!activeLiveId) {
+    if (error) {
+      console.warn(
+        "Live chat loading error:",
+        error.message
+      );
       return;
     }
 
-    loadMessages(activeLiveId);
+    setMessages((data || []) as LiveMessage[]);
+  },
+  []
+);
 
-    const channel = supabase
-      .channel(`nasara-live-chat-${activeLiveId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `room_id=eq.${activeLiveId}`,
-        },
-        (payload) => {
-          const incoming = payload.new as LiveMessage;
+  // 🟡 ==================================================
+// 🟡 LIVE CHAT REALTIME
+// 🟡 ==================================================
 
-          setMessages((previous) => {
-            if (
-              previous.some(
-                (message) => message.id === incoming.id
-              )
-            ) {
-              return previous;
-            }
+useEffect(() => {
+  if (!activeLiveId) return;
 
-            return [...previous, incoming].slice(-100);
-          });
-        }
-      )
-      .subscribe();
+  loadMessages(activeLiveId);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [activeLiveId, loadMessages]);
+  const channel = supabase
+    .channel(`nasara-live-chat-${activeLiveId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "live_chat_messages",
+        filter: `stream_id=eq.${activeLiveId}`,
+      },
+      (payload) => {
+        const incoming = payload.new as LiveMessage;
+
+        setMessages((previous) => {
+          if (
+            previous.some(
+              (message) => message.id === incoming.id
+            )
+          ) {
+            return previous;
+          }
+
+          return [...previous, incoming].slice(-100);
+        });
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [activeLiveId, loadMessages]);
 
  // 🟡 ==================================================
-  // 🟡 SEND LIVE CHAT MESSAGE — BROADCASTER
-  // 🟡 ==================================================
+// 🟡 SEND LIVE CHAT MESSAGE — BROADCASTER
+// 🟡 ==================================================
 
-  const sendMessage = async () => {
-    const messageText = newMessage.trim();
+const sendMessage = async () => {
+  const messageText = newMessage.trim();
 
-    if (!messageText || !activeLiveId || sending) {
-      return;
+  if (!messageText || !activeLiveId || sending) {
+    return;
+  }
+
+  setSending(true);
+
+  try {
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      throw new Error("Please log in to send a message.");
     }
 
-    setSending(true);
+    const { data: insertedMessage, error } = await (supabase as any)
+      .from("live_chat_messages")
+      .insert({
+        stream_id: activeLiveId,
+        sender_id: user.id,
+        text: messageText,
+      })
+      .select("*")
+      .single();
 
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        throw new Error("Please log in to send a message.");
-      }
-
-      const { data: insertedMessage, error } = await (
-        supabase as any
-      )
-        .from("messages")
-        .insert({
-          room_id: activeLiveId,
-          sender_id: user.id,
-          text: messageText,
-        })
-        .select("*")
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      // Display the confirmed database message immediately.
-      setMessages((previous) => {
-        if (
-          previous.some(
-            (message) => message.id === insertedMessage.id
-          )
-        ) {
-          return previous;
-        }
-
-        return [...previous, insertedMessage as LiveMessage].slice(-100);
-      });
-
-      setNewMessage("");
-    } catch (error: any) {
-      console.error("Broadcaster chat error:", error);
-
-      showMessage(
-        "Message failed",
-        error?.message || "Could not send your message."
-      );
-    } finally {
-      setSending(false);
+    if (error) {
+      throw error;
     }
-  };
+
+    setMessages((previous) => {
+      if (
+        previous.some(
+          (message) => message.id === insertedMessage.id
+        )
+      ) {
+        return previous;
+      }
+
+      return [...previous, insertedMessage as LiveMessage].slice(-100);
+    });
+
+    setNewMessage("");
+  } catch (error: any) {
+    console.error("Broadcaster chat error:", error);
+
+    showMessage(
+      "Message failed",
+      error?.message || "Could not send your message."
+    );
+  } finally {
+    setSending(false);
+  }
+};
 
   // 🟡 ==================================================
   // 🟡 CONNECT TO EXISTING LIVE STREAM
