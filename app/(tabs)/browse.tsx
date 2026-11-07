@@ -4,16 +4,14 @@
 // 🔵 =====================================================
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "@react-navigation/native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import {
-  useCallback,
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useState
 } from "react";
 
 import {
@@ -464,38 +462,31 @@ export default function BrowseScreen() {
     );
   };
 
-  // 🟡 =====================================================
-  // 🟡 LOAD LIVE STREAMS
-  // 🟡 =====================================================
+ // 🟡 LOAD LIVE STREAMS
 
-  const loadLiveStreams = async () => {
-    const { data, error } = await supabase
-      .from("live_streams")
-      .select(`
-        id,
-        title,
-        youtube_url,
-        status,
-        user_id,
-        created_at
-      `)
-      .eq("status", "live")
-      .order("created_at", { ascending: false })
-      .limit(20);
+const loadLiveStreams = async () => {
+  const { data, error } = await supabase
+    .from("live_streams")
+    .select(`
+      id,
+      title,
+      status,
+      is_active,
+      user_id,
+      created_at
+    `)
+    .eq("status", "live")
+    .eq("is_active", true)
+    .order("created_at", { ascending: false })
+    .limit(20);
 
-    if (error) {
-      console.log("Live load error:", error.message);
-      return;
-    }
+  if (error) {
+    console.log("Live load error:", error.message);
+    return;
+  }
 
-    setLiveStreams(data ?? []);
-  };
-
-  useFocusEffect(
-    useCallback(() => {
-      loadLiveStreams();
-    }, [])
-  );
+  setLiveStreams(data ?? []);
+};
 
   // 🟡 =====================================================
   // 🟡 AI PREFERENCES

@@ -1,6 +1,11 @@
+// ==================================================
+ // 📦 IMPORTS
+ // ==================================================
+
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+
 import {
   ActivityIndicator,
   Dimensions,
@@ -12,8 +17,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
 import { WebView } from "react-native-webview";
+
+import LiveKitViewer from "../../components/LiveKitViewer";
+import { fetchLiveKitToken } from "../../lib/livekit";
 import { supabase } from "../../lib/supabase";
+
+// ==================================================
+// 🎥 WATCH VIDEO SCREEN
+// ==================================================
 
 export default function WatchVideoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,57 +36,128 @@ export default function WatchVideoScreen() {
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const [viewer, setViewer] = useState<any>(null);
+  const [viewerError, setViewerError] = useState("");
+
   const [messages, setMessages] = useState<any[]>([]);
   const [chatText, setChatText] = useState("");
-  const [lastSent, setLastSent] = useState(0); // ✅ Anti-spam
+  const [lastSent, setLastSent] = useState(0);
 
   const screenWidth = Dimensions.get("window").width;
 
-  /* ================= LOAD LIVE ================= */
+  // ==================================================
+  // 🟡 LOAD LIVE STREAM
+  // ==================================================
+
   const loadLive = async () => {
-    if (!id) return;
-
-    const { data } = await (supabase as any)
-      .from("live_streams")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-
-    setLive(data ?? null);
-
-    if (data?.product_id) {
-      loadProduct(data.product_id);
+    if (!id) {
+      setLoading(false);
+      return;
     }
 
-    setLoading(false);
+    try {
+      const { data, error } = await (supabase as any)
+        .from("live_streams")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        setLive(null);
+        return;
+      }
+
+      setLive(data);
+
+      if (data.product_id) {
+        loadProduct(data.product_id);
+      }
+
+      // ==================================================
+      // 🎥 CONNECT TO LIVEKIT
+      // ==================================================
+
+      if (
+        data.status === "live" &&
+        data.is_active === true
+      ) {
+        try {
+          setViewerError("");
+
+          const tokenData = await fetchLiveKitToken(
+            String(data.id)
+          );
+
+          setViewer(tokenData);
+        } catch (error: any) {
+          console.log("LiveKit viewer error:", error);
+
+          setViewerError(
+            error?.message ||
+              "Unable to connect to this live stream."
+          );
+        }
+      } else {
+        setViewerError("This live stream has ended.");
+      }
+    } catch (error: any) {
+      console.log("Load live error:", error);
+
+      setViewerError(
+        error?.message || "Unable to load live stream."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  /* ================= LOAD PRODUCT ================= */
+  // ==================================================
+  // 🛍️ LOAD PRODUCT
+  // ==================================================
+
   const loadProduct = async (productId: number) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("products")
       .select("*")
       .eq("id", productId)
       .maybeSingle();
 
+    if (error) {
+      console.log("Product load error:", error.message);
+      return;
+    }
+
     setProduct(data ?? null);
   };
 
-  /* ================= LOAD CHAT (PHASE 2) ================= */
+  // ==================================================
+  // 💬 LOAD CHAT
+  // ==================================================
+
   const loadMessages = async () => {
     if (!id) return;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("messages")
       .select("*")
       .eq("room_id", id)
-      .order("created_at", { ascending: false }) // newest first
-      .limit(50); // ✅ only last 50
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.log("Chat load error:", error.message);
+      return;
+    }
 
     setMessages(data ?? []);
   };
 
-  /* ================= REALTIME ================= */
+  // ==================================================
+  // 🔄 REALTIME + INITIAL LOAD
+  // ==================================================
+
   useEffect(() => {
     if (!id) return;
 
@@ -91,7 +175,10 @@ export default function WatchVideoScreen() {
           filter: `room_id=eq.${id}`,
         },
         (payload: any) => {
-          setMessages((prev) => [payload.new, ...prev]); // newest on top
+          setMessages((previous) => [
+            payload.new,
+            ...previous,
+          ]);
         }
       )
       .subscribe();
@@ -101,39 +188,66 @@ export default function WatchVideoScreen() {
     };
   }, [id]);
 
-  /* ================= SEND MESSAGE (PHASE 5) ================= */
+  // ==================================================
+  // ✉️ SEND CHAT MESSAGE
+  // ==================================================
+
   const sendMessage = async () => {
     const now = Date.now();
 
-    if (now - lastSent < 1000) return; // 1 msg per second
+    if (now - lastSent < 1000) return;
     if (!chatText.trim() || !id) return;
-
-    setLastSent(now);
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
+    if (!user) {
+      setViewerError("Please log in to send a message.");
+      return;
+    }
+
+    setLastSent(now);
+
     const textValue = chatText.trim();
 
-    // Optimistic update (instant UI)
     const tempMessage = {
       id: Date.now().toString(),
       text: textValue,
       room_id: id,
+      sender_id: user.id,
     };
 
-    setMessages((prev) => [tempMessage, ...prev]);
+    setMessages((previous) => [
+      tempMessage,
+      ...previous,
+    ]);
+
     setChatText("");
 
-    await (supabase as any).from("messages").insert({
-      room_id: id,
-      sender_id: user?.id,
-      text: textValue,
-    });
+    const { error } = await (supabase as any)
+      .from("messages")
+      .insert({
+        room_id: id,
+        sender_id: user.id,
+        text: textValue,
+      });
+
+    if (error) {
+      console.log("Send message error:", error.message);
+
+      setMessages((previous) =>
+        previous.filter(
+          (item) => item.id !== tempMessage.id
+        )
+      );
+    }
   };
 
-  /* ================= YOUTUBE EMBED ================= */
+  // ==================================================
+  // 📺 YOUTUBE FALLBACK
+  // ==================================================
+
   const getVideoId = (url: string) => {
     if (!url) return null;
 
@@ -141,6 +255,7 @@ export default function WatchVideoScreen() {
       /(?:youtube\.com\/(?:watch\?v=|live\/|shorts\/)|youtu\.be\/)([^&?/]+)/;
 
     const match = url.match(regExp);
+
     return match ? match[1] : null;
   };
 
@@ -150,32 +265,85 @@ export default function WatchVideoScreen() {
     ? `https://www.youtube.com/embed/${videoId}?playsinline=1&rel=0&modestbranding=1&autoplay=0&enablejsapi=1`
     : null;
 
-  /* ================= LOADING ================= */
+  // ==================================================
+  // ⏳ LOADING SCREEN
+  // ==================================================
+
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <ActivityIndicator size="large" />
-        <Text>Loading Live Video...</Text>
+        <Text>Connecting to Live Stream...</Text>
       </View>
     );
   }
+
+  // ==================================================
+  // ❌ STREAM NOT FOUND
+  // ==================================================
 
   if (!live) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+        }}
+      >
         <Text>No Live Video Found ❌</Text>
+
+        <TouchableOpacity
+          onPress={() => router.replace("/browse")}
+          style={{
+            marginTop: 20,
+            padding: 12,
+            backgroundColor: "#000",
+            borderRadius: 10,
+          }}
+        >
+          <Text style={{ color: "white" }}>
+            Back to Home
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  /* ================= MAIN ================= */
+  // ==================================================
+  // 🎥 MAIN WATCH SCREEN
+  // ==================================================
+
   return (
-    <View style={{ flex: 1, padding: 12 }}>
-      <Text style={{ fontSize: 20, fontWeight: "bold", marginBottom: 6 }}>
+    <View
+      style={{
+        flex: 1,
+        padding: 12,
+        backgroundColor: "white",
+      }}
+    >
+      {/* 🔴 STREAM TITLE */}
+
+      <Text
+        style={{
+          fontSize: 20,
+          fontWeight: "bold",
+          marginBottom: 6,
+        }}
+      >
         🔴 {live.title}
       </Text>
 
-      {/* VIDEO PLAYER */}
+      {/* ==================================================
+          🎥 VIDEO PLAYER
+      ================================================== */}
+
       <View
         style={{
           height: screenWidth * 0.56,
@@ -184,7 +352,12 @@ export default function WatchVideoScreen() {
           backgroundColor: "black",
         }}
       >
-        {embedUrl ? (
+        {viewer ? (
+          <LiveKitViewer
+            serverUrl={viewer.url}
+            token={viewer.token}
+          />
+        ) : embedUrl ? (
           Platform.OS === "web" ? (
             <iframe
               width="100%"
@@ -192,7 +365,8 @@ export default function WatchVideoScreen() {
               src={embedUrl}
               title="Live Stream"
               frameBorder="0"
-              allow="fullScreen"
+              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+              allowFullScreen
               style={{ border: "none" }}
             />
           ) : (
@@ -214,15 +388,28 @@ export default function WatchVideoScreen() {
               flex: 1,
               justifyContent: "center",
               alignItems: "center",
+              padding: 15,
             }}
           >
-            <Text style={{ color: "white" }}>Stream not available</Text>
+            <Text
+              style={{
+                color: "white",
+                textAlign: "center",
+                fontSize: 15,
+              }}
+            >
+              {viewerError || "Stream not available"}
+            </Text>
           </View>
         )}
 
+        {/* 🛍️ BUY NOW */}
+
         {product && (
           <TouchableOpacity
-            onPress={() => router.push(`/product/${product.id}`)}
+            onPress={() =>
+              router.push(`/product/${product.id}`)
+            }
             style={{
               position: "absolute",
               bottom: 10,
@@ -232,14 +419,22 @@ export default function WatchVideoScreen() {
               borderRadius: 20,
             }}
           >
-            <Text style={{ color: "white", fontWeight: "bold" }}>
+            <Text
+              style={{
+                color: "white",
+                fontWeight: "bold",
+              }}
+            >
               BUY NOW
             </Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* PRODUCT */}
+      {/* ==================================================
+          🛍️ PRODUCT DETAILS
+      ================================================== */}
+
       {product && (
         <View
           style={{
@@ -253,17 +448,36 @@ export default function WatchVideoScreen() {
         >
           <Image
             source={{ uri: product.image }}
-            style={{ width: 70, height: 70, borderRadius: 10 }}
+            style={{
+              width: 70,
+              height: 70,
+              borderRadius: 10,
+            }}
           />
 
-          <View style={{ marginLeft: 10, flex: 1 }}>
-            <Text style={{ fontWeight: "bold" }}>{product.title}</Text>
-            <Text style={{ color: "green", marginTop: 4 }}>
+          <View
+            style={{
+              marginLeft: 10,
+              flex: 1,
+            }}
+          >
+            <Text style={{ fontWeight: "bold" }}>
+              {product.title}
+            </Text>
+
+            <Text
+              style={{
+                color: "green",
+                marginTop: 4,
+              }}
+            >
               GHS {product.price}
             </Text>
 
             <TouchableOpacity
-              onPress={() => router.push(`/product/${product.id}`)}
+              onPress={() =>
+                router.push(`/product/${product.id}`)
+              }
               style={{
                 marginTop: 6,
                 backgroundColor: "#2563eb",
@@ -271,7 +485,12 @@ export default function WatchVideoScreen() {
                 borderRadius: 8,
               }}
             >
-              <Text style={{ color: "white", textAlign: "center" }}>
+              <Text
+                style={{
+                  color: "white",
+                  textAlign: "center",
+                }}
+              >
                 View Product
               </Text>
             </TouchableOpacity>
@@ -279,25 +498,53 @@ export default function WatchVideoScreen() {
         </View>
       )}
 
-      {/* CHAT */}
-      <Text style={{ marginTop: 14, fontWeight: "bold" }}>💬 Live Chat</Text>
+      {/* ==================================================
+          💬 LIVE CHAT
+      ================================================== */}
+
+      <Text
+        style={{
+          marginTop: 14,
+          fontWeight: "bold",
+        }}
+      >
+        💬 Live Chat
+      </Text>
 
       <FlatList
         data={messages}
         inverted
         keyExtractor={(item) => item.id.toString()}
-        style={{ height: 160, marginTop: 6 }}
+        style={{
+          height: 160,
+          marginTop: 6,
+        }}
         renderItem={({ item }) => (
-          <Text style={{ paddingVertical: 2 }}>{item.text}</Text>
+          <Text style={{ paddingVertical: 2 }}>
+            {item.text}
+          </Text>
         )}
         ListEmptyComponent={
-          <Text style={{ textAlign: "center", marginTop: 20, color: "gray" }}>
+          <Text
+            style={{
+              textAlign: "center",
+              marginTop: 20,
+              color: "gray",
+            }}
+          >
             No messages yet...
           </Text>
         }
       />
 
-      <View style={{ flexDirection: "row", marginTop: 6 }}>
+      {/* ✉️ CHAT INPUT */}
+
+      <View
+        style={{
+          flexDirection: "row",
+          marginTop: 6,
+        }}
+      >
         <TextInput
           value={chatText}
           onChangeText={setChatText}
@@ -325,9 +572,13 @@ export default function WatchVideoScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ▶️ OPEN OLD YOUTUBE STREAM */}
+
       {live.youtube_url && (
         <TouchableOpacity
-          onPress={() => Linking.openURL(live.youtube_url)}
+          onPress={() =>
+            Linking.openURL(live.youtube_url)
+          }
           style={{
             marginTop: 10,
             padding: 10,
@@ -336,9 +587,13 @@ export default function WatchVideoScreen() {
             borderColor: "#ddd",
           }}
         >
-          <Text style={{ textAlign: "center" }}>Open in YouTube</Text>
+          <Text style={{ textAlign: "center" }}>
+            Open in YouTube
+          </Text>
         </TouchableOpacity>
       )}
+
+      {/* 🏠 BACK TO HOME */}
 
       <TouchableOpacity
         onPress={() => router.replace("/browse")}
@@ -349,7 +604,12 @@ export default function WatchVideoScreen() {
           borderRadius: 10,
         }}
       >
-        <Text style={{ color: "white", textAlign: "center" }}>
+        <Text
+          style={{
+            color: "white",
+            textAlign: "center",
+          }}
+        >
           Back to Home
         </Text>
       </TouchableOpacity>
