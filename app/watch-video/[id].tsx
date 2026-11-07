@@ -188,9 +188,9 @@ export default function WatchVideoScreen() {
     };
   }, [id]);
 
-  // ==================================================
-  // ✉️ SEND CHAT MESSAGE
-  // ==================================================
+  // 🟡 ==================================================
+  // 🟡 SEND LIVE CHAT MESSAGE — VIEWER
+  // 🟡 ==================================================
 
   const sendMessage = async () => {
     const now = Date.now();
@@ -198,52 +198,66 @@ export default function WatchVideoScreen() {
     if (now - lastSent < 1000) return;
     if (!chatText.trim() || !id) return;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-    if (!user) {
-      setViewerError("Please log in to send a message.");
-      return;
-    }
+      if (userError || !user) {
+        throw new Error("Please log in to send a message.");
+      }
 
-    setLastSent(now);
+      const textValue = chatText.trim();
 
-    const textValue = chatText.trim();
+      const { data: insertedMessage, error } = await (
+        supabase as any
+      )
+        .from("messages")
+        .insert({
+          room_id: id,
+          sender_id: user.id,
+          text: textValue,
+        })
+        .select("*")
+        .single();
 
-    const tempMessage = {
-      id: Date.now().toString(),
-      text: textValue,
-      room_id: id,
-      sender_id: user.id,
-    };
+      if (error) {
+        throw error;
+      }
 
-    setMessages((previous) => [
-      tempMessage,
-      ...previous,
-    ]);
+      setLastSent(now);
+      setChatText("");
 
-    setChatText("");
+      // Display the confirmed database message immediately.
+      setMessages((previous) => {
+        if (
+          previous.some(
+            (message) => message.id === insertedMessage.id
+          )
+        ) {
+          return previous;
+        }
 
-    const { error } = await (supabase as any)
-      .from("messages")
-      .insert({
-        room_id: id,
-        sender_id: user.id,
-        text: textValue,
+        return [insertedMessage, ...previous];
       });
+    } catch (error: any) {
+      console.error("Viewer chat error:", error);
 
-    if (error) {
-      console.log("Send message error:", error.message);
-
-      setMessages((previous) =>
-        previous.filter(
-          (item) => item.id !== tempMessage.id
-        )
-      );
+      // Keep the message in the input if sending fails.
+      if (Platform.OS === "web") {
+        window.alert(
+          error?.message || "Could not send your message."
+        );
+      } else {
+        const { Alert } = require("react-native");
+        Alert.alert(
+          "Message failed",
+          error?.message || "Could not send your message."
+        );
+      }
     }
   };
-
   // ==================================================
   // 📺 YOUTUBE FALLBACK
   // ==================================================

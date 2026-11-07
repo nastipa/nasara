@@ -262,8 +262,8 @@ export default function GoLiveScreen() {
     };
   }, [activeLiveId, loadMessages]);
 
-  // 🟡 ==================================================
-  // 🟡 SEND CHAT MESSAGE
+ // 🟡 ==================================================
+  // 🟡 SEND LIVE CHAT MESSAGE — BROADCASTER
   // 🟡 ==================================================
 
   const sendMessage = async () => {
@@ -282,26 +282,42 @@ export default function GoLiveScreen() {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        showMessage(
-          "Login required",
-          "Please log in to send a live chat message."
-        );
-        return;
+        throw new Error("Please log in to send a message.");
       }
 
-      const { error } = await (supabase as any)
+      const { data: insertedMessage, error } = await (
+        supabase as any
+      )
         .from("messages")
         .insert({
           room_id: activeLiveId,
+          sender_id: user.id,
           text: messageText,
-        });
+        })
+        .select("*")
+        .single();
 
       if (error) {
         throw error;
       }
 
+      // Display the confirmed database message immediately.
+      setMessages((previous) => {
+        if (
+          previous.some(
+            (message) => message.id === insertedMessage.id
+          )
+        ) {
+          return previous;
+        }
+
+        return [...previous, insertedMessage as LiveMessage].slice(-100);
+      });
+
       setNewMessage("");
     } catch (error: any) {
+      console.error("Broadcaster chat error:", error);
+
       showMessage(
         "Message failed",
         error?.message || "Could not send your message."
