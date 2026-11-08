@@ -6,23 +6,22 @@
 // 🔵 =====================================================
 
 import {
-    useCallback,
-    useEffect,
-    useState,
+  useCallback,
+  useEffect,
+  useState,
 } from "react";
 
 import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  Image,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import * as Contacts from "expo-contacts";
@@ -69,9 +68,6 @@ export default function ContactsScreen() {
   const [phoneNumber, setPhoneNumber] =
     useState("");
 
-  const [discoveryEnabled, setDiscoveryEnabled] =
-    useState(false);
-
   const [activeSection, setActiveSection] =
     useState<ContactSection>("saved");
 
@@ -89,9 +85,6 @@ export default function ContactsScreen() {
 
   const [messagingId, setMessagingId] =
     useState<string | null>(null);
-
-  const [settingLoading, setSettingLoading] =
-    useState(false);
 
   const [message, setMessage] =
     useState("");
@@ -193,44 +186,8 @@ export default function ContactsScreen() {
   }, []);
 
   // 🔵 =====================================================
-  // 🔵 LOAD PHONE DISCOVERY SETTING
-  // 🔵 =====================================================
-
-  const loadDiscoverySetting = async () => {
-    try {
-      const {
-        data: userData,
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !userData.user) {
-        return;
-      }
-
-      const {
-        data,
-        error,
-      } = await (supabase as any)
-        .from("profiles")
-        .select("phone_discoverable")
-        .eq("id", userData.user.id)
-        .maybeSingle();
-
-      if (!error && data) {
-        setDiscoveryEnabled(
-          data.phone_discoverable === true
-        );
-      }
-    } catch (error) {
-      console.log(
-        "Discovery setting load error:",
-        error
-      );
-    }
-  };
-
-  // 🔵 =====================================================
   // 🔵 INITIAL LOAD
+  // 🔵 NO PHONE DISCOVERY SETTING REQUIRED
   // 🔵 =====================================================
 
   useEffect(() => {
@@ -240,10 +197,7 @@ export default function ContactsScreen() {
       setLoading(true);
 
       try {
-        await Promise.all([
-          loadContacts(),
-          loadDiscoverySetting(),
-        ]);
+        await loadContacts();
       } catch (error: any) {
         if (mounted) {
           showMessage(
@@ -268,6 +222,7 @@ export default function ContactsScreen() {
 
   // 🔵 =====================================================
   // 🔵 MANUAL PHONE LOOKUP
+  // 🔵 MATCH VERIFIED NASARA ACCOUNTS
   // 🔵 =====================================================
 
   const searchPhoneNumber = async () => {
@@ -296,22 +251,24 @@ export default function ContactsScreen() {
           }
         );
 
-      setMatches(
+      const foundMatches: NasaraContact[] =
         Array.isArray(result.matches)
           ? result.matches
-          : []
-      );
+          : [];
 
-      if (!result.matches?.length) {
+      setMatches(foundMatches);
+
+      if (foundMatches.length === 0) {
         showMessage(
           "No match found",
-          "This number is not linked to a discoverable, verified Nasara account."
+          "This number is not linked to a verified Nasara account."
         );
       }
     } catch (error: any) {
       showMessage(
         "Search failed",
-        error?.message
+        error?.message ||
+          "Could not search this number."
       );
     } finally {
       setSearching(false);
@@ -320,7 +277,7 @@ export default function ContactsScreen() {
 
   // 🔵 =====================================================
   // 🔵 PHONE ADDRESS BOOK MATCHING
-  // 🔵 PROCESS IN BATCHES OF 100
+  // 🔵 PROCESS EVERY NUMBER IN BATCHES OF 100
   // 🔵 =====================================================
 
   const findPhoneContacts = async () => {
@@ -377,10 +334,10 @@ export default function ContactsScreen() {
         return;
       }
 
-      // 🔵 Do not upload address-book names.
-      // 🔵 Only phone numbers are submitted.
-      // 🔵 Backend matches verified, discoverable accounts.
-      // 🔵 Process every number in batches of 100.
+      // 🔵 ONLY PHONE NUMBERS ARE SUBMITTED.
+      // 🔵 ADDRESS-BOOK NAMES ARE NOT UPLOADED.
+      // 🔵 BACKEND RETURNS VERIFIED NASARA MATCHES.
+      // 🔵 PROCESS ALL NUMBERS IN BATCHES OF 100.
 
       const allMatches: NasaraContact[] = [];
 
@@ -407,7 +364,7 @@ export default function ContactsScreen() {
             }
           );
 
-        const batchMatches =
+        const batchMatches: NasaraContact[] =
           Array.isArray(serverResult.matches)
             ? serverResult.matches
             : [];
@@ -428,7 +385,7 @@ export default function ContactsScreen() {
       if (allMatches.length === 0) {
         showMessage(
           "No matches found",
-          "None of these numbers matched a verified, discoverable Nasara account."
+          "None of these numbers matched a verified Nasara account."
         );
       } else {
         showMessage(
@@ -439,7 +396,8 @@ export default function ContactsScreen() {
     } catch (error: any) {
       showMessage(
         "Contact matching failed",
-        error?.message
+        error?.message ||
+          "Could not match your phone contacts."
       );
     } finally {
       setSearching(false);
@@ -448,6 +406,7 @@ export default function ContactsScreen() {
 
   // 🔵 =====================================================
   // 🔵 ADD CONTACT
+  // 🔵 DOES NOT CREATE A CHAT ROOM
   // 🔵 =====================================================
 
   const addContact = async (
@@ -481,7 +440,8 @@ export default function ContactsScreen() {
     } catch (error: any) {
       showMessage(
         "Could not add contact",
-        error?.message
+        error?.message ||
+          "Please try again."
       );
     } finally {
       setAddingId(null);
@@ -518,7 +478,8 @@ export default function ContactsScreen() {
     } catch (error: any) {
       showMessage(
         "Could not remove contact",
-        error?.message
+        error?.message ||
+          "Please try again."
       );
     } finally {
       setRemovingId(null);
@@ -526,161 +487,137 @@ export default function ContactsScreen() {
   };
 
   // 🔵 =====================================================
-  // 🔵 PHONE DISCOVERY TOGGLE
+  // 🔵 OPEN CHAT
+  // 🔵 ONLY WHEN USER TAPS MESSAGE
   // 🔵 =====================================================
 
-  const toggleDiscovery = async (
-    enabled: boolean
+  const openChat = async (
+    contact: NasaraContact
   ) => {
-    if (settingLoading) return;
+    if (messagingId) return;
 
     try {
-      setSettingLoading(true);
+      setMessagingId(contact.id);
 
-      await backendRequest(
-        "/contacts/discovery",
-        "PATCH",
-        {
-          enabled,
-        }
-      );
+      const {
+        data: authData,
+        error: authError,
+      } = await supabase.auth.getUser();
 
-      setDiscoveryEnabled(enabled);
+      if (authError || !authData.user) {
+        throw new Error(
+          "Please sign in again."
+        );
+      }
 
-      showMessage(
-        enabled
-          ? "Phone discovery enabled"
-          : "Phone discovery disabled"
-      );
-    } catch (error: any) {
-      showMessage(
-        "Setting could not be changed",
-        error?.message
-      );
-    } finally {
-      setSettingLoading(false);
-    }
-  };
+      const myId = authData.user.id;
+      const otherUserId = contact.id;
 
-  // 🔵 =====================================================
-// 🔵 OPEN CHAT
-// 🔵 ONLY WHEN USER TAPS MESSAGE
-// 🔵 =====================================================
+      if (myId === otherUserId) {
+        throw new Error(
+          "You cannot message yourself."
+        );
+      }
 
-const openChat = async (
-  contact: NasaraContact
-) => {
-  if (messagingId) return;
+      // 🔵 STORE THE CHAT ROOM ID
 
-  try {
-    setMessagingId(contact.id);
+      let chatRoomId: string | null = null;
 
-    const {
-      data: authData,
-      error: authError,
-    } = await supabase.auth.getUser();
+      // 🔵 CHECK EXISTING ROOM: FIRST DIRECTION
 
-    if (authError || !authData.user) {
-      throw new Error("Please sign in again.");
-    }
-
-    const myId = authData.user.id;
-    const otherUserId = contact.id;
-
-    if (myId === otherUserId) {
-      throw new Error("You cannot message yourself.");
-    }
-
-    // 🔵 STORE THE CHAT ROOM ID
-    let chatRoomId: string | null = null;
-
-    // 🔵 CHECK EXISTING ROOM: FIRST DIRECTION
-
-    const firstResult = await (supabase as any)
-      .from("chat_rooms")
-      .select("id")
-      .eq("buyer_id", myId)
-      .eq("seller_id", otherUserId)
-      .maybeSingle();
-
-    if (firstResult.error) {
-      throw firstResult.error;
-    }
-
-    if (firstResult.data?.id) {
-      chatRoomId = String(firstResult.data.id);
-    }
-
-    // 🔵 CHECK EXISTING ROOM: REVERSE DIRECTION
-
-    if (!chatRoomId) {
-      const reverseResult = await (supabase as any)
+      const firstResult = await (supabase as any)
         .from("chat_rooms")
         .select("id")
-        .eq("buyer_id", otherUserId)
-        .eq("seller_id", myId)
+        .eq("buyer_id", myId)
+        .eq("seller_id", otherUserId)
         .maybeSingle();
 
-      if (reverseResult.error) {
-        throw reverseResult.error;
+      if (firstResult.error) {
+        throw firstResult.error;
       }
 
-      if (reverseResult.data?.id) {
-        chatRoomId = String(reverseResult.data.id);
+      if (firstResult.data?.id) {
+        chatRoomId = String(
+          firstResult.data.id
+        );
       }
+
+      // 🔵 CHECK EXISTING ROOM: REVERSE DIRECTION
+
+      if (!chatRoomId) {
+        const reverseResult = await (supabase as any)
+          .from("chat_rooms")
+          .select("id")
+          .eq("buyer_id", otherUserId)
+          .eq("seller_id", myId)
+          .maybeSingle();
+
+        if (reverseResult.error) {
+          throw reverseResult.error;
+        }
+
+        if (reverseResult.data?.id) {
+          chatRoomId = String(
+            reverseResult.data.id
+          );
+        }
+      }
+
+      // 🔵 CREATE ROOM ONLY WHEN MESSAGE IS TAPPED
+
+      if (!chatRoomId) {
+        const {
+          data: newRoom,
+          error: createError,
+        } = await (supabase as any)
+          .from("chat_rooms")
+          .insert({
+            buyer_id: myId,
+            seller_id: otherUserId,
+            item_id: null,
+          })
+          .select("id")
+          .single();
+
+        if (createError) {
+          throw createError;
+        }
+
+        if (!newRoom?.id) {
+          throw new Error(
+            "Chat room could not be created."
+          );
+        }
+
+        chatRoomId = String(newRoom.id);
+      }
+
+      // 🔵 FINAL VALIDATION
+
+      if (!chatRoomId) {
+        throw new Error(
+          "Unable to open this chat."
+        );
+      }
+
+      // 🔵 OPEN CHAT SCREEN
+
+      router.push({
+        pathname: "/chat/[id]",
+        params: {
+          id: chatRoomId,
+        },
+      });
+    } catch (error: any) {
+      showMessage(
+        "Could not open chat",
+        error?.message ||
+          "Please try again."
+      );
+    } finally {
+      setMessagingId(null);
     }
-
-    // 🔵 CREATE ROOM ONLY WHEN MESSAGE IS TAPPED
-
-    if (!chatRoomId) {
-      const {
-        data: newRoom,
-        error: createError,
-      } = await (supabase as any)
-        .from("chat_rooms")
-        .insert({
-          buyer_id: myId,
-          seller_id: otherUserId,
-          item_id: null,
-        })
-        .select("id")
-        .single();
-
-      if (createError) {
-        throw createError;
-      }
-
-      if (!newRoom?.id) {
-        throw new Error("Chat room could not be created.");
-      }
-
-      chatRoomId = String(newRoom.id);
-    }
-
-    // 🔵 FINAL VALIDATION
-
-    if (!chatRoomId) {
-      throw new Error("Unable to open this chat.");
-    }
-
-    // 🔵 OPEN CHAT SCREEN
-
-    router.push({
-      pathname: "/chat/[id]",
-      params: {
-        id: chatRoomId,
-      },
-    });
-
-  } catch (error: any) {
-    showMessage(
-      "Could not open chat",
-      error?.message || "Please try again."
-    );
-  } finally {
-    setMessagingId(null);
-  }
-};
+  };
 
   // 🔵 =====================================================
   // 🔵 CONTACT AVATAR
@@ -819,7 +756,7 @@ const openChat = async (
           keyboardShouldPersistTaps="handled"
         >
 
-          {/* 🟡 PHONE DISCOVERY PRIVACY */}
+          {/* 🟡 PHONE DISCOVERY INFORMATION */}
 
           <View style={styles.privacyCard}>
             <View style={styles.privacyTop}>
@@ -831,31 +768,17 @@ const openChat = async (
 
               <View style={styles.privacyTextBox}>
                 <Text style={styles.privacyTitle}>
-                  Phone discovery
+                  Find Nasara users by phone number
                 </Text>
 
                 <Text style={styles.privacyDescription}>
-                  Allow people who have your number to find your Nasara account.
+                  Search for people using their registered phone number.
                 </Text>
               </View>
-
-              {settingLoading ? (
-                <ActivityIndicator color="#D6A43B" />
-              ) : (
-                <Switch
-                  value={discoveryEnabled}
-                  onValueChange={toggleDiscovery}
-                  trackColor={{
-                    false: "#C8C8C8",
-                    true: "#D6A43B",
-                  }}
-                  thumbColor="#FFFFFF"
-                />
-              )}
             </View>
 
             <Text style={styles.privacyNote}>
-              Your phone number is not shown to other users. You can turn this setting off whenever you want.
+              Verified Nasara accounts can be found by anyone who has their phone number. Phone numbers are never displayed in search results.
             </Text>
           </View>
 
@@ -979,7 +902,7 @@ const openChat = async (
               </Text>
 
               <Text style={styles.cardDescription}>
-                Nasara checks phone numbers on your device against verified accounts that have enabled phone discovery.
+                Nasara checks phone numbers on your device against verified Nasara accounts.
               </Text>
 
               <TouchableOpacity
