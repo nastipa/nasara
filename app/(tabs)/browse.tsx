@@ -1494,21 +1494,41 @@ const loadLiveStreams = async () => {
                 </Text>
               </View>
 
-              <View style={styles.headerActions}>
-                <TouchableOpacity
-                  onPress={() => router.push("/discover")}
-                  style={styles.headerIconButton}
-                >
-                  <Text style={styles.headerIcon}>👥</Text>
-                </TouchableOpacity>
+              {/* 🔵 DISCOVER USERS • CONTACTS • SETTINGS */}
 
-                <TouchableOpacity
-                  onPress={() => router.push("/settings")}
-                  style={styles.headerIconButton}
-                >
-                  <Text style={styles.headerIcon}>⚙️</Text>
-                </TouchableOpacity>
-              </View>
+<View style={styles.headerActions}>
+
+  {/* 👥 DISCOVER USERS — EXISTING FEATURE */}
+
+  <TouchableOpacity
+    onPress={() => router.push("/discover")}
+    style={styles.headerIconButton}
+    activeOpacity={0.8}
+  >
+    <Text style={styles.headerIcon}>👥</Text>
+  </TouchableOpacity>
+
+  {/* 📇 CONTACTS — NEW FEATURE */}
+
+  <TouchableOpacity
+    onPress={() => router.push("/contacts")}
+    style={styles.headerIconButton}
+    activeOpacity={0.8}
+  >
+    <Text style={styles.headerIcon}>📇</Text>
+  </TouchableOpacity>
+
+  {/* ⚙️ SETTINGS — EXISTING FEATURE */}
+
+  <TouchableOpacity
+    onPress={() => router.push("/settings")}
+    style={styles.headerIconButton}
+    activeOpacity={0.8}
+  >
+    <Text style={styles.headerIcon}>⚙️</Text>
+  </TouchableOpacity>
+
+</View>
             </View>
 
             <View style={styles.headerDivider} />

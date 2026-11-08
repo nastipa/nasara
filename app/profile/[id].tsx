@@ -466,63 +466,102 @@ async function trackProfileView(
             : 0
       );
     };
+// 🟢 =====================================================
+// 🟢 OPEN EXISTING CHAT OR CREATE ONE
+// 🟢 Uses the same room lookup logic as Browse Screen
+// 🟢 =====================================================
+
 const openExistingChat = async () => {
   if (!profileId) return;
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  const { data, error: authError } =
+    await supabase.auth.getUser();
 
-  const myId = user.id;
+  const myId = data.user?.id;
+  const otherUserId = profileId;
+
+  if (authError || !myId) {
+    console.log("Authentication error:", authError);
+    return;
+  }
+
+  if (myId === otherUserId) {
+    console.log("You cannot message yourself.");
+    return;
+  }
 
   try {
-    // 1. Get ALL rooms where I participate
-    const { data: myRooms } = await (supabase as any)
-      .from("chat_participants")
-      .select("room_id")
-      .eq("user_id", myId);
+    let existingRoom: any = null;
 
-    const myRoomIds = (myRooms || []).map((r: any) => r.room_id);
+    // 🔵 FIRST: Check current user as buyer
+    const { data: directRoom, error: directError } =
+      await (supabase as any)
+        .from("chat_rooms")
+        .select("id")
+        .eq("buyer_id", myId)
+        .eq("seller_id", otherUserId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    if (myRoomIds.length > 0) {
-      // 2. Find shared room with other user
-      const { data: shared } = await (supabase as any)
-        .from("chat_participants")
-        .select("room_id")
-        .eq("user_id", profileId)
-        .in("room_id", myRoomIds);
-
-      if (shared?.length) {
-        router.push(`/chat/${shared[0].room_id}`);
-        return;
-      }
-    }
-
-    // 3. ONLY create if absolutely no shared room exists
-    const { data: room, error } = await (supabase as any)
-      .from("chat_rooms")
-      .insert({
-        buyer_id: myId,
-        seller_id: profileId,
-        item_id: null,
-      })
-      .select("id")
-      .single();
-
-    if (error || !room) {
-      console.log("create error:", error);
+    if (directError) {
+      console.log("Direct chat search error:", directError);
       return;
     }
 
-    await (supabase as any)
-      .from("chat_participants")
-      .insert([
-        { room_id: room.id, user_id: myId },
-        { room_id: room.id, user_id: profileId },
-      ]);
+    existingRoom = directRoom;
 
-    router.push(`/chat/${room.id}`);
-  } catch (e) {
-    console.log("chat open error:", e);
+    // 🔵 SECOND: Check reverse buyer/seller order
+    if (!existingRoom) {
+      const { data: reverseRoom, error: reverseError } =
+        await (supabase as any)
+          .from("chat_rooms")
+          .select("id")
+          .eq("buyer_id", otherUserId)
+          .eq("seller_id", myId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+      if (reverseError) {
+        console.log("Reverse chat search error:", reverseError);
+        return;
+      }
+
+      existingRoom = reverseRoom;
+    }
+
+    let roomId = existingRoom?.id;
+
+    // 🟢 THIRD: Create a room only if none exists
+    if (!roomId) {
+      const { data: newRoom, error: createError } =
+        await (supabase as any)
+          .from("chat_rooms")
+          .insert({
+            buyer_id: myId,
+            seller_id: otherUserId,
+            item_id: null,
+          })
+          .select("id")
+          .single();
+
+      if (createError || !newRoom) {
+        console.log("Chat creation error:", createError);
+        return;
+      }
+
+      roomId = newRoom.id;
+    }
+
+    // 🟢 FOURTH: Open the existing or newly created room
+    router.push({
+      pathname: "/chat/[id]",
+      params: { id: roomId },
+    });
+
+  } catch (error) {
+    console.log("Profile chat error:", error);
   }
 };
   /* ================= PICK IMAGE ================= */
