@@ -40,7 +40,7 @@ self.addEventListener("push", (event) => {
     body: data.body || "You have a new notification.",
 
     // 👤 SENDER PROFILE IMAGE
-    icon: data.icon || "/favicon.ico",
+    icon: data.icon,
 
     // 🔔 SMALL NOTIFICATION BADGE
     badge: data.badge || "/favicon.ico",
@@ -60,7 +60,7 @@ self.addEventListener("push", (event) => {
     },
 
     // 🔔 KEEP NOTIFICATIONS VISIBLE
-    renotify: Boolean(data.room_id),
+   renotify: Boolean(data.data?.room_id || data.room_id),
   };
 
   // 🟢 DISPLAY NOTIFICATION
