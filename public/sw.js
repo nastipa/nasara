@@ -16,7 +16,7 @@ self.addEventListener("push", (event) => {
     title: "Nasara",
     body: "You have a new notification.",
     url: "/",
-    icon: "/favicon.ico",
+    icon: "/",
     badge: "/favicon.ico",
   };
 
