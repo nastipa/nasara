@@ -1,8 +1,11 @@
 // 🔵 =====================================================
-// 🔵 NASARA CONTACTS
+// 🔵 NASARA PREMIUM CONTACTS
 // 🔵 Navy • Gold • White
 // 🔵 Manual Search • Phone Contacts • My Contacts
 // 🔵 Verified Phone Matching • Private Phone Numbers
+// 🔵 Favorites • Pinned • Categories • Private Notes
+// 🔵 Recently Added • Invite Friends • Refresh
+// 🔵 Local Preferences • No Backend Changes
 // 🔵 =====================================================
 
 import {
@@ -13,16 +16,18 @@ import {
 
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
+
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import * as Contacts from "expo-contacts";
 
@@ -39,6 +44,23 @@ const API_BASE_URL =
 
 const CONTACT_BATCH_SIZE = 100;
 
+const CONTACT_CATEGORIES = [
+  "Friends",
+  "Family",
+  "Work",
+  "Business",
+];
+
+const CONTACT_STORAGE_PREFIX =
+  "@nasara_contacts_preferences_";
+
+const NASARA_WEBSITE =
+  "https://nasara-six.vercel.app";
+
+// 🔵 =====================================================
+// 🔵 TYPES
+// 🔵 =====================================================
+
 type NasaraContact = {
   id: string;
   full_name: string;
@@ -52,11 +74,34 @@ type ContactSection =
   | "manual"
   | "phone";
 
+type ContactFilter =
+  | "all"
+  | "favorites"
+  | "pinned"
+  | "recent";
+
+type ContactPreference = {
+  favorite?: boolean;
+  pinned?: boolean;
+  category?: string;
+  note?: string;
+  addedAt?: number;
+};
+
+type ContactPreferences = Record<
+  string,
+  ContactPreference
+>;
+
+// 🔵 =====================================================
+// 🔵 MAIN SCREEN
+// 🔵 =====================================================
+
 export default function ContactsScreen() {
   const router = useRouter();
 
   // 🔵 =====================================================
-  // 🔵 STATE
+  // 🔵 CONTACT STATE
   // 🔵 =====================================================
 
   const [contacts, setContacts] =
@@ -71,8 +116,21 @@ export default function ContactsScreen() {
   const [activeSection, setActiveSection] =
     useState<ContactSection>("saved");
 
+  const [activeFilter, setActiveFilter] =
+    useState<ContactFilter>("all");
+
+  const [selectedCategory, setSelectedCategory] =
+    useState("All");
+
+  // 🔵 =====================================================
+  // 🔵 LOADING STATE
+  // 🔵 =====================================================
+
   const [loading, setLoading] =
     useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
 
   const [searching, setSearching] =
     useState(false);
@@ -86,12 +144,34 @@ export default function ContactsScreen() {
   const [messagingId, setMessagingId] =
     useState<string | null>(null);
 
-  const [message, setMessage] =
+  // 🔵 =====================================================
+  // 🔵 LOCAL CONTACT PREFERENCES
+  // 🔵 =====================================================
+
+  const [contactPreferences, setContactPreferences] =
+    useState<ContactPreferences>({});
+
+  const [metaStorageKey, setMetaStorageKey] =
+    useState<string | null>(null);
+
+  const [metaReady, setMetaReady] =
+    useState(false);
+
+  const [expandedToolsId, setExpandedToolsId] =
+    useState<string | null>(null);
+
+  const [editingNoteId, setEditingNoteId] =
+    useState<string | null>(null);
+
+  const [noteDraft, setNoteDraft] =
     useState("");
 
   // 🔵 =====================================================
-  // 🔵 MESSAGE HELPER
+  // 🔵 STATUS MESSAGE
   // 🔵 =====================================================
+
+  const [message, setMessage] =
+    useState("");
 
   const showMessage = (
     title: string,
@@ -114,7 +194,10 @@ export default function ContactsScreen() {
       error,
     } = await supabase.auth.getSession();
 
-    if (error || !data.session?.access_token) {
+    if (
+      error ||
+      !data.session?.access_token
+    ) {
       throw new Error(
         "Please sign in again."
       );
@@ -125,6 +208,7 @@ export default function ContactsScreen() {
 
   // 🔵 =====================================================
   // 🔵 BACKEND REQUEST
+  // 🔵 EXISTING RENDER API ONLY
   // 🔵 =====================================================
 
   const backendRequest = async (
@@ -156,11 +240,14 @@ export default function ContactsScreen() {
       result = await response.json();
     } catch {
       throw new Error(
-        "The server returned an invalid response."
+        "The server returned an invalid response. Please try again."
       );
     }
 
-    if (!response.ok || !result.success) {
+    if (
+      !response.ok ||
+      !result.success
+    ) {
       throw new Error(
         result.error ||
           "Something went wrong."
@@ -169,6 +256,99 @@ export default function ContactsScreen() {
 
     return result;
   };
+
+  // 🔵 =====================================================
+  // 🔵 LOAD LOCAL CONTACT PREFERENCES
+  // 🔵 EACH ACCOUNT HAS ITS OWN LOCAL SETTINGS
+  // 🔵 =====================================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPreferences = async () => {
+      try {
+        const {
+          data,
+          error,
+        } = await supabase.auth.getSession();
+
+        if (
+          error ||
+          !data.session?.user?.id
+        ) {
+          throw new Error(
+            "Please sign in again."
+          );
+        }
+
+        const storageKey =
+          `${CONTACT_STORAGE_PREFIX}${data.session.user.id}`;
+
+        const saved =
+          await AsyncStorage.getItem(storageKey);
+
+        let parsed: ContactPreferences = {};
+
+        if (saved) {
+          try {
+            parsed = JSON.parse(saved);
+          } catch {
+            parsed = {};
+          }
+        }
+
+        if (mounted) {
+          setMetaStorageKey(storageKey);
+          setContactPreferences(parsed);
+          setMetaReady(true);
+        }
+      } catch (error: any) {
+        if (mounted) {
+          setMetaReady(true);
+
+          showMessage(
+            "Contact preferences",
+            error?.message ||
+              "Local preferences could not be loaded."
+          );
+        }
+      }
+    };
+
+    loadPreferences();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // 🔵 =====================================================
+  // 🔵 SAVE LOCAL CONTACT PREFERENCES
+  // 🔵 NO BACKEND OR DATABASE REQUIRED
+  // 🔵 =====================================================
+
+  useEffect(() => {
+    if (
+      !metaReady ||
+      !metaStorageKey
+    ) {
+      return;
+    }
+
+    AsyncStorage.setItem(
+      metaStorageKey,
+      JSON.stringify(contactPreferences)
+    ).catch(() => {
+      showMessage(
+        "Local storage",
+        "Some contact preferences could not be saved."
+      );
+    });
+  }, [
+    contactPreferences,
+    metaReady,
+    metaStorageKey,
+  ]);
 
   // 🔵 =====================================================
   // 🔵 LOAD SAVED CONTACTS
@@ -187,7 +367,6 @@ export default function ContactsScreen() {
 
   // 🔵 =====================================================
   // 🔵 INITIAL LOAD
-  // 🔵 NO PHONE DISCOVERY SETTING REQUIRED
   // 🔵 =====================================================
 
   useEffect(() => {
@@ -221,17 +400,94 @@ export default function ContactsScreen() {
   }, [loadContacts]);
 
   // 🔵 =====================================================
+  // 🔵 REFRESH CONTACTS
+  // 🔵 =====================================================
+
+  const refreshContacts = async () => {
+    if (refreshing) return;
+
+    try {
+      setRefreshing(true);
+
+      await loadContacts();
+
+      showMessage(
+        "Contacts refreshed",
+        "Your saved contacts are up to date."
+      );
+    } catch (error: any) {
+      showMessage(
+        "Refresh failed",
+        error?.message ||
+          "Could not refresh contacts."
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // 🔵 =====================================================
+  // 🔵 PHONE NUMBER INPUT CLEANING
+  // 🔵 KEEP COUNTRY CODE AND DIGITS
+  // 🔵 =====================================================
+
+  const cleanPhoneNumber = (
+    value: string
+  ) => {
+    const trimmed = value.trim();
+
+    const startsWithPlus =
+      trimmed.startsWith("+");
+
+    const digits =
+      trimmed.replace(/\D/g, "");
+
+    return startsWithPlus
+      ? `+${digits}`
+      : digits;
+  };
+
+  // 🔵 =====================================================
+  // 🔵 BASIC PHONE NUMBER VALIDATION
+  // 🔵 BACKEND REMAINS THE FINAL VALIDATOR
+  // 🔵 =====================================================
+
+  const isValidPhoneInput = (
+    value: string
+  ) => {
+    const cleaned =
+      cleanPhoneNumber(value);
+
+    const digits =
+      cleaned.replace(/\D/g, "");
+
+    return (
+      digits.length >= 9 &&
+      digits.length <= 15
+    );
+  };
+
+  // 🔵 =====================================================
   // 🔵 MANUAL PHONE LOOKUP
   // 🔵 MATCH VERIFIED NASARA ACCOUNTS
   // 🔵 =====================================================
 
   const searchPhoneNumber = async () => {
-    const cleaned = phoneNumber.trim();
+    const cleaned =
+      cleanPhoneNumber(phoneNumber);
 
     if (!cleaned) {
       showMessage(
         "Phone number",
         "Enter a phone number first."
+      );
+      return;
+    }
+
+    if (!isValidPhoneInput(cleaned)) {
+      showMessage(
+        "Invalid phone number",
+        "Enter a complete phone number, including the country code when necessary."
       );
       return;
     }
@@ -263,6 +519,11 @@ export default function ContactsScreen() {
           "No match found",
           "This number is not linked to a verified Nasara account."
         );
+      } else {
+        showMessage(
+          "User found",
+          `${foundMatches.length} verified Nasara account found.`
+        );
       }
     } catch (error: any) {
       showMessage(
@@ -277,7 +538,7 @@ export default function ContactsScreen() {
 
   // 🔵 =====================================================
   // 🔵 PHONE ADDRESS BOOK MATCHING
-  // 🔵 PROCESS EVERY NUMBER IN BATCHES OF 100
+  // 🔵 PROCESS ALL NUMBERS IN BATCHES OF 100
   // 🔵 =====================================================
 
   const findPhoneContacts = async () => {
@@ -337,7 +598,7 @@ export default function ContactsScreen() {
       // 🔵 ONLY PHONE NUMBERS ARE SUBMITTED.
       // 🔵 ADDRESS-BOOK NAMES ARE NOT UPLOADED.
       // 🔵 BACKEND RETURNS VERIFIED NASARA MATCHES.
-      // 🔵 PROCESS ALL NUMBERS IN BATCHES OF 100.
+      // 🔵 PROCESS EVERY NUMBER IN BATCHES OF 100.
 
       const allMatches: NasaraContact[] = [];
 
@@ -405,6 +666,23 @@ export default function ContactsScreen() {
   };
 
   // 🔵 =====================================================
+  // 🔵 CONTACT PREFERENCE UPDATE
+  // 🔵 =====================================================
+
+  const updateContactPreference = (
+    contactId: string,
+    changes: Partial<ContactPreference>
+  ) => {
+    setContactPreferences((previous) => ({
+      ...previous,
+      [contactId]: {
+        ...previous[contactId],
+        ...changes,
+      },
+    }));
+  };
+
+  // 🔵 =====================================================
   // 🔵 ADD CONTACT
   // 🔵 DOES NOT CREATE A CHAT ROOM
   // 🔵 =====================================================
@@ -412,7 +690,25 @@ export default function ContactsScreen() {
   const addContact = async (
     contact: NasaraContact
   ) => {
-    if (addingId || !contact.id) return;
+    if (
+      addingId ||
+      !contact.id
+    ) {
+      return;
+    }
+
+    const alreadySaved =
+      contacts.some(
+        (item) => item.id === contact.id
+      );
+
+    if (alreadySaved) {
+      showMessage(
+        "Already added",
+        "This user is already in your contacts."
+      );
+      return;
+    }
 
     try {
       setAddingId(contact.id);
@@ -422,6 +718,14 @@ export default function ContactsScreen() {
         "POST",
         {
           contact_user_id: contact.id,
+        }
+      );
+
+      updateContactPreference(
+        contact.id,
+        {
+          addedAt: Date.now(),
+          category: "Friends",
         }
       );
 
@@ -455,7 +759,12 @@ export default function ContactsScreen() {
   const removeContact = async (
     contact: NasaraContact
   ) => {
-    if (removingId || !contact.id) return;
+    if (
+      removingId ||
+      !contact.id
+    ) {
+      return;
+    }
 
     try {
       setRemovingId(contact.id);
@@ -471,9 +780,19 @@ export default function ContactsScreen() {
         )
       );
 
+      setContactPreferences((previous) => {
+        const updated = {
+          ...previous,
+        };
+
+        delete updated[contact.id];
+
+        return updated;
+      });
+
       showMessage(
         "Contact removed",
-        `${contact.full_name} was removed.`
+        `${contact.full_name} was removed from your contacts.`
       );
     } catch (error: any) {
       showMessage(
@@ -483,6 +802,134 @@ export default function ContactsScreen() {
       );
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  // 🔵 =====================================================
+  // 🔵 FAVORITE CONTACT
+  // 🔵 SAVED LOCALLY
+  // 🔵 =====================================================
+
+  const toggleFavorite = (
+    contact: NasaraContact
+  ) => {
+    const current =
+      contactPreferences[contact.id]?.favorite === true;
+
+    updateContactPreference(
+      contact.id,
+      {
+        favorite: !current,
+      }
+    );
+
+    showMessage(
+      current
+        ? "Removed from favorites"
+        : "Added to favorites",
+      contact.full_name
+    );
+  };
+
+  // 🔵 =====================================================
+  // 🔵 PIN CONTACT
+  // 🔵 SAVED LOCALLY
+  // 🔵 =====================================================
+
+  const togglePin = (
+    contact: NasaraContact
+  ) => {
+    const current =
+      contactPreferences[contact.id]?.pinned === true;
+
+    updateContactPreference(
+      contact.id,
+      {
+        pinned: !current,
+      }
+    );
+
+    showMessage(
+      current
+        ? "Contact unpinned"
+        : "Contact pinned",
+      contact.full_name
+    );
+  };
+
+  // 🔵 =====================================================
+  // 🔵 CONTACT CATEGORY
+  // 🔵 =====================================================
+
+  const changeCategory = (
+    contact: NasaraContact,
+    category: string
+  ) => {
+    updateContactPreference(
+      contact.id,
+      {
+        category,
+      }
+    );
+
+    showMessage(
+      "Category updated",
+      `${contact.full_name} moved to ${category}.`
+    );
+  };
+
+  // 🔵 =====================================================
+  // 🔵 SAVE PRIVATE CONTACT NOTE
+  // 🔵 DEVICE-LOCAL ONLY
+  // 🔵 =====================================================
+
+  const startEditingNote = (
+    contact: NasaraContact
+  ) => {
+    setEditingNoteId(contact.id);
+
+    setNoteDraft(
+      contactPreferences[contact.id]?.note || ""
+    );
+  };
+
+  const saveContactNote = (
+    contact: NasaraContact
+  ) => {
+    updateContactPreference(
+      contact.id,
+      {
+        note: noteDraft.trim(),
+      }
+    );
+
+    setEditingNoteId(null);
+    setNoteDraft("");
+
+    showMessage(
+      "Private note saved",
+      "This note is stored on this device only."
+    );
+  };
+
+  // 🔵 =====================================================
+  // 🔵 INVITE PEOPLE TO NASARA
+  // 🔵 USE NATIVE SHARE MENU
+  // 🔵 =====================================================
+
+  const inviteToNasara = async () => {
+    try {
+      await Share.share({
+        message:
+          `Join me on Nasara! Discover products, connect with people and explore opportunities.\n\n${NASARA_WEBSITE}`,
+        url: NASARA_WEBSITE,
+      });
+    } catch (error: any) {
+      showMessage(
+        "Sharing failed",
+        error?.message ||
+          "Could not open the sharing menu."
+      );
     }
   };
 
@@ -504,7 +951,10 @@ export default function ContactsScreen() {
         error: authError,
       } = await supabase.auth.getUser();
 
-      if (authError || !authData.user) {
+      if (
+        authError ||
+        !authData.user
+      ) {
         throw new Error(
           "Please sign in again."
         );
@@ -519,7 +969,7 @@ export default function ContactsScreen() {
         );
       }
 
-      // 🔵 STORE THE CHAT ROOM ID
+      // 🔵 STORE CHAT ROOM ID
 
       let chatRoomId: string | null = null;
 
@@ -642,7 +1092,9 @@ export default function ContactsScreen() {
         <Text style={styles.avatarLetter}>
           {(
             contact.full_name || "N"
-          ).charAt(0).toUpperCase()}
+          )
+            .charAt(0)
+            .toUpperCase()}
         </Text>
       </View>
     );
@@ -652,73 +1104,335 @@ export default function ContactsScreen() {
   // 🔵 CONTACT CARD
   // 🔵 =====================================================
 
-  const renderContact = ({
-    item,
-  }: {
-    item: NasaraContact;
-  }) => {
-    const isSaved =
-      activeSection === "saved";
+  const renderContact = (
+    contact: NasaraContact,
+    isSaved: boolean
+  ) => {
+    const preference =
+      contactPreferences[contact.id] || {};
+
+    const isFavorite =
+      preference.favorite === true;
+
+    const isPinned =
+      preference.pinned === true;
+
+    const category =
+      preference.category || "Friends";
+
+    const isExpanded =
+      expandedToolsId === contact.id;
+
+    const isEditingNote =
+      editingNoteId === contact.id;
 
     return (
-      <View style={styles.contactCard}>
-        {renderAvatar(item)}
+      <View
+        key={contact.id}
+        style={styles.contactWrapper}
+      >
+        <View style={styles.contactCard}>
+          {renderAvatar(contact)}
 
-        <View style={styles.contactInfo}>
-          <View style={styles.nameRow}>
-            <Text
-              style={styles.contactName}
-              numberOfLines={1}
-            >
-              {item.full_name}
+          <View style={styles.contactInfo}>
+            <View style={styles.nameRow}>
+              <Text
+                style={styles.contactName}
+                numberOfLines={1}
+              >
+                {contact.full_name || "Nasara User"}
+              </Text>
+
+              {contact.verified && (
+                <Text style={styles.verified}>
+                  ✓
+                </Text>
+              )}
+
+              {isPinned && (
+                <Text style={styles.pinIndicator}>
+                  📌
+                </Text>
+              )}
+            </View>
+
+            <Text style={styles.contactSubtitle}>
+              {category} • Verified Nasara account
             </Text>
 
-            {item.verified && (
-              <Text style={styles.verified}>
-                ✓
+            {isFavorite && (
+              <Text style={styles.favoriteLabel}>
+                ★ Favorite
               </Text>
             )}
           </View>
 
-          <Text style={styles.contactSubtitle}>
-            Nasara user
-          </Text>
+          {isSaved ? (
+            <TouchableOpacity
+              style={styles.messageButton}
+              onPress={() => openChat(contact)}
+              disabled={messagingId !== null}
+              activeOpacity={0.8}
+            >
+              {messagingId === contact.id ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.messageButtonText}>
+                  Message
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : contacts.some(
+              (item) => item.id === contact.id
+            ) ? (
+            <View style={styles.alreadyAddedButton}>
+              <Text style={styles.alreadyAddedText}>
+                Added ✓
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => addContact(contact)}
+              disabled={addingId !== null}
+              activeOpacity={0.8}
+            >
+              {addingId === contact.id ? (
+                <ActivityIndicator color="#071A35" />
+              ) : (
+                <Text style={styles.addButtonText}>
+                  + Add
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
-        {isSaved ? (
-          <TouchableOpacity
-            style={styles.messageButton}
-            onPress={() => openChat(item)}
-            disabled={messagingId !== null}
-            activeOpacity={0.8}
-          >
-            {messagingId === item.id ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.messageButtonText}>
-                Message
-              </Text>
+        {isSaved && (
+          <>
+            {/* 🔵 CONTACT QUICK ACTIONS */}
+
+            <View style={styles.quickActions}>
+              <TouchableOpacity
+                style={styles.quickAction}
+                onPress={() => toggleFavorite(contact)}
+              >
+                <Text style={styles.quickActionText}>
+                  {isFavorite ? "★ Favorite" : "☆ Favorite"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickAction}
+                onPress={() => togglePin(contact)}
+              >
+                <Text style={styles.quickActionText}>
+                  {isPinned ? "📌 Unpin" : "📌 Pin"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.quickAction}
+                onPress={() => {
+                  setExpandedToolsId(
+                    isExpanded ? null : contact.id
+                  );
+
+                  if (isExpanded) {
+                    setEditingNoteId(null);
+                  }
+                }}
+              >
+                <Text style={styles.quickActionText}>
+                  {isExpanded ? "Close" : "More"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 🔵 EXPANDED CONTACT OPTIONS */}
+
+            {isExpanded && (
+              <View style={styles.expandedTools}>
+                <Text style={styles.toolHeading}>
+                  Contact category
+                </Text>
+
+                <View style={styles.categoryOptions}>
+                  {CONTACT_CATEGORIES.map((item) => (
+                    <TouchableOpacity
+                      key={item}
+                      style={[
+                        styles.categoryOption,
+                        category === item &&
+                          styles.categoryOptionActive,
+                      ]}
+                      onPress={() =>
+                        changeCategory(contact, item)
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.categoryOptionText,
+                          category === item &&
+                            styles.categoryOptionTextActive,
+                        ]}
+                      >
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.noteHeader}>
+                  <Text style={styles.toolHeading}>
+                    Private note
+                  </Text>
+
+                  {!isEditingNote && (
+                    <TouchableOpacity
+                      onPress={() =>
+                        startEditingNote(contact)
+                      }
+                    >
+                      <Text style={styles.editNoteText}>
+                        Edit note
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {isEditingNote ? (
+                  <>
+                    <TextInput
+                      style={styles.noteInput}
+                      value={noteDraft}
+                      onChangeText={setNoteDraft}
+                      placeholder="Write a private note about this contact..."
+                      placeholderTextColor="#929292"
+                      multiline
+                      maxLength={500}
+                      textAlignVertical="top"
+                    />
+
+                    <View style={styles.noteButtons}>
+                      <TouchableOpacity
+                        style={styles.saveNoteButton}
+                        onPress={() =>
+                          saveContactNote(contact)
+                        }
+                      >
+                        <Text style={styles.saveNoteText}>
+                          Save note
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.cancelNoteButton}
+                        onPress={() => {
+                          setEditingNoteId(null);
+                          setNoteDraft("");
+                        }}
+                      >
+                        <Text style={styles.cancelNoteText}>
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                ) : (
+                  <Text style={styles.savedNote}>
+                    {preference.note ||
+                      "No private note added yet."}
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  style={styles.removeButton}
+                  onPress={() => removeContact(contact)}
+                  disabled={removingId !== null}
+                >
+                  {removingId === contact.id ? (
+                    <ActivityIndicator color="#B94A48" />
+                  ) : (
+                    <Text style={styles.removeButtonText}>
+                      Remove contact
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => addContact(item)}
-            disabled={addingId !== null}
-            activeOpacity={0.8}
-          >
-            {addingId === item.id ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.addButtonText}>
-                + Add
-              </Text>
-            )}
-          </TouchableOpacity>
+          </>
         )}
       </View>
     );
   };
+
+  // 🔵 =====================================================
+  // 🔵 SORT AND FILTER SAVED CONTACTS
+  // 🔵 =====================================================
+
+  const filteredContacts = contacts
+    .filter((contact) => {
+      const preference =
+        contactPreferences[contact.id] || {};
+
+      if (
+        activeFilter === "favorites" &&
+        !preference.favorite
+      ) {
+        return false;
+      }
+
+      if (
+        activeFilter === "pinned" &&
+        !preference.pinned
+      ) {
+        return false;
+      }
+
+      if (
+        activeFilter === "recent" &&
+        !preference.addedAt
+      ) {
+        return false;
+      }
+
+      if (
+        selectedCategory !== "All" &&
+        (preference.category || "Friends") !==
+          selectedCategory
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      const first =
+        contactPreferences[a.id] || {};
+
+      const second =
+        contactPreferences[b.id] || {};
+
+      if (
+        Boolean(first.pinned) !==
+        Boolean(second.pinned)
+      ) {
+        return first.pinned ? -1 : 1;
+      }
+
+      if (
+        Boolean(first.favorite) !==
+        Boolean(second.favorite)
+      ) {
+        return first.favorite ? -1 : 1;
+      }
+
+      return (
+        (second.addedAt || 0) -
+        (first.addedAt || 0)
+      );
+    });
 
   // 🔵 =====================================================
   // 🔵 MAIN SCREEN
@@ -749,6 +1463,20 @@ export default function ContactsScreen() {
               Connect with people on Nasara
             </Text>
           </View>
+
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={refreshContacts}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.refreshText}>
+                ↻
+              </Text>
+            )}
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -756,7 +1484,7 @@ export default function ContactsScreen() {
           keyboardShouldPersistTaps="handled"
         >
 
-          {/* 🟡 PHONE DISCOVERY INFORMATION */}
+          {/* 🟡 PRIVACY INFORMATION */}
 
           <View style={styles.privacyCard}>
             <View style={styles.privacyTop}>
@@ -779,6 +1507,10 @@ export default function ContactsScreen() {
 
             <Text style={styles.privacyNote}>
               Verified Nasara accounts can be found by anyone who has their phone number. Phone numbers are never displayed in search results.
+            </Text>
+
+            <Text style={styles.localPrivacyNote}>
+              ⭐ Favorites, pins, categories and private notes are stored locally on this device.
             </Text>
           </View>
 
@@ -864,7 +1596,7 @@ export default function ContactsScreen() {
               </Text>
 
               <Text style={styles.cardDescription}>
-                Enter a phone number with or without its country code.
+                Enter a complete phone number with or without its country code.
               </Text>
 
               <TextInput
@@ -935,7 +1667,7 @@ export default function ContactsScreen() {
             </View>
           )}
 
-          {/* 🔵 CONTACT RESULTS */}
+          {/* 🔵 SEARCH RESULTS */}
 
           {activeSection !== "saved" && (
             <View style={styles.listSection}>
@@ -950,12 +1682,9 @@ export default function ContactsScreen() {
                   style={styles.loading}
                 />
               ) : matches.length > 0 ? (
-                <FlatList
-                  data={matches}
-                  keyExtractor={(item) => item.id}
-                  renderItem={renderContact}
-                  scrollEnabled={false}
-                />
+                matches.map((item) =>
+                  renderContact(item, false)
+                )
               ) : (
                 <View style={styles.emptyBox}>
                   <Text style={styles.emptyIcon}>
@@ -988,32 +1717,108 @@ export default function ContactsScreen() {
                 </Text>
               </View>
 
-              {loading ? (
+              {/* 🔵 CONTACT FILTERS */}
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.filterScroll}
+              >
+                {[
+                  {
+                    key: "all",
+                    label: "All",
+                  },
+                  {
+                    key: "favorites",
+                    label: "★ Favorites",
+                  },
+                  {
+                    key: "pinned",
+                    label: "📌 Pinned",
+                  },
+                  {
+                    key: "recent",
+                    label: "Recently Added",
+                  },
+                ].map((filter) => (
+                  <TouchableOpacity
+                    key={filter.key}
+                    style={[
+                      styles.filterButton,
+                      activeFilter === filter.key &&
+                        styles.filterButtonActive,
+                    ]}
+                    onPress={() =>
+                      setActiveFilter(
+                        filter.key as ContactFilter
+                      )
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.filterButtonText,
+                        activeFilter === filter.key &&
+                          styles.filterButtonTextActive,
+                      ]}
+                    >
+                      {filter.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* 🔵 CATEGORY FILTERS */}
+
+              <Text style={styles.categoryHeading}>
+                Contact categories
+              </Text>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.filterScroll}
+              >
+                {[
+                  "All",
+                  ...CONTACT_CATEGORIES,
+                ].map((category) => (
+                  <TouchableOpacity
+                    key={category}
+                    style={[
+                      styles.categoryFilter,
+                      selectedCategory === category &&
+                        styles.categoryFilterActive,
+                    ]}
+                    onPress={() =>
+                      setSelectedCategory(category)
+                    }
+                  >
+                    <Text
+                      style={[
+                        styles.categoryFilterText,
+                        selectedCategory === category &&
+                          styles.categoryFilterTextActive,
+                      ]}
+                    >
+                      {category}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* 🔵 CONTACT LIST */}
+
+              {loading || !metaReady ? (
                 <ActivityIndicator
                   color="#D6A43B"
                   size="large"
                   style={styles.loading}
                 />
-              ) : contacts.length > 0 ? (
-                contacts.map((item) => (
-                  <View key={item.id}>
-                    {renderContact({ item })}
-
-                    <TouchableOpacity
-                      style={styles.removeButton}
-                      onPress={() => removeContact(item)}
-                      disabled={removingId !== null}
-                    >
-                      {removingId === item.id ? (
-                        <ActivityIndicator color="#B94A48" />
-                      ) : (
-                        <Text style={styles.removeButtonText}>
-                          Remove contact
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                ))
+              ) : filteredContacts.length > 0 ? (
+                filteredContacts.map((item) =>
+                  renderContact(item, true)
+                )
               ) : (
                 <View style={styles.emptyBox}>
                   <Text style={styles.emptyIcon}>
@@ -1021,16 +1826,44 @@ export default function ContactsScreen() {
                   </Text>
 
                   <Text style={styles.emptyTitle}>
-                    No contacts yet
+                    No contacts found
                   </Text>
 
                   <Text style={styles.emptyDescription}>
-                    Find people by phone number or through your address book and add them here.
+                    {contacts.length === 0
+                      ? "Find people by phone number or through your address book and add them here."
+                      : "No contacts match this filter. Try another category or filter."}
                   </Text>
                 </View>
               )}
             </View>
           )}
+
+          {/* 🟡 INVITE FRIENDS */}
+
+          <TouchableOpacity
+            style={styles.inviteButton}
+            onPress={inviteToNasara}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.inviteIcon}>
+              ✉️
+            </Text>
+
+            <View style={styles.inviteTextBox}>
+              <Text style={styles.inviteTitle}>
+                Invite Friends to Nasara
+              </Text>
+
+              <Text style={styles.inviteDescription}>
+                Share Nasara with people you know.
+              </Text>
+            </View>
+
+            <Text style={styles.inviteArrow}>
+              ›
+            </Text>
+          </TouchableOpacity>
 
           {/* 🔵 DISCOVER USERS */}
 
@@ -1067,6 +1900,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F6F8",
   },
 
+  // 🔵 HEADER
+
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -1091,6 +1926,7 @@ const styles = StyleSheet.create({
   },
 
   headerTitleBox: {
+    flex: 1,
     marginLeft: 12,
   },
 
@@ -1105,6 +1941,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 3,
   },
+
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#142B49",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  refreshText: {
+    color: "#FFFFFF",
+    fontSize: 26,
+    fontWeight: "800",
+  },
+
+  // 🟡 PRIVACY
 
   privacyCard: {
     margin: 15,
@@ -1158,6 +2011,15 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
+  localPrivacyNote: {
+    color: "#8A671F",
+    fontSize: 10,
+    marginTop: 9,
+    lineHeight: 16,
+  },
+
+  // 🔵 SECTION TABS
+
   sectionTabs: {
     flexDirection: "row",
     marginHorizontal: 15,
@@ -1187,6 +2049,8 @@ const styles = StyleSheet.create({
   activeSectionTabText: {
     color: "#FFFFFF",
   },
+
+  // 🔵 SEARCH
 
   searchCard: {
     margin: 15,
@@ -1242,6 +2106,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
+  // 🔵 STATUS
+
   statusBox: {
     marginHorizontal: 15,
     marginBottom: 10,
@@ -1255,6 +2121,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+
+  // 🔵 CONTACT LIST
 
   listSection: {
     marginHorizontal: 15,
@@ -1272,7 +2140,6 @@ const styles = StyleSheet.create({
     color: "#071A35",
     fontSize: 16,
     fontWeight: "800",
-    marginBottom: 12,
   },
 
   contactCount: {
@@ -1281,13 +2148,16 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
+  contactWrapper: {
+    marginBottom: 10,
+  },
+
   contactCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     padding: 12,
     borderRadius: 14,
-    marginBottom: 8,
   },
 
   avatar: {
@@ -1315,6 +2185,7 @@ const styles = StyleSheet.create({
   contactInfo: {
     flex: 1,
     marginLeft: 11,
+    marginRight: 5,
   },
 
   nameRow: {
@@ -1326,26 +2197,40 @@ const styles = StyleSheet.create({
     color: "#071A35",
     fontSize: 13,
     fontWeight: "800",
-    maxWidth: 150,
+    maxWidth: 145,
   },
 
   verified: {
     color: "#1688E8",
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "900",
+    marginLeft: 5,
+  },
+
+  pinIndicator: {
+    fontSize: 11,
     marginLeft: 5,
   },
 
   contactSubtitle: {
     color: "#888888",
-    fontSize: 11,
+    fontSize: 10,
     marginTop: 4,
   },
+
+  favoriteLabel: {
+    color: "#B88727",
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+
+  // 🔵 CONTACT BUTTONS
 
   messageButton: {
     backgroundColor: "#071A35",
     borderRadius: 9,
-    paddingHorizontal: 13,
+    paddingHorizontal: 11,
     paddingVertical: 10,
     minWidth: 76,
     alignItems: "center",
@@ -1372,19 +2257,239 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
+  alreadyAddedButton: {
+    backgroundColor: "#E8F4EA",
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+
+  alreadyAddedText: {
+    color: "#287A3D",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  // 🔵 QUICK ACTIONS
+
+  quickActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    backgroundColor: "#FFFFFF",
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    paddingHorizontal: 8,
+    paddingBottom: 9,
+    marginTop: -2,
+  },
+
+  quickAction: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginLeft: 4,
+    backgroundColor: "#F5F6F8",
+    borderRadius: 8,
+  },
+
+  quickActionText: {
+    color: "#071A35",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  // 🔵 EXPANDED OPTIONS
+
+  expandedTools: {
+    backgroundColor: "#FFFFFF",
+    padding: 13,
+    borderBottomLeftRadius: 13,
+    borderBottomRightRadius: 13,
+    marginTop: -2,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+
+  toolHeading: {
+    color: "#071A35",
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 9,
+  },
+
+  categoryOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 13,
+  },
+
+  categoryOption: {
+    borderWidth: 1,
+    borderColor: "#DDE1E8",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginRight: 6,
+    marginBottom: 6,
+  },
+
+  categoryOptionActive: {
+    backgroundColor: "#071A35",
+    borderColor: "#071A35",
+  },
+
+  categoryOptionText: {
+    color: "#657080",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  categoryOptionTextActive: {
+    color: "#FFFFFF",
+  },
+
+  noteHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+  },
+
+  editNoteText: {
+    color: "#B88727",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  noteInput: {
+    minHeight: 75,
+    borderWidth: 1,
+    borderColor: "#DDE1E8",
+    borderRadius: 10,
+    padding: 11,
+    color: "#071A35",
+    fontSize: 12,
+    backgroundColor: "#FAFBFD",
+  },
+
+  savedNote: {
+    color: "#777777",
+    fontSize: 11,
+    lineHeight: 18,
+    backgroundColor: "#F5F6F8",
+    borderRadius: 9,
+    padding: 11,
+  },
+
+  noteButtons: {
+    flexDirection: "row",
+    marginTop: 9,
+  },
+
+  saveNoteButton: {
+    backgroundColor: "#071A35",
+    borderRadius: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+  },
+
+  saveNoteText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  cancelNoteButton: {
+    backgroundColor: "#EEEEEE",
+    borderRadius: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    marginLeft: 8,
+  },
+
+  cancelNoteText: {
+    color: "#555555",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
   removeButton: {
     alignSelf: "flex-end",
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    marginTop: -5,
-    marginBottom: 9,
+    paddingVertical: 9,
+    marginTop: 8,
   },
 
   removeButtonText: {
     color: "#B94A48",
     fontSize: 10,
-    fontWeight: "700",
+    fontWeight: "800",
   },
+
+  // 🔵 FILTERS
+
+  filterScroll: {
+    marginBottom: 13,
+  },
+
+  filterButton: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E0E3E9",
+    borderRadius: 9,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    marginRight: 7,
+  },
+
+  filterButtonActive: {
+    backgroundColor: "#071A35",
+    borderColor: "#071A35",
+  },
+
+  filterButtonText: {
+    color: "#657080",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  filterButtonTextActive: {
+    color: "#FFFFFF",
+  },
+
+  categoryHeading: {
+    color: "#071A35",
+    fontSize: 12,
+    fontWeight: "800",
+    marginBottom: 9,
+  },
+
+  categoryFilter: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E0E3E9",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 7,
+  },
+
+  categoryFilterActive: {
+    backgroundColor: "#D6A43B",
+    borderColor: "#D6A43B",
+  },
+
+  categoryFilterText: {
+    color: "#657080",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  categoryFilterTextActive: {
+    color: "#071A35",
+  },
+
+  // 🔵 EMPTY STATE
 
   emptyBox: {
     alignItems: "center",
@@ -1417,9 +2522,52 @@ const styles = StyleSheet.create({
     marginVertical: 25,
   },
 
+  // 🟡 INVITE
+
+  inviteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 15,
+    marginTop: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E9E2D2",
+    padding: 15,
+    borderRadius: 14,
+  },
+
+  inviteIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+
+  inviteTextBox: {
+    flex: 1,
+  },
+
+  inviteTitle: {
+    color: "#071A35",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  inviteDescription: {
+    color: "#888888",
+    fontSize: 10,
+    marginTop: 4,
+  },
+
+  inviteArrow: {
+    color: "#D6A43B",
+    fontSize: 26,
+    fontWeight: "800",
+  },
+
+  // 🔵 DISCOVER
+
   discoverButton: {
     marginHorizontal: 15,
-    marginTop: 18,
+    marginTop: 13,
     backgroundColor: "#D6A43B",
     padding: 15,
     borderRadius: 13,
