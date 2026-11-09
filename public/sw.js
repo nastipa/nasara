@@ -43,7 +43,7 @@ self.addEventListener("push", (event) => {
     icon: data.icon,
 
     // 🔔 SMALL NOTIFICATION BADGE
-    badge: data.icon,
+    badge: data.badge || "/favicon.ico",
 
     // 🖼️ OPTIONAL LARGE IMAGE
     ...(data.image ? {
