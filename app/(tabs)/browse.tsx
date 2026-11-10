@@ -1561,7 +1561,7 @@ const loadLiveStreams = async () => {
             <TouchableOpacity
               onPress={() =>
                 Linking.openURL(
-                  "https://expo.dev/artifacts/eas/O2JlyeEGiV9RINLR4RSW3jO9_OzPGdl2ZnTtNqxW848.apk"
+                  "https://expo.dev/artifacts/eas/iDkt1Tpn5Gk-1_QN2gwBXu6sRaWPYBjpu7JlODzDor0.apk"
                 )
               }
               style={styles.downloadButton}

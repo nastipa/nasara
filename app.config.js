@@ -4,6 +4,20 @@ export default {
     slug: "nasara",
     version: "1.0.0",
 
+    // 🟢 =====================================================
+// 🟢 NASARA OVER-THE-AIR UPDATES
+// 🟢 =====================================================
+
+runtimeVersion: {
+  policy: "appVersion",
+},
+
+updates: {
+  url: "https://u.expo.dev/633ed251-5676-4382-83d6-34b631bc416b",
+  enabled: true,
+  checkAutomatically: "ON_LOAD",
+},
+
     scheme: "nasara",
 
     platforms: ["ios", "android", "web"],
