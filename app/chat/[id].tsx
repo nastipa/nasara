@@ -894,77 +894,83 @@ const handleSlashReply = (
 };
 
 /* 🟣 =====================================================
-💬 NASARA CHAT BROWSER PUSH — DIAGNOSTIC VERSION
+💬 NASARA CROSS-PLATFORM CHAT PUSH
 📍 FILE: app/chat/[id].tsx
 ===================================================== */
 
 const sendChatBrowserPush = async (
-messageId: number | string,
-recipientId: string | null
+  messageId: number | string,
+  recipientId: string | null
 ) => {
-  if (Platform.OS !== "web") {
-  return;
-}
-console.log("💬 CHAT PUSH FUNCTION CALLED:", {
-messageId,
-recipientId,
-userId,
-platform: Platform.OS,
-});
+  console.log("💬 CHAT PUSH FUNCTION CALLED:", {
+    messageId,
+    recipientId,
+    userId,
+    platform: Platform.OS,
+  });
 
-/* 🔵 1. CHECK REQUIRED VALUES */
+  // 🔵 1. CHECK REQUIRED VALUES
 
-if (!messageId || !recipientId || !userId) {
-console.error("🔴 CHAT PUSH STOPPED: Missing values", {
-messageId,
-recipientId,
-userId,
-});
-return;
-}
-
-if (recipientId === userId) {
-console.error("🔴 CHAT PUSH STOPPED: Recipient is sender");
-return;
-}
-
-/* 🟢 2. GET THE LOGIN SESSION */
-
-try {
-const {
-data: { session },
-error: sessionError,
-} = await (supabase as any).auth.getSession();
-
-if (sessionError || !session?.access_token) {
-  console.error("🔴 CHAT PUSH: No valid session", sessionError);
-  return;
-}
-console.log("🟢 CHAT PUSH: Session found; calling backend");
-/* 🟣 3. CALL THE BACKEND */
-const response = await fetch(
-  "https://nasara-upload-server.onrender.com/chat-browser-push",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({
-      message_id: messageId,
-      recipient_id: recipientId,
-    }),
+  if (!messageId || !recipientId || !userId) {
+    console.error("🔴 CHAT PUSH STOPPED: Missing values", {
+      messageId,
+      recipientId,
+      userId,
+    });
+    return;
   }
-);
-const responseText = await response.text();
-console.log("💬 CHAT PUSH BACKEND RESPONSE:", {
-  status: response.status,
-  response: responseText,
-});
 
-} catch (error) {
-console.error("🔴 CHAT PUSH REQUEST ERROR:", error);
-}
+  if (recipientId === userId) {
+    console.error("🔴 CHAT PUSH STOPPED: Recipient is sender");
+    return;
+  }
+
+  // 🟢 2. GET LOGIN SESSION
+
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await (supabase as any).auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      console.error("🔴 CHAT PUSH: No valid session", sessionError);
+      return;
+    }
+
+    console.log("🟢 CHAT PUSH: Session found; calling backend");
+
+    // 🟣 3. CALL CROSS-PLATFORM BACKEND
+
+    const response = await fetch(
+      "https://nasara-upload-server.onrender.com/chat-browser-push",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          message_id: messageId,
+          recipient_id: recipientId,
+        }),
+      }
+    );
+
+    const responseText = await response.text();
+
+    console.log("💬 CHAT PUSH BACKEND RESPONSE:", {
+      status: response.status,
+      response: responseText,
+      platform: Platform.OS,
+    });
+
+    if (!response.ok) {
+      console.error("🔴 CHAT PUSH BACKEND FAILED:", responseText);
+    }
+  } catch (error) {
+    console.error("🔴 CHAT PUSH REQUEST ERROR:", error);
+  }
 };
 
 /* 🟢 ================= GET VERIFIED CHAT RECIPIENT ================= */

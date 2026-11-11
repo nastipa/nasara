@@ -781,77 +781,97 @@ const loadAllMemberSources = async () => {
   }, [messages, roomId, userId]);
 
   // 🔵 =====================================================
-  // 🔵 BROWSER PUSH NOTIFICATION
-  // 🔵 =====================================================
+// 🔵 NASARA CROSS-PLATFORM GROUP CHAT PUSH
+// 🔵 ANDROID ↔️ WEB ↔️ ANDROID
+// 🔵 =====================================================
 
-  const notifyGroupMembers = async (
-    messageId: number | string
-  ) => {
-    if (Platform.OS !== "web") return;
+const notifyGroupMembers = async (
+  messageId: number | string
+) => {
+  // 🟢 1. CHECK MESSAGE ID
 
-    if (!messageId) {
-      console.log("GROUP PUSH SKIPPED: Missing message ID");
+  if (!messageId) {
+    console.log("GROUP PUSH SKIPPED: Missing message ID");
+    return;
+  }
+
+  console.log("🟢 GROUP PUSH FUNCTION CALLED:", {
+    messageId,
+    groupId: roomId,
+    senderId: userId,
+    platform: Platform.OS,
+  });
+
+  try {
+    // 🔵 2. GET LOGIN SESSION
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      console.error(
+        "🔴 GROUP PUSH SESSION ERROR:",
+        sessionError
+      );
       return;
     }
 
-    try {
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+    // 🟣 3. CALL CROSS-PLATFORM BACKEND
 
-      if (sessionError) {
-        console.log("GROUP PUSH SESSION ERROR:", sessionError);
-        return;
+    console.log("🟢 GROUP PUSH: Calling backend");
+
+    const response = await fetch(
+      "https://nasara-upload-server.onrender.com/group-browser-push",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          message_id: messageId,
+        }),
       }
+    );
 
-      if (!session?.access_token) {
-        console.log("GROUP PUSH SKIPPED: No access token");
-        return;
-      }
+    const responseText = await response.text();
 
-      console.log("GROUP BROWSER PUSH START:", {
-        messageId,
-        groupId: roomId,
-        senderId: userId,
-      });
+    console.log("🟢 GROUP PUSH BACKEND STATUS:", response.status);
 
-      const response = await fetch(
-        "https://nasara-upload-server.onrender.com/group-browser-push",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            message_id: messageId,
-          }),
-        }
+    console.log(
+      "🟢 GROUP PUSH BACKEND RESPONSE:",
+      responseText
+    );
+
+    if (!response.ok) {
+      console.error(
+        "🔴 GROUP PUSH BACKEND FAILED:",
+        responseText
       );
-
-      const responseText = await response.text();
-
-      console.log("GROUP BROWSER PUSH STATUS:", response.status);
-      console.log("GROUP BROWSER PUSH RESPONSE:", responseText);
-
-      if (!response.ok) {
-        console.log("GROUP BROWSER PUSH FAILED:", responseText);
-        return;
-      }
-
-      try {
-        console.log(
-          "GROUP BROWSER PUSH RESULT:",
-          JSON.parse(responseText)
-        );
-      } catch {
-        console.log("GROUP BROWSER PUSH RESULT:", responseText);
-      }
-    } catch (error) {
-      console.log("GROUP BROWSER PUSH ERROR:", error);
+      return;
     }
-  };
+
+    // 🟢 4. DISPLAY BACKEND RESULT
+
+    try {
+      const result = JSON.parse(responseText);
+
+      console.log("🟢 GROUP CROSS-PLATFORM PUSH RESULT:", {
+        ...result,
+        platform: Platform.OS,
+      });
+    } catch {
+      console.log(
+        "GROUP PUSH RESULT:",
+        responseText
+      );
+    }
+  } catch (error) {
+    console.error("🔴 GROUP PUSH REQUEST ERROR:", error);
+  }
+};
 
   // 🔵 =====================================================
   // 🔵 UPLOAD TO RENDER SERVER
