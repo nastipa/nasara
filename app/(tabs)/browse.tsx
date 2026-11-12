@@ -1542,7 +1542,7 @@ const loadLiveStreams = async () => {
             </Text>
 
             <Text style={styles.headerDescription}>
-              Find products, discover sellers and connect with opportunities.
+             More Than a Marketplace. Connect, Share and Grow with Nasara.
             </Text>
 
             {!user && (
@@ -1561,7 +1561,7 @@ const loadLiveStreams = async () => {
             <TouchableOpacity
               onPress={() =>
                 Linking.openURL(
-                  "https://expo.dev/artifacts/eas/6f60JxLlU8pBM04e11_v5zcbg8lBTJOeRAORe3EHVFE.apk"
+                  "https://expo.dev/artifacts/eas/nTUng9ahfU5G5-GbVvvKgVGWwTJrXq0oVMd6zdb1mrU.apk"
                 )
               }
               style={styles.downloadButton}

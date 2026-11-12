@@ -2,6 +2,7 @@ import { Session } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import * as Notifications from "expo-notifications";
 import { Stack, usePathname, useRouter } from "expo-router";
+import * as Updates from "expo-updates";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -567,6 +568,39 @@ const itemsChannel = supabase
       );
     };
   }, [session?.user?.id]);
+
+  /* ==========================================
+   🚀 NASARA AUTOMATIC EAS UPDATES
+========================================== */
+
+useEffect(() => {
+  if (Platform.OS === "web") return;
+
+  const checkForUpdates = async () => {
+    try {
+      if (__DEV__ || !Updates.isEnabled) return;
+      console.log("🔍 Checking for Nasara updates...");
+
+      const update = await Updates.checkForUpdateAsync();
+
+      if (update.isAvailable) {
+        console.log("📥 New Nasara update available.");
+
+        await Updates.fetchUpdateAsync();
+
+        console.log("✅ Update downloaded. Reloading Nasara...");
+
+        await Updates.reloadAsync();
+      } else {
+        console.log("✅ Nasara is already up to date.");
+      }
+    } catch (error) {
+      console.log("⚠️ EAS update check failed:", error);
+    }
+  };
+
+  checkForUpdates();
+}, []);
   /* ================= MOUNT ================= */
 
   useEffect(() => {
