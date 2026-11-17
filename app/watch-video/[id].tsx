@@ -44,6 +44,7 @@ export default function WatchVideoScreen() {
   const [lastSent, setLastSent] = useState(0);
 
   const screenWidth = Dimensions.get("window").width;
+  const [expandedVideo, setExpandedVideo] = useState(false);
 
   // ==================================================
   // 🟡 LOAD LIVE STREAM
@@ -364,13 +365,17 @@ const sendMessage = async () => {
       ================================================== */}
 
       <View
-        style={{
-          height: screenWidth * 0.56,
-          borderRadius: 12,
-          overflow: "hidden",
-          backgroundColor: "black",
-        }}
-      >
+  style={{
+    height: expandedVideo
+      ? Dimensions.get("window").height * 0.78
+      : screenWidth * 0.56,
+    width: "100%",
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "black",
+    position: "relative",
+  }}
+>
         {viewer ? (
           <LiveKitViewer
             serverUrl={viewer.url}
@@ -448,8 +453,110 @@ const sendMessage = async () => {
             </Text>
           </TouchableOpacity>
         )}
+        
       </View>
+      {/* FULLSCREEN CONTROL */}
 
+<TouchableOpacity
+  onPress={() => setExpandedVideo((previous) => !previous)}
+  style={{
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 20,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  }}
+>
+  <Text style={{ color: "white", fontWeight: "900" }}>
+    {expandedVideo ? "✕ CLOSE" : "⛶ EXPAND"}
+  </Text>
+</TouchableOpacity>
+
+{/* COMMENTS OVER VIDEO */}
+
+{expandedVideo && (
+  <View
+    pointerEvents="box-none"
+    style={{
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      padding: 12,
+      backgroundColor: "rgba(0,0,0,0.5)",
+    }}
+  >
+    <Text
+      style={{
+        color: "#E8B84A",
+        fontWeight: "900",
+        marginBottom: 8,
+      }}
+    >
+      LIVE COMMENTS
+    </Text>
+
+    <FlatList
+      data={messages.slice(0, 6).reverse()}
+      inverted={false}
+      keyExtractor={(item) => item.id.toString()}
+      style={{ maxHeight: 125 }}
+      renderItem={({ item }) => (
+        <Text
+          style={{
+            color: "white",
+            fontSize: 13,
+            paddingVertical: 4,
+          }}
+        >
+          {item.text}
+        </Text>
+      )}
+    />
+
+    <View
+      style={{
+        flexDirection: "row",
+        marginTop: 8,
+        gap: 8,
+      }}
+    >
+      <TextInput
+        value={chatText}
+        onChangeText={setChatText}
+        placeholder="Write a comment..."
+        placeholderTextColor="#BBBBBB"
+        returnKeyType="send"
+        onSubmitEditing={sendMessage}
+        style={{
+          flex: 1,
+          backgroundColor: "white",
+          color: "#111827",
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          minHeight: 42,
+        }}
+      />
+
+      <TouchableOpacity
+        onPress={sendMessage}
+        style={{
+          backgroundColor: "#E8B84A",
+          paddingHorizontal: 14,
+          justifyContent: "center",
+          borderRadius: 10,
+        }}
+      >
+        <Text style={{ color: "#07111F", fontWeight: "900" }}>
+          Send
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+)}
       {/* ==================================================
           🛍️ PRODUCT DETAILS
       ================================================== */}
@@ -521,75 +628,79 @@ const sendMessage = async () => {
           💬 LIVE CHAT
       ================================================== */}
 
-      <Text
-        style={{
-          marginTop: 14,
-          fontWeight: "bold",
-        }}
-      >
-        💬 Live Chat
-      </Text>
-
-      <FlatList
-        data={messages}
-        inverted
-        keyExtractor={(item) => item.id.toString()}
-        style={{
-          height: 160,
-          marginTop: 6,
-        }}
-        renderItem={({ item }) => (
-          <Text style={{ paddingVertical: 2 }}>
-            {item.text}
-          </Text>
-        )}
-        ListEmptyComponent={
+      {!expandedVideo && (
+        <>
           <Text
             style={{
-              textAlign: "center",
-              marginTop: 20,
-              color: "gray",
+              marginTop: 14,
+              fontWeight: "bold",
             }}
           >
-            No messages yet...
+            💬 Live Chat
           </Text>
-        }
-      />
 
-      {/* ✉️ CHAT INPUT */}
+          <FlatList
+            data={messages}
+            inverted
+            keyExtractor={(item) => item.id.toString()}
+            style={{
+              height: 160,
+              marginTop: 6,
+            }}
+            renderItem={({ item }) => (
+              <Text style={{ paddingVertical: 2 }}>
+                {item.text}
+              </Text>
+            )}
+            ListEmptyComponent={
+              <Text
+                style={{
+                  textAlign: "center",
+                  marginTop: 20,
+                  color: "gray",
+                }}
+              >
+                No messages yet...
+              </Text>
+            }
+          />
 
-      <View
-        style={{
-          flexDirection: "row",
-          marginTop: 6,
-        }}
-      >
-        <TextInput
-          value={chatText}
-          onChangeText={setChatText}
-          placeholder="Type message..."
-          style={{
-            flex: 1,
-            borderWidth: 1,
-            borderColor: "#ddd",
-            borderRadius: 8,
-            padding: 8,
-          }}
-        />
+          {/* ✉️ CHAT INPUT */}
 
-        <TouchableOpacity
-          onPress={sendMessage}
-          style={{
-            backgroundColor: "#2563eb",
-            paddingHorizontal: 14,
-            marginLeft: 6,
-            borderRadius: 8,
-            justifyContent: "center",
-          }}
-        >
-          <Text style={{ color: "white" }}>Send</Text>
-        </TouchableOpacity>
-      </View>
+          <View
+            style={{
+              flexDirection: "row",
+              marginTop: 6,
+            }}
+          >
+            <TextInput
+              value={chatText}
+              onChangeText={setChatText}
+              placeholder="Type message..."
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: "#ddd",
+                borderRadius: 8,
+                padding: 8,
+              }}
+            />
+
+            <TouchableOpacity
+              onPress={sendMessage}
+              style={{
+                backgroundColor: "#2563eb",
+                paddingHorizontal: 14,
+                marginLeft: 6,
+                borderRadius: 8,
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: "white" }}>Send</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
 
       {/* ▶️ OPEN OLD YOUTUBE STREAM */}
 

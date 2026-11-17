@@ -1542,7 +1542,7 @@ const loadLiveStreams = async () => {
             </Text>
 
             <Text style={styles.headerDescription}>
-             More Than a Marketplace. Connect, Share and Grow with Nasara.
+            Discover More, Connect Better, Trade Smarter and Unlock New Opportunities.
             </Text>
 
             {!user && (

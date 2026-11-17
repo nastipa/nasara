@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -102,6 +103,7 @@ export default function GoLiveScreen() {
   const [messages, setMessages] = useState<LiveMessage[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [expandedVideo, setExpandedVideo] = useState(false);
 
   // ==========================================
   // 🔒 REFS
@@ -716,9 +718,17 @@ const sendMessage = async () => {
             {activeTitle}
           </Text>
 
-          {/* 🔴 LIVE VIDEO */}
+         {/* 🔴 LIVE VIDEO WITH EXPANDABLE COMMENTS */}
 
-          <View style={styles.videoContainer}>
+          <View
+            style={[
+              styles.videoContainer,
+              expandedVideo && {
+                height: Dimensions.get("window").height * 0.78,
+                aspectRatio: undefined,
+              },
+            ]}
+          >
             {roomConfig ? (
               <LiveKitHost
                 serverUrl={roomConfig.url}
@@ -736,111 +746,230 @@ const sendMessage = async () => {
                 </Text>
               </View>
             )}
+
+            {/* EXPAND / COLLAPSE BUTTON */}
+
+            <TouchableOpacity
+              onPress={() =>
+                setExpandedVideo((previous) => !previous)
+              }
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                zIndex: 20,
+                backgroundColor: "rgba(0,0,0,0.75)",
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                borderRadius: 10,
+              }}
+            >
+              <Ionicons
+                name={expandedVideo ? "contract" : "expand"}
+                size={21}
+                color="white"
+              />
+            </TouchableOpacity>
+
+            {/* COMMENTS OVER VIDEO */}
+
+            {expandedVideo && (
+              <View
+                pointerEvents="box-none"
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: 12,
+                  backgroundColor: "rgba(0,0,0,0.55)",
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.gold,
+                    fontWeight: "900",
+                    marginBottom: 8,
+                  }}
+                >
+                  LIVE COMMENTS
+                </Text>
+
+                <ScrollView
+                  style={{ maxHeight: 125 }}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}
+                >
+                  {messages.slice(-6).map((item) => (
+                    <Text
+                      key={item.id}
+                      style={{
+                        color: "white",
+                        fontSize: 13,
+                        paddingVertical: 4,
+                        textShadowColor: "black",
+                        textShadowRadius: 3,
+                      }}
+                    >
+                      {item.text}
+                    </Text>
+                  ))}
+                </ScrollView>
+
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 8,
+                    marginTop: 8,
+                  }}
+                >
+                  <TextInput
+                    value={newMessage}
+                    onChangeText={setNewMessage}
+                    placeholder="Comment on your live..."
+                    placeholderTextColor="#CCCCCC"
+                    returnKeyType="send"
+                    onSubmitEditing={sendMessage}
+                    style={{
+                      flex: 1,
+                      backgroundColor: "rgba(255,255,255,0.95)",
+                      color: "#111827",
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      minHeight: 42,
+                    }}
+                  />
+
+                  <TouchableOpacity
+                    onPress={sendMessage}
+                    disabled={sending || !newMessage.trim()}
+                    style={{
+                      backgroundColor: COLORS.gold,
+                      paddingHorizontal: 14,
+                      justifyContent: "center",
+                      borderRadius: 10,
+                      opacity:
+                        sending || !newMessage.trim() ? 0.5 : 1,
+                    }}
+                  >
+                    {sending ? (
+                      <ActivityIndicator color="#07111F" />
+                    ) : (
+                      <Ionicons
+                        name="send"
+                        size={19}
+                        color="#07111F"
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </View>
 
           {/* 🔴 CONNECTION STATUS */}
 
-          <View style={styles.connectionRow}>
-            <View
-              style={[
-                styles.connectionDot,
-                {
-                  backgroundColor: connected
-                    ? COLORS.green
-                    : COLORS.gold,
-                },
-              ]}
-            />
-
-            <Text style={styles.connectionText}>
-              {connected
-                ? "Connected — your broadcast is running"
-                : "Connecting your camera and microphone..."}
-            </Text>
-          </View>
-
-          {/* 💬 LIVE CHAT */}
-
-          <View style={styles.chatCard}>
-            <View style={styles.chatHeader}>
-              <Ionicons
-                name="chatbubbles"
-                size={20}
-                color={COLORS.gold}
-              />
-
-              <Text style={styles.chatTitle}>
-                Live Chat
-              </Text>
-
-              <Text style={styles.chatCount}>
-                {messages.length} messages
-              </Text>
-            </View>
-
-            <ScrollView
-              style={styles.messageList}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-            >
-              {messages.length === 0 ? (
-                <Text style={styles.emptyChat}>
-                  No messages yet. Your viewers can chat here.
-                </Text>
-              ) : (
-                messages.map((item) => (
-                  <View
-                    key={item.id}
-                    style={styles.messageBubble}
-                  >
-                    <Text style={styles.messageText}>
-                      {item.text}
-                    </Text>
-                  </View>
-                ))
-              )}
-            </ScrollView>
-
-            <View style={styles.chatInputRow}>
-              <TextInput
-                value={newMessage}
-                onChangeText={setNewMessage}
-                placeholder="Send a message..."
-                placeholderTextColor={COLORS.muted}
-                style={styles.chatInput}
-                returnKeyType="send"
-                onSubmitEditing={sendMessage}
-              />
-
-              <TouchableOpacity
-                onPress={sendMessage}
-                disabled={
-                  sending || !newMessage.trim()
-                }
+          {!expandedVideo && (
+            <View style={styles.connectionRow}>
+              <View
                 style={[
-                  styles.sendButton,
+                  styles.connectionDot,
                   {
-                    opacity:
-                      sending || !newMessage.trim()
-                        ? 0.5
-                        : 1,
+                    backgroundColor: connected
+                      ? COLORS.green
+                      : COLORS.gold,
                   },
                 ]}
-              >
-                {sending ? (
-                  <ActivityIndicator
-                    color={COLORS.background}
-                  />
-                ) : (
-                  <Ionicons
-                    name="send"
-                    size={18}
-                    color={COLORS.background}
-                  />
-                )}
-              </TouchableOpacity>
+              />
+
+              <Text style={styles.connectionText}>
+                {connected
+                  ? "Connected — your broadcast is running"
+                  : "Connecting your camera and microphone..."}
+              </Text>
             </View>
-          </View>
+          )}
+
+          {/* 💬 NORMAL LIVE CHAT */}
+
+          {!expandedVideo && (
+            <View style={styles.chatCard}>
+              <View style={styles.chatHeader}>
+                <Ionicons
+                  name="chatbubbles"
+                  size={20}
+                  color={COLORS.gold}
+                />
+
+                <Text style={styles.chatTitle}>
+                  Live Chat
+                </Text>
+
+                <Text style={styles.chatCount}>
+                  {messages.length} messages
+                </Text>
+              </View>
+
+              <ScrollView
+                style={styles.messageList}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+              >
+                {messages.length === 0 ? (
+                  <Text style={styles.emptyChat}>
+                    No messages yet. Your viewers can chat here.
+                  </Text>
+                ) : (
+                  messages.map((item) => (
+                    <View
+                      key={item.id}
+                      style={styles.messageBubble}
+                    >
+                      <Text style={styles.messageText}>
+                        {item.text}
+                      </Text>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+
+              <View style={styles.chatInputRow}>
+                <TextInput
+                  value={newMessage}
+                  onChangeText={setNewMessage}
+                  placeholder="Send a message..."
+                  placeholderTextColor={COLORS.muted}
+                  style={styles.chatInput}
+                  returnKeyType="send"
+                  onSubmitEditing={sendMessage}
+                />
+
+                <TouchableOpacity
+                  onPress={sendMessage}
+                  disabled={sending || !newMessage.trim()}
+                  style={[
+                    styles.sendButton,
+                    {
+                      opacity:
+                        sending || !newMessage.trim() ? 0.5 : 1,
+                    },
+                  ]}
+                >
+                  {sending ? (
+                    <ActivityIndicator
+                      color={COLORS.background}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="send"
+                      size={18}
+                      color={COLORS.background}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* 🔴 END LIVE */}
 
