@@ -1330,6 +1330,7 @@ export default function GoLiveScreen() {
                           size={19}
                           color={COLORS.gold}
                         />
+                     
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.speakerName}>
