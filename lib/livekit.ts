@@ -15,8 +15,9 @@ export interface LiveKitTokenResponse {
   token: string;
   url: string;
   roomName: string;
-  role: "host" | "viewer" | "speaker";
+  role: string;
   canPublish: boolean;
+  hostMuted?: boolean;
 }
 
 // ==================================================
@@ -75,11 +76,12 @@ export async function fetchLiveKitToken(
     throw new Error("Invalid LiveKit participant role.");
   }
 
-  return {
+ return {
     token: data.token,
     url: data.url,
     roomName: data.roomName,
     role: data.role,
     canPublish: data.canPublish === true,
+    hostMuted: data.hostMuted === true,
   };
 }

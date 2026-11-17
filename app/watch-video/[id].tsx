@@ -25,6 +25,13 @@ import { fetchLiveKitToken } from "../../lib/livekit";
 import { supabase } from "../../lib/supabase";
 
 // ==================================================
+// ⚙️ LIVEKIT SERVER
+// ==================================================
+
+const LIVEKIT_SERVER =
+  "https://livekit-server-c0z9.onrender.com";
+
+// ==================================================
 // 🎥 WATCH VIDEO SCREEN
 // ==================================================
 
@@ -51,6 +58,9 @@ export default function WatchVideoScreen() {
   const [speakerMessage, setSpeakerMessage] = useState("");
 
   const speakerCheckingRef = useRef(false);
+
+  // Host mute state received from backend.
+  const [hostMuted, setHostMuted] = useState(false);
 
   // Approved speakers start with microphone only.
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -113,7 +123,14 @@ export default function WatchVideoScreen() {
 
           setViewer(tokenData);
 
-          if (tokenData.canPublish === true) {
+          setHostMuted(tokenData.hostMuted === true);
+
+          if (tokenData.role === "speaker") {
+            setSpeakerStatus("approved");
+          } else if (
+            tokenData.canPublish === true &&
+            tokenData.role !== "host"
+          ) {
             setSpeakerStatus("approved");
           }
         } catch (error: any) {
@@ -164,7 +181,7 @@ export default function WatchVideoScreen() {
   const loadMessages = async () => {
     if (!id) return;
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("live_chat_messages")
       .select("*")
       .eq("stream_id", String(id))
@@ -192,6 +209,9 @@ export default function WatchVideoScreen() {
     setSpeakerStatus("none");
     setSpeakerMessage("");
     setViewerError("");
+    setHostMuted(false);
+    setExpandedVideo(false);
+    speakerCheckingRef.current = false;
 
     loadLive();
     loadMessages();
@@ -320,7 +340,7 @@ export default function WatchVideoScreen() {
       }
 
       const response = await fetch(
-        "https://livekit-server-c0z9.onrender.com/speaker/request",
+        `${LIVEKIT_SERVER}/speaker/request`,
         {
           method: "POST",
           headers: {
@@ -345,16 +365,31 @@ export default function WatchVideoScreen() {
 
       if (status === "approved") {
         setSpeakerStatus("approved");
+
         setSpeakerMessage(
-          "You are approved! Your microphone is ready. You can turn on your camera whenever you want."
+          "You are approved! Preparing your microphone..."
         );
 
         const newToken = await fetchLiveKitToken(String(id));
 
         setViewer(newToken);
+        setHostMuted(newToken.hostMuted === true);
         setCameraEnabled(false);
+
+        if (newToken.canPublish === true) {
+          setSpeakerMessage(
+            newToken.hostMuted === true
+              ? "You are approved, but the host has temporarily muted your microphone."
+              : "You are now approved to speak. Your camera is off."
+          );
+        } else {
+          setSpeakerMessage(
+            "Your approval is being processed. Please wait."
+          );
+        }
       } else {
         setSpeakerStatus("pending");
+
         setSpeakerMessage(
           "Your request has been sent. Waiting for the host."
         );
@@ -369,7 +404,7 @@ export default function WatchVideoScreen() {
   };
 
   // ==================================================
-  // 🎤 CHECK SPEAKER APPROVAL
+  // 🎤 CHECK SPEAKER APPROVAL + MUTE STATUS
   // ==================================================
 
   const checkSpeakerStatus = async () => {
@@ -386,7 +421,7 @@ export default function WatchVideoScreen() {
       if (sessionError || !session?.access_token) return;
 
       const response = await fetch(
-        `https://livekit-server-c0z9.onrender.com/speaker/status?streamId=${encodeURIComponent(
+        `${LIVEKIT_SERVER}/speaker/status?streamId=${encodeURIComponent(
           String(id)
         )}`,
         {
@@ -407,40 +442,113 @@ export default function WatchVideoScreen() {
         return;
       }
 
-      const status = result.request?.status;
+      const request = result.request;
+      const status = request?.status;
+
+      // ==================================================
+      // 🚫 NO SPEAKER REQUEST
+      // ==================================================
+
+      if (!request) {
+        setSpeakerStatus((previous) =>
+          previous === "pending" ? "none" : previous
+        );
+
+        return;
+      }
+
+      // ==================================================
+      // ⏳ PENDING
+      // ==================================================
 
       if (status === "pending") {
         setSpeakerStatus("pending");
+        setHostMuted(false);
+
         setSpeakerMessage(
           "Waiting for the host to approve your request."
         );
+
+        return;
       }
+
+      // ==================================================
+      // ❌ REJECTED / REMOVED
+      // ==================================================
 
       if (status === "rejected") {
         setSpeakerStatus("rejected");
+        setHostMuted(false);
+        setCameraEnabled(false);
+
         setSpeakerMessage(
-          "Your request was not approved. You can request again."
+          "Your speaker permission has been revoked. You can still watch the live stream and request to speak again."
         );
+
+        // If this user was previously an approved speaker,
+        // replace their publishing token with a viewer token.
+        if (viewer?.canPublish === true) {
+          const viewerToken = await fetchLiveKitToken(
+            String(id)
+          );
+
+          if (viewerToken.canPublish === false) {
+            setViewer(viewerToken);
+            setHostMuted(false);
+          } else {
+            console.warn(
+              "NASARA: Removed speaker still received publishing permission."
+            );
+          }
+        }
+
+        return;
       }
 
-      if (
-        status === "approved" &&
-        !viewer?.canPublish
-      ) {
+      // ==================================================
+      // 🎤 APPROVED
+      // ==================================================
+
+      if (status === "approved") {
         setSpeakerStatus("approved");
 
+        const currentHostMuted =
+          request.host_muted === true;
+
+        setHostMuted(currentHostMuted);
+
+        if (viewer?.canPublish === true) {
+          // Existing approved speaker.
+          // Update mute state without reconnecting LiveKit.
+          setSpeakerMessage(
+            currentHostMuted
+              ? "The host has muted your microphone. You can still watch the broadcast."
+              : "You are approved to speak. Your microphone is ready."
+          );
+
+          return;
+        }
+
+        // Newly approved speaker needs a publishing token.
         setSpeakerMessage(
           "The host approved you! Preparing your microphone..."
         );
 
-        const newToken = await fetchLiveKitToken(String(id));
+        const newToken = await fetchLiveKitToken(
+          String(id)
+        );
 
         if (newToken.canPublish === true) {
           setViewer(newToken);
+          setHostMuted(
+            newToken.hostMuted === true || currentHostMuted
+          );
           setCameraEnabled(false);
 
           setSpeakerMessage(
-            "You are now approved to speak. Your camera is off."
+            newToken.hostMuted === true || currentHostMuted
+              ? "You are approved, but the host has muted your microphone."
+              : "You are now approved to speak. Your camera is off."
           );
         } else {
           setSpeakerMessage(
@@ -456,7 +564,7 @@ export default function WatchVideoScreen() {
   };
 
   // ==================================================
-  // 🔄 AUTOMATIC SPEAKER APPROVAL CHECK
+  // 🔄 AUTOMATIC SPEAKER STATUS CHECK
   // ==================================================
 
   useEffect(() => {
@@ -466,15 +574,17 @@ export default function WatchVideoScreen() {
       live.status !== "live" ||
       live.is_active !== true ||
       !viewer ||
-      viewer.canPublish === true
+      viewer.role === "host"
     ) {
       return;
     }
 
-    checkSpeakerStatus();
+    // Check immediately.
+    void checkSpeakerStatus();
 
+    // Keep checking even after speaker approval.
     const interval = setInterval(() => {
-      checkSpeakerStatus();
+      void checkSpeakerStatus();
     }, 5000);
 
     return () => clearInterval(interval);
@@ -609,6 +719,7 @@ export default function WatchVideoScreen() {
             token={viewer.token}
             canPublish={viewer.canPublish === true}
             cameraEnabled={cameraEnabled}
+            hostMuted={hostMuted}
           />
         ) : embedUrl ? (
           Platform.OS === "web" ? (
@@ -805,14 +916,15 @@ export default function WatchVideoScreen() {
 
           <Text
             style={{
-              color: "white",
+              color: hostMuted ? "#FCA5A5" : "white",
               textAlign: "center",
               fontSize: 12,
               marginBottom: 12,
             }}
           >
-            Your microphone is enabled. You can speak with
-            your camera off or turn it on below.
+            {hostMuted
+              ? "The host has muted your microphone. You can still watch the broadcast. Your microphone will be restored when the host unmutes you."
+              : "Your microphone is enabled. You can speak with your camera off or turn it on below."}
           </Text>
 
           <TouchableOpacity
@@ -847,6 +959,8 @@ export default function WatchVideoScreen() {
             }}
           >
             Camera: {cameraEnabled ? "ON" : "OFF"}
+            {" • "}
+            Microphone: {hostMuted ? "MUTED BY HOST" : "READY"}
           </Text>
         </View>
       )}

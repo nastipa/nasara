@@ -10,10 +10,8 @@ import {
 
 import { Track } from "livekit-client";
 
-import "@livekit/components-styles";
-
 // ==================================================
-// 📦 TYPES
+// 📦 PROPS
 // ==================================================
 
 interface LiveKitViewerProps {
@@ -21,10 +19,66 @@ interface LiveKitViewerProps {
   token: string;
   canPublish?: boolean;
   cameraEnabled?: boolean;
+  hostMuted?: boolean;
 }
 
 // ==================================================
-// 📷 LOCAL CAMERA CONTROLLER
+// 🎤 MICROPHONE CONTROLLER
+// ==================================================
+
+function MicrophoneController({
+  canPublish,
+  hostMuted,
+}: {
+  canPublish: boolean;
+  hostMuted: boolean;
+}) {
+  const { localParticipant } = useLocalParticipant();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const updateMicrophone = async () => {
+      try {
+        if (!localParticipant) return;
+
+        const shouldEnable =
+          canPublish && !hostMuted;
+
+        await localParticipant.setMicrophoneEnabled(
+          shouldEnable
+        );
+
+        if (!cancelled) {
+          console.log(
+            "NASARA WEB MICROPHONE:",
+            shouldEnable ? "ENABLED" : "DISABLED",
+            "Host muted:",
+            hostMuted
+          );
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "NASARA WEB MICROPHONE ERROR:",
+            error
+          );
+        }
+      }
+    };
+
+    void updateMicrophone();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localParticipant, canPublish, hostMuted]);
+
+  return null;
+}
+
+// ==================================================
+// 🎥 CAMERA CONTROLLER
 // ==================================================
 
 function CameraController({
@@ -41,12 +95,26 @@ function CameraController({
 
     const updateCamera = async () => {
       try {
+        if (!localParticipant) return;
+
         await localParticipant.setCameraEnabled(
           canPublish && cameraEnabled
         );
+
+        if (!cancelled) {
+          console.log(
+            "NASARA WEB CAMERA:",
+            canPublish && cameraEnabled
+              ? "ENABLED"
+              : "DISABLED"
+          );
+        }
       } catch (error) {
         if (!cancelled) {
-          console.error("LiveKit camera update error:", error);
+          console.error(
+            "NASARA WEB CAMERA ERROR:",
+            error
+          );
         }
       }
     };
@@ -66,92 +134,74 @@ function CameraController({
 // ==================================================
 
 function ParticipantGrid() {
-  const tracks = useTracks([
-    Track.Source.Camera,
-    Track.Source.Microphone,
-  ]);
+  const tracks = useTracks(
+    [
+      Track.Source.Camera,
+      Track.Source.Microphone,
+    ],
+    {
+      onlySubscribed: true,
+    }
+  );
 
   const participants = new Map<
     string,
     {
       identity: string;
-      name: string;
-      camera?: any;
-      microphone?: any;
+      video?: any;
+      audio?: any;
     }
   >();
 
-  tracks.forEach((reference: any) => {
+  tracks.forEach((reference) => {
     const participant = reference.participant;
 
-    if (!participant) return;
-
-    const identity = participant.identity;
-
-    if (!participants.has(identity)) {
-      participants.set(identity, {
-        identity,
-        name: participant.name || identity,
+    if (!participants.has(participant.identity)) {
+      participants.set(participant.identity, {
+        identity: participant.identity,
       });
     }
 
-    const entry = participants.get(identity)!;
+    const entry = participants.get(
+      participant.identity
+    );
+
+    if (!entry) return;
 
     if (reference.source === Track.Source.Camera) {
-      entry.camera = reference;
+      entry.video = reference;
     }
 
     if (reference.source === Track.Source.Microphone) {
-      entry.microphone = reference;
+      entry.audio = reference;
     }
   });
 
-  const visibleParticipants = Array.from(
+  const participantList = Array.from(
     participants.values()
-  ).filter(
-    (participant) =>
-      participant.camera || participant.microphone
   );
-
-  if (visibleParticipants.length === 0) {
-    return (
-      <div style={styles.empty}>
-        Waiting for the host and guest speakers...
-      </div>
-    );
-  }
 
   return (
     <div style={styles.grid}>
-      {visibleParticipants.map((participant) => (
+      {participantList.map((participant) => (
         <div
           key={participant.identity}
-          style={styles.tile}
+          style={styles.participant}
         >
-          {participant.camera ? (
+          {participant.video ? (
             <VideoTrack
-              trackRef={participant.camera}
-              style={styles.video}
+              trackRef={participant.video}
+              style={styles.video as CSSProperties}
             />
           ) : (
-            <div style={styles.audioTile}>
-              <div style={styles.avatar}>
-                {participant.name?.charAt(0)?.toUpperCase() || "N"}
-              </div>
-
-              <div style={styles.audioName}>
-                {participant.name}
+            <div style={styles.audioOnly}>
+              <div style={styles.participantName}>
+                {participant.identity}
               </div>
 
               <div style={styles.audioLabel}>
-                Audio speaker
+                Audio participant
               </div>
-            </div>
-          )}
-
-          {participant.camera && (
-            <div style={styles.nameTag}>
-              {participant.name}
             </div>
           )}
         </div>
@@ -161,7 +211,7 @@ function ParticipantGrid() {
 }
 
 // ==================================================
-// 🎥 LIVEKIT VIEWER
+// 🎥 LIVEKIT WEB VIEWER
 // ==================================================
 
 export default function LiveKitViewer({
@@ -169,7 +219,16 @@ export default function LiveKitViewer({
   token,
   canPublish = false,
   cameraEnabled = false,
+  hostMuted = false,
 }: LiveKitViewerProps) {
+  if (!serverUrl || !token) {
+    return (
+      <div style={styles.loading}>
+        Connecting to live broadcast...
+      </div>
+    );
+  }
+
   return (
     <LiveKitRoom
       serverUrl={serverUrl}
@@ -182,6 +241,11 @@ export default function LiveKitViewer({
         dynacast: true,
       }}
     >
+      <MicrophoneController
+        canPublish={canPublish}
+        hostMuted={hostMuted}
+      />
+
       <CameraController
         canPublish={canPublish}
         cameraEnabled={cameraEnabled}
@@ -201,83 +265,56 @@ export default function LiveKitViewer({
 const styles: Record<string, CSSProperties> = {
   grid: {
     width: "100%",
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
     gap: 8,
   },
 
-  tile: {
-    position: "relative",
-    width: "100%",
-    aspectRatio: "1 / 1",
-    background: "#111827",
+  participant: {
+    width: "48%",
+    minWidth: 140,
+    minHeight: 160,
+    backgroundColor: "#111827",
     borderRadius: 12,
     overflow: "hidden",
   },
 
   video: {
     width: "100%",
-    height: "100%",
+    height: 180,
     objectFit: "cover",
   },
 
-  audioTile: {
+  audioOnly: {
     width: "100%",
-    height: "100%",
-    background: "#172033",
+    height: 160,
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
+    padding: 10,
+  },
+
+  participantName: {
     color: "#FFFFFF",
-  },
-
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: "50%",
-    background: "#C99A35",
-    color: "#111827",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 26,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-
-  audioName: {
-    fontSize: 13,
     fontWeight: "bold",
     textAlign: "center",
   },
 
   audioLabel: {
-    fontSize: 11,
-    color: "#D1D5DB",
-    marginTop: 4,
+    color: "#D4AF37",
+    fontSize: 12,
+    marginTop: 6,
   },
 
-  nameTag: {
-    position: "absolute",
-    bottom: 6,
-    left: 6,
-    right: 6,
-    background: "rgba(0,0,0,0.65)",
-    color: "#FFFFFF",
-    padding: 5,
-    borderRadius: 5,
-    fontSize: 11,
-    textAlign: "center",
-  },
-
-  empty: {
-    minHeight: 120,
+  loading: {
+    width: "100%",
+    minHeight: 180,
     display: "flex",
-    justifyContent: "center",
     alignItems: "center",
-    background: "#111827",
+    justifyContent: "center",
+    backgroundColor: "#111827",
     color: "#FFFFFF",
-    borderRadius: 12,
   },
 };

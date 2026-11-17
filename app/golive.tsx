@@ -341,125 +341,141 @@ export default function GoLiveScreen() {
   // 🎤 MUTE / UNMUTE / REMOVE SPEAKER
   // ==========================================
 
-  const handleSpeakerControl = async (
-    requestId: string,
-    action: "mute" | "unmute" | "remove"
-  ) => {
-    if (!activeLiveId || busyRequestId) return;
+ const handleSpeakerControl = async (
+  requestId: string,
+  action: "mute" | "unmute" | "remove"
+) => {
+  if (!activeLiveId || busyRequestId) return;
 
-    const speaker = approvedSpeakers.find(
-      (item) => item.id === requestId
-    );
+  const speaker = approvedSpeakers.find(
+    (item) => item.id === requestId
+  );
 
-    if (!speaker) return;
+  if (!speaker) {
+    showMessage("Speaker not found", "Refresh the speaker list and try again.");
+    return;
+  }
 
-    if (action === "remove") {
-      Alert.alert(
-        "Remove speaker?",
-        "This speaker will lose permission to speak and will be disconnected from the live broadcast.",
-        [
-          {
-            text: "Cancel",
-            style: "cancel",
-          },
-          {
-            text: "Remove",
-            style: "destructive",
-            onPress: () => {
-              executeSpeakerControl(requestId, action);
-            },
-          },
-        ]
-      );
+  if (action === "remove") {
+    const message =
+      "This speaker will lose permission to speak and will be disconnected from the live broadcast.";
 
+    if (Platform.OS === "web") {
+      const confirmed =
+        typeof window !== "undefined" &&
+        window.confirm(`Remove speaker?\n\n${message}`);
+
+      if (!confirmed) return;
+
+      await executeSpeakerControl(requestId, "remove");
       return;
     }
 
-    await executeSpeakerControl(requestId, action);
-  };
+    Alert.alert(
+      "Remove speaker?",
+      message,
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: () => {
+            void executeSpeakerControl(requestId, "remove");
+          },
+        },
+      ]
+    );
 
+    return;
+  }
+
+  await executeSpeakerControl(requestId, action);
+};
   // ==========================================
   // 🎤 EXECUTE SPEAKER CONTROL
   // ==========================================
 
   const executeSpeakerControl = async (
-    requestId: string,
-    action: "mute" | "unmute" | "remove"
-  ) => {
-    if (!activeLiveId || busyRequestId) return;
+  requestId: string,
+  action: "mute" | "unmute" | "remove"
+) => {
+  if (!activeLiveId || busyRequestId) return;
 
-    setBusyRequestId(requestId);
+  setBusyRequestId(requestId);
 
-    try {
-      const accessToken = await getAccessToken();
+  try {
+    const accessToken = await getAccessToken();
 
-      const endpoint =
-        action === "remove"
-          ? "remove"
-          : "mute";
+    const endpoint =
+      action === "remove" ? "remove" : "mute";
 
-      const body =
-        action === "remove"
-          ? {
-              requestId,
-            }
-          : {
-              requestId,
-              muted: action === "mute",
-            };
+    const body =
+      action === "remove"
+        ? { requestId }
+        : {
+            requestId,
+            muted: action === "mute",
+          };
 
-      const response = await fetch(
-        `${LIVEKIT_SERVER}/speaker/${endpoint}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify(body),
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          result?.error ||
-           ` Could not ${action} this speaker.`
-        );
+    const response = await fetch(
+      `${LIVEKIT_SERVER}/speaker/${endpoint}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(body),
       }
+    );
 
-      await refreshSpeakers(activeLiveId);
+    const result = await response.json();
 
-      if (action === "mute") {
+    if (!response.ok) {
+      throw new Error(
+        result?.error || `Could not ${action} this speaker.`
+      );
+    }
+
+    await refreshSpeakers(activeLiveId);
+
+    if (action === "mute") {
+      showMessage(
+        "Speaker muted",
+        "The host mute command was sent successfully."
+      );
+    } else if (action === "unmute") {
+      showMessage(
+        "Speaker unmuted",
+        "Microphone permission has been restored. Confirm that the host can hear the speaker."
+      );
+    } else {
+      if (result.disconnected === false) {
         showMessage(
-          "Speaker muted",
-          result.connected
-            ? "The speaker's microphone has been muted. Their video can remain visible."
-            : "The speaker is currently offline. The mute setting will apply when they reconnect."
-        );
-      } else if (action === "unmute") {
-        showMessage(
-          "Speaker unmuted",
-          result.connected
-            ? "The speaker can now use their microphone again."
-            : "The speaker is currently offline. They can use their microphone when they reconnect."
+          "Speaker permission revoked",
+          "The speaker's approval was revoked, but LiveKit could not confirm disconnection. Check the backend logs."
         );
       } else {
         showMessage(
           "Speaker removed",
-          "The speaker's approval has been revoked."
+          "The speaker's approval has been revoked and the disconnection was confirmed."
         );
       }
-    } catch (error: any) {
-      showMessage(
-        "Speaker control",
-        error?.message || "Something went wrong."
-      );
-    } finally {
-      setBusyRequestId(null);
     }
-  };
+  } catch (error: any) {
+    console.error("Speaker control failed:", error);
+
+    showMessage(
+      "Speaker control failed",
+      error?.message || "Something went wrong. Please try again."
+    );
+  } finally {
+    setBusyRequestId(null);
+  }
+};
 
   // 🟡 ==================================================
   // 🟡 SEND WEB + MOBILE NOTIFICATIONS

@@ -11,6 +11,7 @@ import {
 } from "@livekit/react-native";
 
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   View,
@@ -29,10 +30,66 @@ interface LiveKitViewerProps {
   token: string;
   canPublish?: boolean;
   cameraEnabled?: boolean;
+  hostMuted?: boolean;
 }
 
 // ==================================================
-// 📷 LOCAL CAMERA CONTROLLER
+// 🎤 MICROPHONE CONTROLLER
+// ==================================================
+
+function MicrophoneController({
+  canPublish,
+  hostMuted,
+}: {
+  canPublish: boolean;
+  hostMuted: boolean;
+}) {
+  const { localParticipant } = useLocalParticipant();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const updateMicrophone = async () => {
+      try {
+        if (!localParticipant) return;
+
+        const shouldEnable =
+          canPublish && !hostMuted;
+
+        await localParticipant.setMicrophoneEnabled(
+          shouldEnable
+        );
+
+        if (cancelled) return;
+
+        console.log(
+          "NASARA MICROPHONE STATE:",
+          shouldEnable ? "ENABLED" : "DISABLED",
+          "Host muted:",
+          hostMuted
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "NASARA MICROPHONE CONTROL ERROR:",
+            error
+          );
+        }
+      }
+    };
+
+    void updateMicrophone();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localParticipant, canPublish, hostMuted]);
+
+  return null;
+}
+
+// ==================================================
+// 🎥 CAMERA CONTROLLER
 // ==================================================
 
 function CameraController({
@@ -49,17 +106,31 @@ function CameraController({
 
     const updateCamera = async () => {
       try {
+        if (!localParticipant) return;
+
         await localParticipant.setCameraEnabled(
           canPublish && cameraEnabled
         );
+
+        if (!cancelled) {
+          console.log(
+            "NASARA CAMERA STATE:",
+            canPublish && cameraEnabled
+              ? "ENABLED"
+              : "DISABLED"
+          );
+        }
       } catch (error) {
         if (!cancelled) {
-          console.log("LiveKit camera control error:", error);
+          console.error(
+            "NASARA CAMERA CONTROL ERROR:",
+            error
+          );
         }
       }
     };
 
-    updateCamera();
+    void updateCamera();
 
     return () => {
       cancelled = true;
@@ -70,105 +141,83 @@ function CameraController({
 }
 
 // ==================================================
-// 🎥 PARTICIPANT GRID
+// 👥 PARTICIPANT GRID
 // ==================================================
 
 function ParticipantGrid() {
-  const tracks = useTracks([
-    Track.Source.Camera,
-    Track.Source.Microphone,
-  ]);
+  const tracks = useTracks(
+    [
+      Track.Source.Camera,
+      Track.Source.Microphone,
+    ],
+    {
+      onlySubscribed: true,
+    }
+  );
 
   const participants = new Map<
     string,
     {
       identity: string;
-      name: string;
-      camera?: any;
-      microphone?: any;
+      video?: any;
+      audio?: any;
     }
   >();
 
-  tracks.forEach((reference: any) => {
-    if (!isTrackReference(reference)) return;
-
+  tracks.forEach((reference) => {
     const participant = reference.participant;
 
-    if (!participant) return;
-
-    const identity = participant.identity;
-
-    if (!participants.has(identity)) {
-      participants.set(identity, {
-        identity,
-        name: participant.name || identity,
+    if (!participants.has(participant.identity)) {
+      participants.set(participant.identity, {
+        identity: participant.identity,
       });
     }
 
-    const entry = participants.get(identity)!;
+    const entry = participants.get(
+      participant.identity
+    );
 
-    if (reference.source === Track.Source.Camera) {
-      entry.camera = reference;
+    if (!entry) return;
+
+    if (
+      reference.source === Track.Source.Camera &&
+      isTrackReference(reference)
+    ) {
+      entry.video = reference;
     }
 
-    if (reference.source === Track.Source.Microphone) {
-      entry.microphone = reference;
+    if (
+      reference.source === Track.Source.Microphone &&
+      isTrackReference(reference)
+    ) {
+      entry.audio = reference;
     }
   });
 
-  const visibleParticipants = Array.from(
+  const participantList = Array.from(
     participants.values()
-  ).filter(
-    (participant) =>
-      participant.camera || participant.microphone
   );
-
-  if (visibleParticipants.length === 0) {
-    return (
-      <View style={styles.empty}>
-        <Text style={styles.emptyText}>
-          Waiting for the host and guest speakers...
-        </Text>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.grid}>
-      {visibleParticipants.map((participant) => (
+      {participantList.map((participant) => (
         <View
           key={participant.identity}
-          style={styles.tile}
+          style={styles.participant}
         >
-          {participant.camera ? (
+          {participant.video ? (
             <VideoTrack
-              trackRef={participant.camera}
+              trackRef={participant.video}
               style={styles.video}
             />
           ) : (
-            <View style={styles.audioTile}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {participant.name
-                    ?.charAt(0)
-                    ?.toUpperCase() || "N"}
-                </Text>
-              </View>
-
-              <Text style={styles.audioName}>
-                {participant.name}
+            <View style={styles.audioOnly}>
+              <Text style={styles.participantName}>
+                {participant.identity}
               </Text>
 
               <Text style={styles.audioLabel}>
-                Audio speaker
-              </Text>
-            </View>
-          )}
-
-          {participant.camera && (
-            <View style={styles.nameTag}>
-              <Text style={styles.nameText}>
-                {participant.name}
+                Audio participant
               </Text>
             </View>
           )}
@@ -179,7 +228,7 @@ function ParticipantGrid() {
 }
 
 // ==================================================
-// 🎥 LIVEKIT VIEWER
+// 🎥 LIVEKIT NATIVE VIEWER
 // ==================================================
 
 export default function LiveKitViewer({
@@ -187,38 +236,48 @@ export default function LiveKitViewer({
   token,
   canPublish = false,
   cameraEnabled = false,
+  hostMuted = false,
 }: LiveKitViewerProps) {
-  // ==================================================
-  // 🔊 AUDIO SESSION
-  // ==================================================
-
   useEffect(() => {
+    let mounted = true;
+
     const startAudio = async () => {
       try {
         await AudioSession.startAudioSession();
+
+        if (mounted) {
+          console.log(
+            "NASARA LIVEKIT AUDIO SESSION STARTED"
+          );
+        }
       } catch (error) {
-        console.log(
-          "LiveKit audio session error:",
+        console.error(
+          "NASARA AUDIO SESSION ERROR:",
           error
         );
       }
     };
 
-    startAudio();
+    void startAudio();
 
     return () => {
-      AudioSession.stopAudioSession().catch((error) => {
-        console.log(
-          "LiveKit audio stop error:",
-          error
-        );
-      });
+      mounted = false;
+
+      void AudioSession.stopAudioSession();
     };
   }, []);
 
-  // ==================================================
-  // 🎬 LIVEKIT ROOM
-  // ==================================================
+  if (!serverUrl || !token) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator color="#D4AF37" />
+
+        <Text style={styles.loadingText}>
+          Connecting to live broadcast...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <LiveKitRoom
@@ -232,6 +291,11 @@ export default function LiveKitViewer({
         dynacast: true,
       }}
     >
+      <MicrophoneController
+        canPublish={canPublish}
+        hostMuted={hostMuted}
+      />
+
       <CameraController
         canPublish={canPublish}
         cameraEnabled={cameraEnabled}
@@ -255,83 +319,49 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 
-  tile: {
+  participant: {
     width: "48%",
-    aspectRatio: 1,
+    minHeight: 160,
     backgroundColor: "#111827",
     borderRadius: 12,
     overflow: "hidden",
-    position: "relative",
   },
 
   video: {
     width: "100%",
-    height: "100%",
+    height: 180,
   },
 
-  audioTile: {
+  audioOnly: {
     flex: 1,
-    backgroundColor: "#172033",
-    justifyContent: "center",
+    minHeight: 160,
     alignItems: "center",
+    justifyContent: "center",
     padding: 10,
   },
 
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#C99A35",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-
-  avatarText: {
-    color: "#111827",
-    fontSize: 26,
-    fontWeight: "bold",
-  },
-
-  audioName: {
+  participantName: {
     color: "#FFFFFF",
-    fontSize: 13,
     fontWeight: "bold",
     textAlign: "center",
   },
 
   audioLabel: {
-    color: "#D1D5DB",
-    fontSize: 11,
-    marginTop: 4,
+    color: "#D4AF37",
+    fontSize: 12,
+    marginTop: 6,
   },
 
-  nameTag: {
-    position: "absolute",
-    bottom: 6,
-    left: 6,
-    right: 6,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    padding: 5,
-    borderRadius: 5,
-  },
-
-  nameText: {
-    color: "#FFFFFF",
-    fontSize: 11,
-    textAlign: "center",
-  },
-
-  empty: {
-    minHeight: 120,
-    justifyContent: "center",
+  loading: {
+    flex: 1,
+    minHeight: 180,
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#111827",
-    borderRadius: 12,
   },
 
-  emptyText: {
+  loadingText: {
     color: "#FFFFFF",
-    fontSize: 13,
+    marginTop: 10,
   },
 });
