@@ -1,18 +1,16 @@
-// ==================================================
-// 🟢 NASARA LIVEKIT WEB VIEWER
-// 🟢 MULTIPLE APPROVED GUEST SPEAKERS
-// 🟢 ALL VIEWERS SEE ALL PUBLISHED VIDEO TRACKS
-// 🟢 SUPPORTS VIEWING + SPEAKER PUBLISHING
-// ==================================================
+import { useEffect, type CSSProperties } from "react";
 
 import {
   LiveKitRoom,
   RoomAudioRenderer,
-  VideoTrack,
+  useLocalParticipant,
   useTracks,
+  VideoTrack,
 } from "@livekit/components-react";
 
 import { Track } from "livekit-client";
+
+import "@livekit/components-styles";
 
 // ==================================================
 // 📦 TYPES
@@ -22,109 +20,140 @@ interface LiveKitViewerProps {
   serverUrl: string;
   token: string;
   canPublish?: boolean;
+  cameraEnabled?: boolean;
 }
 
 // ==================================================
-// 🎥 MULTI-SPEAKER VIDEO GRID
+// 📷 LOCAL CAMERA CONTROLLER
 // ==================================================
 
-function RemoteVideoGrid() {
+function CameraController({
+  canPublish,
+  cameraEnabled,
+}: {
+  canPublish: boolean;
+  cameraEnabled: boolean;
+}) {
+  const { localParticipant } = useLocalParticipant();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const updateCamera = async () => {
+      try {
+        await localParticipant.setCameraEnabled(
+          canPublish && cameraEnabled
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.error("LiveKit camera update error:", error);
+        }
+      }
+    };
+
+    void updateCamera();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localParticipant, canPublish, cameraEnabled]);
+
+  return null;
+}
+
+// ==================================================
+// 👥 PARTICIPANT GRID
+// ==================================================
+
+function ParticipantGrid() {
   const tracks = useTracks([
     Track.Source.Camera,
-    Track.Source.ScreenShare,
+    Track.Source.Microphone,
   ]);
 
-  // Get every published video track.
-  // Do not stop at the first speaker.
-  const publishedTracks = tracks.filter(
-    (trackRef) => trackRef.publication
+  const participants = new Map<
+    string,
+    {
+      identity: string;
+      name: string;
+      camera?: any;
+      microphone?: any;
+    }
+  >();
+
+  tracks.forEach((reference: any) => {
+    const participant = reference.participant;
+
+    if (!participant) return;
+
+    const identity = participant.identity;
+
+    if (!participants.has(identity)) {
+      participants.set(identity, {
+        identity,
+        name: participant.name || identity,
+      });
+    }
+
+    const entry = participants.get(identity)!;
+
+    if (reference.source === Track.Source.Camera) {
+      entry.camera = reference;
+    }
+
+    if (reference.source === Track.Source.Microphone) {
+      entry.microphone = reference;
+    }
+  });
+
+  const visibleParticipants = Array.from(
+    participants.values()
+  ).filter(
+    (participant) =>
+      participant.camera || participant.microphone
   );
 
-  if (publishedTracks.length === 0) {
+  if (visibleParticipants.length === 0) {
     return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          minHeight: 180,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "white",
-          backgroundColor: "black",
-          fontSize: 15,
-        }}
-      >
-        Waiting for broadcaster video...
+      <div style={styles.empty}>
+        Waiting for the host and guest speakers...
       </div>
     );
   }
 
-  const columns =
-    publishedTracks.length === 1
-      ? "minmax(0, 1fr)"
-      : "repeat(2, minmax(0, 1fr))";
-
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "grid",
-        gridTemplateColumns: columns,
-        gridAutoRows:
-          publishedTracks.length <= 2
-            ? "minmax(0, 1fr)"
-            : "minmax(180px, 1fr)",
-        gap: 3,
-        overflowY: "auto",
-        backgroundColor: "black",
-        alignContent: "start",
-      }}
-    >
-      {publishedTracks.map((trackRef) => (
+    <div style={styles.grid}>
+      {visibleParticipants.map((participant) => (
         <div
-          key={`${trackRef.participant.identity}-${trackRef.source}`}
-          style={{
-            position: "relative",
-            width: "100%",
-            height: "100%",
-            minHeight: 180,
-            overflow: "hidden",
-            backgroundColor: "#111",
-            borderRadius: 6,
-          }}
+          key={participant.identity}
+          style={styles.tile}
         >
-          <VideoTrack
-            trackRef={trackRef}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain",
-              backgroundColor: "black",
-            }}
-          />
+          {participant.camera ? (
+            <VideoTrack
+              trackRef={participant.camera}
+              style={styles.video}
+            />
+          ) : (
+            <div style={styles.audioTile}>
+              <div style={styles.avatar}>
+                {participant.name?.charAt(0)?.toUpperCase() || "N"}
+              </div>
 
-          {/* SPEAKER NAME */}
-          <div
-            style={{
-              position: "absolute",
-              left: 8,
-              bottom: 8,
-              padding: "5px 9px",
-              borderRadius: 5,
-              backgroundColor: "rgba(0,0,0,0.7)",
-              color: "white",
-              fontSize: 12,
-              fontWeight: 600,
-              maxWidth: "85%",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {trackRef.participant.identity}
-          </div>
+              <div style={styles.audioName}>
+                {participant.name}
+              </div>
+
+              <div style={styles.audioLabel}>
+                Audio speaker
+              </div>
+            </div>
+          )}
+
+          {participant.camera && (
+            <div style={styles.nameTag}>
+              {participant.name}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -132,35 +161,123 @@ function RemoteVideoGrid() {
 }
 
 // ==================================================
-// 📺 VIEWER COMPONENT
+// 🎥 LIVEKIT VIEWER
 // ==================================================
 
 export default function LiveKitViewer({
   serverUrl,
   token,
   canPublish = false,
+  cameraEnabled = false,
 }: LiveKitViewerProps) {
   return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        backgroundColor: "black",
-        overflow: "hidden",
+    <LiveKitRoom
+      serverUrl={serverUrl}
+      token={token}
+      connect={true}
+      audio={canPublish}
+      video={false}
+      options={{
+        adaptiveStream: true,
+        dynacast: true,
       }}
     >
-      <LiveKitRoom
-        serverUrl={serverUrl}
-        token={token}
-        connect={true}
-        audio={canPublish}
-        video={canPublish}
-      >
-        <RemoteVideoGrid />
+      <CameraController
+        canPublish={canPublish}
+        cameraEnabled={cameraEnabled}
+      />
 
-        {/* PLAY AUDIO FROM ALL SPEAKERS */}
-        <RoomAudioRenderer />
-      </LiveKitRoom>
-    </div>
+      <ParticipantGrid />
+
+      <RoomAudioRenderer />
+    </LiveKitRoom>
   );
 }
+
+// ==================================================
+// 🎨 STYLES
+// ==================================================
+
+const styles: Record<string, CSSProperties> = {
+  grid: {
+    width: "100%",
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 8,
+  },
+
+  tile: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: "1 / 1",
+    background: "#111827",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+
+  video: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+
+  audioTile: {
+    width: "100%",
+    height: "100%",
+    background: "#172033",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#FFFFFF",
+  },
+
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: "50%",
+    background: "#C99A35",
+    color: "#111827",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 26,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
+
+  audioName: {
+    fontSize: 13,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+
+  audioLabel: {
+    fontSize: 11,
+    color: "#D1D5DB",
+    marginTop: 4,
+  },
+
+  nameTag: {
+    position: "absolute",
+    bottom: 6,
+    left: 6,
+    right: 6,
+    background: "rgba(0,0,0,0.65)",
+    color: "#FFFFFF",
+    padding: 5,
+    borderRadius: 5,
+    fontSize: 11,
+    textAlign: "center",
+  },
+
+  empty: {
+    minHeight: 120,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    background: "#111827",
+    color: "#FFFFFF",
+    borderRadius: 12,
+  },
+};

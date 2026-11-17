@@ -313,7 +313,7 @@ export default function GoLiveScreen() {
 
       if (!response.ok) {
         throw new Error(
-          `result?.error || Could not ${action} this speaker.`
+          result?.error || `Could not ${action} this speaker.`
         );
       }
 

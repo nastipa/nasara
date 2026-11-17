@@ -1,6 +1,6 @@
 // ==================================================
- // 📦 IMPORTS
- // ==================================================
+// 📦 IMPORTS
+// ==================================================
 
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -38,18 +38,27 @@ export default function WatchVideoScreen() {
 
   const [viewer, setViewer] = useState<any>(null);
   const [viewerError, setViewerError] = useState("");
+
   // ==================================================
-// 🎤 GUEST SPEAKER STATES
-// ==================================================
+  // 🎤 GUEST SPEAKER STATES
+  // ==================================================
 
-const [speakerStatus, setSpeakerStatus] = useState<
-  "none" | "pending" | "approved" | "rejected"
->("none");
+  const [speakerStatus, setSpeakerStatus] = useState<
+    "none" | "pending" | "approved" | "rejected"
+  >("none");
 
-const [speakerBusy, setSpeakerBusy] = useState(false);
-const [speakerMessage, setSpeakerMessage] = useState("");
+  const [speakerBusy, setSpeakerBusy] = useState(false);
+  const [speakerMessage, setSpeakerMessage] = useState("");
 
-const speakerCheckingRef = useRef(false);
+  const speakerCheckingRef = useRef(false);
+
+  // Approved speakers start with microphone only.
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+
+  // ==================================================
+  // 💬 CHAT STATES
+  // ==================================================
+
   const [messages, setMessages] = useState<any[]>([]);
   const [chatText, setChatText] = useState("");
   const [lastSent, setLastSent] = useState(0);
@@ -103,6 +112,10 @@ const speakerCheckingRef = useRef(false);
           );
 
           setViewer(tokenData);
+
+          if (tokenData.canPublish === true) {
+            setSpeakerStatus("approved");
+          }
         } catch (error: any) {
           console.log("LiveKit viewer error:", error);
 
@@ -144,294 +157,339 @@ const speakerCheckingRef = useRef(false);
     setProduct(data ?? null);
   };
 
- // ==================================================
-// 💬 LOAD LIVE CHAT
-// ==================================================
-
-const loadMessages = async () => {
-  if (!id) return;
-
-  const { data, error } = await supabase
-    .from("live_chat_messages")
-    .select("*")
-    .eq("stream_id", String(id))
-    .order("created_at", { ascending: false })
-    .limit(50);
-
-  if (error) {
-    console.log("Live chat load error:", error.message);
-    return;
-  }
-
-  setMessages(data ?? []);
-};
-
- // ==================================================
-// 🔄 LIVE CHAT REALTIME + INITIAL LOAD
-// ==================================================
-
-useEffect(() => {
-  if (!id) return;
-
-  loadLive();
-  loadMessages();
-
-  const channel = supabase
-    .channel("live-chat-" + String(id))
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "live_chat_messages",
-        filter: `stream_id=eq.${String(id)}`,
-      },
-      (payload: any) => {
-        setMessages((previous) => {
-          const incoming = payload.new;
-
-          if (
-            previous.some(
-              (message) => message.id === incoming.id
-            )
-          ) {
-            return previous;
-          }
-
-          return [incoming, ...previous].slice(0, 50);
-        });
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [id]);
   // ==================================================
-// 💬 SEND LIVE CHAT MESSAGE — VIEWER
-// ==================================================
+  // 💬 LOAD LIVE CHAT
+  // ==================================================
 
-const sendMessage = async () => {
-  const now = Date.now();
+  const loadMessages = async () => {
+    if (!id) return;
 
-  if (now - lastSent < 1000) return;
-  if (!chatText.trim() || !id) return;
-
-  try {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      throw new Error("Please log in to send a message.");
-    }
-
-    const textValue = chatText.trim();
-
-    const { data: insertedMessage, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from("live_chat_messages")
-      .insert({
-        stream_id: String(id),
-        sender_id: user.id,
-        text: textValue,
-      })
       .select("*")
-      .single();
+      .eq("stream_id", String(id))
+      .order("created_at", { ascending: false })
+      .limit(50);
 
     if (error) {
-      throw error;
-    }
-
-    setLastSent(now);
-    setChatText("");
-
-    setMessages((previous) => {
-      if (
-        previous.some(
-          (message) => message.id === insertedMessage.id
-        )
-      ) {
-        return previous;
-      }
-
-      return [insertedMessage, ...previous].slice(0, 50);
-    });
-  } catch (error: any) {
-    console.error("Viewer chat error:", error);
-
-    if (Platform.OS === "web") {
-      window.alert(
-        error?.message || "Could not send your message."
-      );
-    } else {
-      const { Alert } = require("react-native");
-
-      Alert.alert(
-        "Message failed",
-        error?.message || "Could not send your message."
-      );
-    }
-  }
-};
-// ==================================================
-// 🎤 REQUEST TO SPEAK
-// ==================================================
-
-const requestToSpeak = async () => {
-  if (!id || speakerBusy) return;
-
-  setSpeakerBusy(true);
-  setSpeakerMessage("");
-
-  try {
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    if (sessionError || !session?.access_token) {
-      throw new Error("Please log in to request to speak.");
-    }
-
-    const response = await fetch(
-      "https://livekit-server-c0z9.onrender.com/speaker/request",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          streamId: String(id),
-        }),
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result?.error || "Unable to send request.");
-    }
-
-    const status = result.request?.status;
-
-    if (status === "approved") {
-      setSpeakerStatus("approved");
-      setSpeakerMessage("You are approved to speak!");
-
-      const newToken = await fetchLiveKitToken(String(id));
-      setViewer(newToken);
-    } else {
-      setSpeakerStatus("pending");
-      setSpeakerMessage("Your request has been sent. Waiting for the host.");
-    }
-
-  } catch (error: any) {
-    setSpeakerMessage(
-      error?.message || "Could not request to speak."
-    );
-  } finally {
-    setSpeakerBusy(false);
-  }
-};
-
-// ==================================================
-// 🎤 CHECK SPEAKER APPROVAL
-// ==================================================
-
-const checkSpeakerStatus = async () => {
-  if (!id || speakerCheckingRef.current) return;
-
-  speakerCheckingRef.current = true;
-
-  try {
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    if (sessionError || !session?.access_token) return;
-
-    const response = await fetch(
-      `https://livekit-server-c0z9.onrender.com/speaker/status?streamId=${encodeURIComponent(
-        String(id)
-      )}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        setSpeakerMessage("This live stream has ended.");
-      }
+      console.log("Live chat load error:", error.message);
       return;
     }
 
-    const status = result.request?.status;
+    setMessages(data ?? []);
+  };
 
-    if (status === "pending") {
-      setSpeakerStatus("pending");
-      setSpeakerMessage("Waiting for the host to approve your request.");
-    }
+  // ==================================================
+  // 🔄 LIVE CHAT REALTIME + INITIAL LOAD
+  // ==================================================
 
-    if (status === "rejected") {
-      setSpeakerStatus("rejected");
-      setSpeakerMessage("Your request was not approved. You can request again.");
-    }
+  useEffect(() => {
+    if (!id) return;
 
-    if (status === "approved" && !viewer?.canPublish) {
-      setSpeakerStatus("approved");
-      setSpeakerMessage("The host approved you! Connecting your microphone and camera...");
+    setLoading(true);
+    setViewer(null);
+    setCameraEnabled(false);
+    setSpeakerStatus("none");
+    setSpeakerMessage("");
+    setViewerError("");
 
-      const newToken = await fetchLiveKitToken(String(id));
+    loadLive();
+    loadMessages();
 
-      if (newToken.canPublish === true) {
-        setViewer(newToken);
-        setSpeakerMessage("You are now approved to speak!");
+    const channel = supabase
+      .channel("live-chat-" + String(id))
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "live_chat_messages",
+          filter: `stream_id=eq.${String(id)}`,
+        },
+        (payload: any) => {
+          setMessages((previous) => {
+            const incoming = payload.new;
+
+            if (
+              previous.some(
+                (message) => message.id === incoming.id
+              )
+            ) {
+              return previous;
+            }
+
+            return [incoming, ...previous].slice(0, 50);
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  // ==================================================
+  // 💬 SEND LIVE CHAT MESSAGE — VIEWER
+  // ==================================================
+
+  const sendMessage = async () => {
+    const now = Date.now();
+
+    if (now - lastSent < 1000) return;
+    if (!chatText.trim() || !id) return;
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error("Please log in to send a message.");
+      }
+
+      const textValue = chatText.trim();
+
+      const { data: insertedMessage, error } = await (
+        supabase as any
+      )
+        .from("live_chat_messages")
+        .insert({
+          stream_id: String(id),
+          sender_id: user.id,
+          text: textValue,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setLastSent(now);
+      setChatText("");
+
+      setMessages((previous) => {
+        if (
+          previous.some(
+            (message) => message.id === insertedMessage.id
+          )
+        ) {
+          return previous;
+        }
+
+        return [insertedMessage, ...previous].slice(0, 50);
+      });
+    } catch (error: any) {
+      console.error("Viewer chat error:", error);
+
+      if (Platform.OS === "web") {
+        window.alert(
+          error?.message || "Could not send your message."
+        );
       } else {
-        setSpeakerMessage("Approval received. Please wait while your speaking access is prepared.");
+        const { Alert } = require("react-native");
+
+        Alert.alert(
+          "Message failed",
+          error?.message || "Could not send your message."
+        );
       }
     }
+  };
 
-  } catch (error) {
-    console.log("Speaker status check error:", error);
-  } finally {
-    speakerCheckingRef.current = false;
-  }
-};
+  // ==================================================
+  // 🎤 REQUEST TO SPEAK
+  // ==================================================
 
-// ==================================================
-// 🔄 AUTOMATIC SPEAKER APPROVAL CHECK
-// ==================================================
+  const requestToSpeak = async () => {
+    if (!id || speakerBusy) return;
 
-useEffect(() => {
-  if (
-    !id ||
-    !live ||
-    live.status !== "live" ||
-    live.is_active !== true ||
-    !viewer ||
-    viewer.canPublish === true
-  ) {
-    return;
-  }
+    setSpeakerBusy(true);
+    setSpeakerMessage("");
 
-  checkSpeakerStatus();
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-  const interval = setInterval(() => {
+      if (sessionError || !session?.access_token) {
+        throw new Error("Please log in to request to speak.");
+      }
+
+      const response = await fetch(
+        "https://livekit-server-c0z9.onrender.com/speaker/request",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            streamId: String(id),
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error || "Unable to send request."
+        );
+      }
+
+      const status = result.request?.status;
+
+      if (status === "approved") {
+        setSpeakerStatus("approved");
+        setSpeakerMessage(
+          "You are approved! Your microphone is ready. You can turn on your camera whenever you want."
+        );
+
+        const newToken = await fetchLiveKitToken(String(id));
+
+        setViewer(newToken);
+        setCameraEnabled(false);
+      } else {
+        setSpeakerStatus("pending");
+        setSpeakerMessage(
+          "Your request has been sent. Waiting for the host."
+        );
+      }
+    } catch (error: any) {
+      setSpeakerMessage(
+        error?.message || "Could not request to speak."
+      );
+    } finally {
+      setSpeakerBusy(false);
+    }
+  };
+
+  // ==================================================
+  // 🎤 CHECK SPEAKER APPROVAL
+  // ==================================================
+
+  const checkSpeakerStatus = async () => {
+    if (!id || speakerCheckingRef.current) return;
+
+    speakerCheckingRef.current = true;
+
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) return;
+
+      const response = await fetch(
+        `https://livekit-server-c0z9.onrender.com/speaker/status?streamId=${encodeURIComponent(
+          String(id)
+        )}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setSpeakerMessage("This live stream has ended.");
+        }
+
+        return;
+      }
+
+      const status = result.request?.status;
+
+      if (status === "pending") {
+        setSpeakerStatus("pending");
+        setSpeakerMessage(
+          "Waiting for the host to approve your request."
+        );
+      }
+
+      if (status === "rejected") {
+        setSpeakerStatus("rejected");
+        setSpeakerMessage(
+          "Your request was not approved. You can request again."
+        );
+      }
+
+      if (
+        status === "approved" &&
+        !viewer?.canPublish
+      ) {
+        setSpeakerStatus("approved");
+
+        setSpeakerMessage(
+          "The host approved you! Preparing your microphone..."
+        );
+
+        const newToken = await fetchLiveKitToken(String(id));
+
+        if (newToken.canPublish === true) {
+          setViewer(newToken);
+          setCameraEnabled(false);
+
+          setSpeakerMessage(
+            "You are now approved to speak. Your camera is off."
+          );
+        } else {
+          setSpeakerMessage(
+            "Approval received. Please wait while your speaking access is prepared."
+          );
+        }
+      }
+    } catch (error) {
+      console.log("Speaker status check error:", error);
+    } finally {
+      speakerCheckingRef.current = false;
+    }
+  };
+
+  // ==================================================
+  // 🔄 AUTOMATIC SPEAKER APPROVAL CHECK
+  // ==================================================
+
+  useEffect(() => {
+    if (
+      !id ||
+      !live ||
+      live.status !== "live" ||
+      live.is_active !== true ||
+      !viewer ||
+      viewer.canPublish === true
+    ) {
+      return;
+    }
+
     checkSpeakerStatus();
-  }, 5000);
 
-  return () => clearInterval(interval);
-}, [id, live, viewer]);
+    const interval = setInterval(() => {
+      checkSpeakerStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [id, live, viewer]);
+
+  // ==================================================
+  // 📷 CAMERA CONTROL
+  // ==================================================
+
+  const toggleCamera = () => {
+    if (viewer?.canPublish !== true) return;
+
+    setCameraEnabled((previous) => !previous);
+  };
+
   // ==================================================
   // 📺 YOUTUBE FALLBACK
   // ==================================================
@@ -533,24 +591,25 @@ useEffect(() => {
       ================================================== */}
 
       <View
-  style={{
-    height: expandedVideo
-      ? Dimensions.get("window").height * 0.78
-      : screenWidth * 0.56,
-    width: "100%",
-    borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "black",
-    position: "relative",
-  }}
->
+        style={{
+          height: expandedVideo
+            ? Dimensions.get("window").height * 0.78
+            : screenWidth * 0.56,
+          width: "100%",
+          borderRadius: 12,
+          overflow: "hidden",
+          backgroundColor: "black",
+          position: "relative",
+        }}
+      >
         {viewer ? (
           <LiveKitViewer
-  key={`${viewer.token}`}
-  serverUrl={viewer.url}
-  token={viewer.token}
-  canPublish={viewer.canPublish === true}
-/>
+            key={`${viewer.token}`}
+            serverUrl={viewer.url}
+            token={viewer.token}
+            canPublish={viewer.canPublish === true}
+            cameraEnabled={cameraEnabled}
+          />
         ) : embedUrl ? (
           Platform.OS === "web" ? (
             <iframe
@@ -623,214 +682,289 @@ useEffect(() => {
             </Text>
           </TouchableOpacity>
         )}
-        
       </View>
+
       {/* ==================================================
-    🎤 REQUEST TO SPEAK
-================================================== */}
+          🎤 REQUEST TO SPEAK
+      ================================================== */}
 
-{live.status === "live" &&
- live.is_active === true &&
- viewer &&
- viewer.canPublish !== true && (
-  <View
-    style={{
-      marginTop: 12,
-      padding: 14,
-      backgroundColor: "#07111F",
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#E8B84A",
-    }}
-  >
-    <Text
-      style={{
-        color: "#E8B84A",
-        fontWeight: "900",
-        fontSize: 15,
-        marginBottom: 6,
-      }}
-    >
-      🎤 Join the Conversation
-    </Text>
+      {live.status === "live" &&
+        live.is_active === true &&
+        viewer &&
+        viewer.canPublish !== true && (
+          <View
+            style={{
+              marginTop: 12,
+              padding: 14,
+              backgroundColor: "#07111F",
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "#E8B84A",
+            }}
+          >
+            <Text
+              style={{
+                color: "#E8B84A",
+                fontWeight: "900",
+                fontSize: 15,
+                marginBottom: 6,
+              }}
+            >
+              🎤 Join the Conversation
+            </Text>
 
-    <Text
-      style={{
-        color: "white",
-        fontSize: 12,
-        marginBottom: 12,
-      }}
-    >
-      Request permission from the host to join this live session with your camera and microphone.
-    </Text>
+            <Text
+              style={{
+                color: "white",
+                fontSize: 12,
+                marginBottom: 12,
+              }}
+            >
+              Request permission from the host to join this
+              live session as an audio speaker. You can choose
+              whether to turn on your camera after approval.
+            </Text>
 
-    <TouchableOpacity
-      onPress={requestToSpeak}
-      disabled={speakerBusy || speakerStatus === "pending"}
-      style={{
-        backgroundColor:
-          speakerStatus === "pending" ? "#64748b" : "#E8B84A",
-        padding: 13,
-        borderRadius: 10,
-        alignItems: "center",
-        opacity: speakerBusy ? 0.6 : 1,
-      }}
-    >
-      {speakerBusy ? (
-        <ActivityIndicator color="#07111F" />
-      ) : (
-        <Text
+            <TouchableOpacity
+              onPress={requestToSpeak}
+              disabled={
+                speakerBusy || speakerStatus === "pending"
+              }
+              style={{
+                backgroundColor:
+                  speakerStatus === "pending"
+                    ? "#64748b"
+                    : "#E8B84A",
+                padding: 13,
+                borderRadius: 10,
+                alignItems: "center",
+                opacity: speakerBusy ? 0.6 : 1,
+              }}
+            >
+              {speakerBusy ? (
+                <ActivityIndicator color="#07111F" />
+              ) : (
+                <Text
+                  style={{
+                    color: "#07111F",
+                    fontWeight: "900",
+                  }}
+                >
+                  {speakerStatus === "pending"
+                    ? "REQUEST PENDING..."
+                    : speakerStatus === "rejected"
+                      ? "REQUEST TO SPEAK AGAIN"
+                      : "REQUEST TO SPEAK"}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {speakerMessage ? (
+              <Text
+                style={{
+                  color:
+                    speakerStatus === "rejected"
+                      ? "#FCA5A5"
+                      : "#E8B84A",
+                  marginTop: 10,
+                  textAlign: "center",
+                  fontSize: 12,
+                }}
+              >
+                {speakerMessage}
+              </Text>
+            ) : null}
+          </View>
+        )}
+
+      {/* ==================================================
+          🎤 APPROVED SPEAKER CONTROLS
+      ================================================== */}
+
+      {viewer?.canPublish === true && (
+        <View
           style={{
-            color: "#07111F",
-            fontWeight: "900",
+            marginTop: 12,
+            padding: 12,
+            backgroundColor: "#07111F",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "#E8B84A",
           }}
         >
-          {speakerStatus === "pending"
-            ? "REQUEST PENDING..."
-            : speakerStatus === "rejected"
-              ? "REQUEST TO SPEAK AGAIN"
-              : "REQUEST TO SPEAK"}
-        </Text>
+          <Text
+            style={{
+              color: "#E8B84A",
+              fontWeight: "900",
+              textAlign: "center",
+              marginBottom: 10,
+            }}
+          >
+            🎤 You are approved as a guest speaker!
+          </Text>
+
+          <Text
+            style={{
+              color: "white",
+              textAlign: "center",
+              fontSize: 12,
+              marginBottom: 12,
+            }}
+          >
+            Your microphone is enabled. You can speak with
+            your camera off or turn it on below.
+          </Text>
+
+          <TouchableOpacity
+            onPress={toggleCamera}
+            style={{
+              backgroundColor: cameraEnabled
+                ? "#DC2626"
+                : "#E8B84A",
+              padding: 13,
+              borderRadius: 10,
+              alignItems: "center",
+            }}
+          >
+            <Text
+              style={{
+                color: cameraEnabled ? "white" : "#07111F",
+                fontWeight: "900",
+              }}
+            >
+              {cameraEnabled
+                ? "📷 TURN CAMERA OFF"
+                : "📷 TURN CAMERA ON"}
+            </Text>
+          </TouchableOpacity>
+
+          <Text
+            style={{
+              color: "#CBD5E1",
+              fontSize: 11,
+              textAlign: "center",
+              marginTop: 8,
+            }}
+          >
+            Camera: {cameraEnabled ? "ON" : "OFF"}
+          </Text>
+        </View>
       )}
-    </TouchableOpacity>
 
-    {speakerMessage ? (
-      <Text
-        style={{
-          color: speakerStatus === "rejected" ? "#FCA5A5" : "#E8B84A",
-          marginTop: 10,
-          textAlign: "center",
-          fontSize: 12,
-        }}
-      >
-        {speakerMessage}
-      </Text>
-    ) : null}
-  </View>
-)}
-
-{viewer?.canPublish === true && (
-  <View
-    style={{
-      marginTop: 12,
-      padding: 12,
-      backgroundColor: "#DCFCE7",
-      borderRadius: 10,
-    }}
-  >
-    <Text
-      style={{
-        color: "#166534",
-        fontWeight: "900",
-        textAlign: "center",
-      }}
-    >
-      🎤 You are approved as a guest speaker!
-    </Text>
-  </View>
-)}
-      {/* FULLSCREEN CONTROL */}
-
-<TouchableOpacity
-  onPress={() => setExpandedVideo((previous) => !previous)}
-  style={{
-    position: "absolute",
-    top: 12,
-    right: 12,
-    zIndex: 20,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 10,
-  }}
->
-  <Text style={{ color: "white", fontWeight: "900" }}>
-    {expandedVideo ? "✕ CLOSE" : "⛶ EXPAND"}
-  </Text>
-</TouchableOpacity>
-
-{/* COMMENTS OVER VIDEO */}
-
-{expandedVideo && (
-  <View
-    pointerEvents="box-none"
-    style={{
-      position: "absolute",
-      bottom: 0,
-      left: 0,
-      right: 0,
-      padding: 12,
-      backgroundColor: "rgba(0,0,0,0.5)",
-    }}
-  >
-    <Text
-      style={{
-        color: "#E8B84A",
-        fontWeight: "900",
-        marginBottom: 8,
-      }}
-    >
-      LIVE COMMENTS
-    </Text>
-
-    <FlatList
-      data={messages.slice(0, 6).reverse()}
-      inverted={false}
-      keyExtractor={(item) => item.id.toString()}
-      style={{ maxHeight: 125 }}
-      renderItem={({ item }) => (
-        <Text
-          style={{
-            color: "white",
-            fontSize: 13,
-            paddingVertical: 4,
-          }}
-        >
-          {item.text}
-        </Text>
-      )}
-    />
-
-    <View
-      style={{
-        flexDirection: "row",
-        marginTop: 8,
-        gap: 8,
-      }}
-    >
-      <TextInput
-        value={chatText}
-        onChangeText={setChatText}
-        placeholder="Write a comment..."
-        placeholderTextColor="#BBBBBB"
-        returnKeyType="send"
-        onSubmitEditing={sendMessage}
-        style={{
-          flex: 1,
-          backgroundColor: "white",
-          color: "#111827",
-          borderRadius: 10,
-          paddingHorizontal: 12,
-          minHeight: 42,
-        }}
-      />
+      {/* ==================================================
+          ⛶ FULLSCREEN CONTROL
+      ================================================== */}
 
       <TouchableOpacity
-        onPress={sendMessage}
+        onPress={() =>
+          setExpandedVideo((previous) => !previous)
+        }
         style={{
-          backgroundColor: "#E8B84A",
+          position: "absolute",
+          top: 12,
+          right: 12,
+          zIndex: 20,
+          backgroundColor: "rgba(0,0,0,0.75)",
           paddingHorizontal: 14,
-          justifyContent: "center",
+          paddingVertical: 10,
           borderRadius: 10,
         }}
       >
-        <Text style={{ color: "#07111F", fontWeight: "900" }}>
-          Send
+        <Text style={{ color: "white", fontWeight: "900" }}>
+          {expandedVideo ? "✕ CLOSE" : "⛶ EXPAND"}
         </Text>
       </TouchableOpacity>
-    </View>
-  </View>
-)}
+
+      {/* ==================================================
+          💬 COMMENTS OVER VIDEO
+      ================================================== */}
+
+      {expandedVideo && (
+        <View
+          pointerEvents="box-none"
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: 12,
+            backgroundColor: "rgba(0,0,0,0.5)",
+          }}
+        >
+          <Text
+            style={{
+              color: "#E8B84A",
+              fontWeight: "900",
+              marginBottom: 8,
+            }}
+          >
+            LIVE COMMENTS
+          </Text>
+
+          <FlatList
+            data={messages.slice(0, 6).reverse()}
+            inverted={false}
+            keyExtractor={(item) => item.id.toString()}
+            style={{ maxHeight: 125 }}
+            renderItem={({ item }) => (
+              <Text
+                style={{
+                  color: "white",
+                  fontSize: 13,
+                  paddingVertical: 4,
+                }}
+              >
+                {item.text}
+              </Text>
+            )}
+          />
+
+          <View
+            style={{
+              flexDirection: "row",
+              marginTop: 8,
+              gap: 8,
+            }}
+          >
+            <TextInput
+              value={chatText}
+              onChangeText={setChatText}
+              placeholder="Write a comment..."
+              placeholderTextColor="#BBBBBB"
+              returnKeyType="send"
+              onSubmitEditing={sendMessage}
+              style={{
+                flex: 1,
+                backgroundColor: "white",
+                color: "#111827",
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                minHeight: 42,
+              }}
+            />
+
+            <TouchableOpacity
+              onPress={sendMessage}
+              style={{
+                backgroundColor: "#E8B84A",
+                paddingHorizontal: 14,
+                justifyContent: "center",
+                borderRadius: 10,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#07111F",
+                  fontWeight: "900",
+                }}
+              >
+                Send
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* ==================================================
           🛍️ PRODUCT DETAILS
       ================================================== */}
@@ -976,7 +1110,9 @@ useEffect(() => {
         </>
       )}
 
-      {/* ▶️ OPEN OLD YOUTUBE STREAM */}
+      {/* ==================================================
+          ▶️ OPEN OLD YOUTUBE STREAM
+      ================================================== */}
 
       {live.youtube_url && (
         <TouchableOpacity
@@ -997,7 +1133,9 @@ useEffect(() => {
         </TouchableOpacity>
       )}
 
-      {/* 🏠 BACK TO HOME */}
+      {/* ==================================================
+          🏠 BACK TO HOME
+      ================================================== */}
 
       <TouchableOpacity
         onPress={() => router.replace("/browse")}

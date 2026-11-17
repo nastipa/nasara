@@ -1,137 +1,201 @@
-// ==================================================
-// 🟢 NASARA LIVEKIT NATIVE VIEWER
-// 🟢 ANDROID + IOS
-// 🟢 MULTIPLE APPROVED GUEST SPEAKERS
-// 🟢 ALL PUBLISHED VIDEO TRACKS
-// ==================================================
-
 import { useEffect } from "react";
 
 import {
-  ScrollView,
+  AudioSession,
+  isTrackReference,
+  LiveKitRoom,
+  registerGlobals,
+  useLocalParticipant,
+  useTracks,
+  VideoTrack,
+} from "@livekit/react-native";
+
+import {
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-import {
-  AudioSession,
-  LiveKitRoom,
-  VideoTrack,
-  registerGlobals,
-  useTracks,
-} from "@livekit/react-native";
-
 import { Track } from "livekit-client";
-
-// ==================================================
-// ⚙️ REGISTER WEBRTC
-// ==================================================
 
 registerGlobals();
 
 // ==================================================
-// 📦 TYPES
+// 📦 PROPS
 // ==================================================
 
 interface LiveKitViewerProps {
   serverUrl: string;
   token: string;
   canPublish?: boolean;
+  cameraEnabled?: boolean;
 }
 
 // ==================================================
-// 🎥 MULTI-SPEAKER VIDEO GRID
+// 📷 LOCAL CAMERA CONTROLLER
 // ==================================================
 
-function RemoteVideoGrid() {
+function CameraController({
+  canPublish,
+  cameraEnabled,
+}: {
+  canPublish: boolean;
+  cameraEnabled: boolean;
+}) {
+  const { localParticipant } = useLocalParticipant();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const updateCamera = async () => {
+      try {
+        await localParticipant.setCameraEnabled(
+          canPublish && cameraEnabled
+        );
+      } catch (error) {
+        if (!cancelled) {
+          console.log("LiveKit camera control error:", error);
+        }
+      }
+    };
+
+    updateCamera();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localParticipant, canPublish, cameraEnabled]);
+
+  return null;
+}
+
+// ==================================================
+// 🎥 PARTICIPANT GRID
+// ==================================================
+
+function ParticipantGrid() {
   const tracks = useTracks([
     Track.Source.Camera,
-    Track.Source.ScreenShare,
+    Track.Source.Microphone,
   ]);
 
-  // Collect every available published video track.
-  const publishedTracks = tracks.filter(
-    (item) => item.publication
+  const participants = new Map<
+    string,
+    {
+      identity: string;
+      name: string;
+      camera?: any;
+      microphone?: any;
+    }
+  >();
+
+  tracks.forEach((reference: any) => {
+    if (!isTrackReference(reference)) return;
+
+    const participant = reference.participant;
+
+    if (!participant) return;
+
+    const identity = participant.identity;
+
+    if (!participants.has(identity)) {
+      participants.set(identity, {
+        identity,
+        name: participant.name || identity,
+      });
+    }
+
+    const entry = participants.get(identity)!;
+
+    if (reference.source === Track.Source.Camera) {
+      entry.camera = reference;
+    }
+
+    if (reference.source === Track.Source.Microphone) {
+      entry.microphone = reference;
+    }
+  });
+
+  const visibleParticipants = Array.from(
+    participants.values()
+  ).filter(
+    (participant) =>
+      participant.camera || participant.microphone
   );
 
-  if (publishedTracks.length === 0) {
+  if (visibleParticipants.length === 0) {
     return (
-      <View style={styles.waiting}>
-        <Text style={styles.waitingText}>
-          Waiting for broadcaster video...
+      <View style={styles.empty}>
+        <Text style={styles.emptyText}>
+          Waiting for the host and guest speakers...
         </Text>
       </View>
     );
   }
 
-  const columns = publishedTracks.length === 1 ? 1 : 2;
-
-  const tileWidth =
-    publishedTracks.length === 1
-      ? "100%"
-      : "50%";
-
-  const tileHeight =
-    publishedTracks.length <= 2
-      ? "100%"
-      : 240;
-
   return (
-    <ScrollView
-      style={styles.grid}
-      contentContainerStyle={styles.gridContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {publishedTracks.map((trackRef) => (
+    <View style={styles.grid}>
+      {visibleParticipants.map((participant) => (
         <View
-          key={`${trackRef.participant.identity}-${trackRef.source}`}
-          style={[
-            styles.speakerTile,
-            {
-              width: tileWidth,
-              height: tileHeight,
-            },
-          ]}
+          key={participant.identity}
+          style={styles.tile}
         >
-          <VideoTrack
-            trackRef={trackRef}
-            style={styles.video}
-          />
+          {participant.camera ? (
+            <VideoTrack
+              trackRef={participant.camera}
+              style={styles.video}
+            />
+          ) : (
+            <View style={styles.audioTile}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {participant.name
+                    ?.charAt(0)
+                    ?.toUpperCase() || "N"}
+                </Text>
+              </View>
 
-          {/* SPEAKER NAME */}
-          <View style={styles.speakerNameContainer}>
-            <Text
-              style={styles.speakerName}
-              numberOfLines={1}
-            >
-              {trackRef.participant.identity}
-            </Text>
-          </View>
+              <Text style={styles.audioName}>
+                {participant.name}
+              </Text>
+
+              <Text style={styles.audioLabel}>
+                Audio speaker
+              </Text>
+            </View>
+          )}
+
+          {participant.camera && (
+            <View style={styles.nameTag}>
+              <Text style={styles.nameText}>
+                {participant.name}
+              </Text>
+            </View>
+          )}
         </View>
       ))}
-    </ScrollView>
+    </View>
   );
 }
 
 // ==================================================
-// 📺 VIEWER / APPROVED SPEAKER COMPONENT
+// 🎥 LIVEKIT VIEWER
 // ==================================================
 
 export default function LiveKitViewer({
   serverUrl,
   token,
   canPublish = false,
+  cameraEnabled = false,
 }: LiveKitViewerProps) {
+  // ==================================================
+  // 🔊 AUDIO SESSION
+  // ==================================================
 
   useEffect(() => {
-    let mounted = true;
-
     const startAudio = async () => {
       try {
-        if (mounted) {
-          await AudioSession.startAudioSession();
-        }
+        await AudioSession.startAudioSession();
       } catch (error) {
         console.log(
           "LiveKit audio session error:",
@@ -143,8 +207,6 @@ export default function LiveKitViewer({
     startAudio();
 
     return () => {
-      mounted = false;
-
       AudioSession.stopAudioSession().catch((error) => {
         console.log(
           "LiveKit audio stop error:",
@@ -154,18 +216,29 @@ export default function LiveKitViewer({
     };
   }, []);
 
+  // ==================================================
+  // 🎬 LIVEKIT ROOM
+  // ==================================================
+
   return (
-    <View style={styles.container}>
-      <LiveKitRoom
-        serverUrl={serverUrl}
-        token={token}
-        connect={true}
-        audio={canPublish}
-        video={canPublish}
-      >
-        <RemoteVideoGrid />
-      </LiveKitRoom>
-    </View>
+    <LiveKitRoom
+      serverUrl={serverUrl}
+      token={token}
+      connect={true}
+      audio={canPublish}
+      video={false}
+      options={{
+        adaptiveStream: true,
+        dynacast: true,
+      }}
+    >
+      <CameraController
+        canPublish={canPublish}
+        cameraEnabled={cameraEnabled}
+      />
+
+      <ParticipantGrid />
+    </LiveKitRoom>
   );
 }
 
@@ -174,29 +247,21 @@ export default function LiveKitViewer({
 // ==================================================
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "black",
-  },
-
   grid: {
-    flex: 1,
-    backgroundColor: "black",
-  },
-
-  gridContent: {
-    flexGrow: 1,
+    width: "100%",
     flexDirection: "row",
     flexWrap: "wrap",
-    alignContent: "flex-start",
+    justifyContent: "center",
+    gap: 8,
   },
 
-  speakerTile: {
-    position: "relative",
-    backgroundColor: "#111",
-    borderWidth: 1,
-    borderColor: "#222",
+  tile: {
+    width: "48%",
+    aspectRatio: 1,
+    backgroundColor: "#111827",
+    borderRadius: 12,
     overflow: "hidden",
+    position: "relative",
   },
 
   video: {
@@ -204,33 +269,69 @@ const styles = StyleSheet.create({
     height: "100%",
   },
 
-  speakerNameContainer: {
+  audioTile: {
+    flex: 1,
+    backgroundColor: "#172033",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 10,
+  },
+
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#C99A35",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  avatarText: {
+    color: "#111827",
+    fontSize: 26,
+    fontWeight: "bold",
+  },
+
+  audioName: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+
+  audioLabel: {
+    color: "#D1D5DB",
+    fontSize: 11,
+    marginTop: 4,
+  },
+
+  nameTag: {
     position: "absolute",
-    bottom: 8,
-    left: 8,
-    right: 8,
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(0,0,0,0.7)",
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    bottom: 6,
+    left: 6,
+    right: 6,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    padding: 5,
     borderRadius: 5,
   },
 
-  speakerName: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "600",
+  nameText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    textAlign: "center",
   },
 
-  waiting: {
-    flex: 1,
+  empty: {
+    minHeight: 120,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "black",
+    backgroundColor: "#111827",
+    borderRadius: 12,
   },
 
-  waitingText: {
-    color: "white",
-    fontSize: 14,
+  emptyText: {
+    color: "#FFFFFF",
+    fontSize: 13,
   },
 });
