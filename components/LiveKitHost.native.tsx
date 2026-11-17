@@ -1,6 +1,6 @@
 // 📱 ==================================================
 // 📱 NASARA LIVEKIT HOST — ANDROID + IOS
-// 📱 LIVE VIEWER COUNT
+// 📱 LIVE VIEWER COUNT + GUEST SPEAKER AUDIO
 // 📱 ==================================================
 
 import { useEffect } from "react";
@@ -96,9 +96,13 @@ export default function LiveKitHost({
   onViewerCountChange,
 }: Props) {
   useEffect(() => {
+    let mounted = true;
+
     const startAudio = async () => {
       try {
-        await AudioSession.startAudioSession();
+        if (mounted) {
+          await AudioSession.startAudioSession();
+        }
       } catch (error) {
         console.warn(
           "Could not start LiveKit audio session:",
@@ -110,6 +114,8 @@ export default function LiveKitHost({
     startAudio();
 
     return () => {
+      mounted = false;
+
       AudioSession.stopAudioSession().catch((error) => {
         console.warn(
           "Could not stop LiveKit audio session:",

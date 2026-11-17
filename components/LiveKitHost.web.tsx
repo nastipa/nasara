@@ -1,12 +1,13 @@
 // 🌐 ==================================================
-// 🌐 NASARA LIVEKIT HOST — WEB
-// 🌐 LIVE VIEWER COUNT
-// 🌐 ==================================================
+ // 🌐 NASARA LIVEKIT HOST — WEB
+ // 🌐 LIVE VIEWER COUNT + GUEST SPEAKER AUDIO
+ // 🌐 ==================================================
 
 import { useEffect } from "react";
 
 import {
   LiveKitRoom,
+  RoomAudioRenderer,
   useRemoteParticipants,
   useTracks,
   VideoTrack,
@@ -112,6 +113,9 @@ export default function LiveKitHost({
       <WebViewerCount
         onViewerCountChange={onViewerCountChange}
       />
+
+      {/* 🔊 PLAY REMOTE GUEST SPEAKER AUDIO */}
+      <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
