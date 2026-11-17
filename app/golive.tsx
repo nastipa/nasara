@@ -2,6 +2,8 @@
 // 🔴 NASARA — GO LIVE
 // 🔴 WEB + ANDROID + IOS
 // 🔴 LIVEKIT VIDEO BROADCASTING
+// 🔴 MULTIPLE GUEST SPEAKERS
+// 🔴 HOST MUTE / UNMUTE / REMOVE CONTROLS
 // 🔴 ==================================================
 
 import { Ionicons } from "@expo/vector-icons";
@@ -33,6 +35,9 @@ import { supabase } from "../lib/supabase";
 const UPLOAD_SERVER =
   "https://nasara-upload-server.onrender.com";
 
+const LIVEKIT_SERVER =
+  "https://livekit-server-c0z9.onrender.com";
+
 const COLORS = {
   background: "#07111F",
   card: "#101E30",
@@ -56,6 +61,7 @@ type LiveMessage = {
   text: string;
   created_at: string;
 };
+
 type ActiveStream = {
   id: string;
   title: string;
@@ -73,6 +79,12 @@ type SpeakerRequest = {
   user_id: string;
   status: "pending" | "approved" | "rejected";
   created_at: string;
+};
+
+type ApprovedSpeaker = SpeakerRequest & {
+  host_muted?: boolean;
+  participant_name?: string | null;
+  is_connected?: boolean;
 };
 
 // 🟡 ==================================================
@@ -114,11 +126,17 @@ export default function GoLiveScreen() {
   const [expandedVideo, setExpandedVideo] = useState(false);
 
   // ==========================================
-// 🎤 GUEST SPEAKER STATES
-// ==========================================
+  // 🎤 GUEST SPEAKER STATES
+  // ==========================================
 
-const [speakerRequests, setSpeakerRequests] = useState<SpeakerRequest[]>([]);
-const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+  const [speakerRequests, setSpeakerRequests] =
+    useState<SpeakerRequest[]>([]);
+
+  const [approvedSpeakers, setApprovedSpeakers] =
+    useState<ApprovedSpeaker[]>([]);
+
+  const [busyRequestId, setBusyRequestId] =
+    useState<string | null>(null);
 
   // ==========================================
   // 🔒 REFS
@@ -139,30 +157,155 @@ const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
     Alert.alert(messageTitle, message);
   };
 
+  // ==========================================
+  // 🔐 GET ACCESS TOKEN
+  // ==========================================
+
+  const getAccessToken = useCallback(async () => {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
+
+    if (error || !session?.access_token) {
+      throw new Error("Please log in again.");
+    }
+
+    return session.access_token;
+  }, []);
 
   // ==========================================
-// 🎤 LOAD PENDING SPEAKER REQUESTS
-// ==========================================
+  // 🎤 LOAD PENDING SPEAKER REQUESTS
+  // ==========================================
 
-const loadSpeakerRequests = useCallback(
-  async (streamId: string) => {
-    try {
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
+  const loadSpeakerRequests = useCallback(
+    async (streamId: string) => {
+      try {
+        const accessToken = await getAccessToken();
 
-      if (sessionError || !session?.access_token) {
-        return;
+        const response = await fetch(
+          `${LIVEKIT_SERVER}/speaker/requests?streamId=${encodeURIComponent(streamId)}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result?.error || "Could not load speaker requests."
+          );
+        }
+
+        setSpeakerRequests(result.requests || []);
+      } catch (error) {
+        console.warn("Speaker requests error:", error);
       }
+    },
+    [getAccessToken]
+  );
+
+  // ==========================================
+  // 🎤 LOAD APPROVED SPEAKERS
+  // ==========================================
+
+  const loadApprovedSpeakers = useCallback(
+    async (streamId: string) => {
+      try {
+        const accessToken = await getAccessToken();
+
+        const response = await fetch(
+          `${LIVEKIT_SERVER}/speaker/approved?streamId=${encodeURIComponent(streamId)}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result?.error || "Could not load approved speakers."
+          );
+        }
+
+        setApprovedSpeakers(result.speakers || []);
+      } catch (error) {
+        console.warn("Approved speakers error:", error);
+      }
+    },
+    [getAccessToken]
+  );
+
+  // ==========================================
+  // 🎤 REFRESH ALL SPEAKER DATA
+  // ==========================================
+
+  const refreshSpeakers = useCallback(
+    async (streamId: string) => {
+      await Promise.all([
+        loadSpeakerRequests(streamId),
+        loadApprovedSpeakers(streamId),
+      ]);
+    },
+    [loadSpeakerRequests, loadApprovedSpeakers]
+  );
+
+  // ==========================================
+  // 🎤 AUTOMATIC SPEAKER REFRESH
+  // ==========================================
+
+  useEffect(() => {
+    if (!activeLiveId) {
+      setSpeakerRequests([]);
+      setApprovedSpeakers([]);
+      return;
+    }
+
+    refreshSpeakers(activeLiveId);
+
+    const interval = setInterval(() => {
+      refreshSpeakers(activeLiveId);
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [activeLiveId, refreshSpeakers]);
+
+  // ==========================================
+  // 🎤 APPROVE OR REJECT SPEAKER
+  // ==========================================
+
+  const handleSpeakerDecision = async (
+    requestId: string,
+    action: "approve" | "reject"
+  ) => {
+    if (!activeLiveId || busyRequestId) return;
+
+    setBusyRequestId(requestId);
+
+    try {
+      const accessToken = await getAccessToken();
 
       const response = await fetch(
-        `https://livekit-server-c0z9.onrender.com/speaker/requests?streamId=${encodeURIComponent(streamId)}`,
+        `${LIVEKIT_SERVER}/speaker/${action}`,
         {
-          method: "GET",
+          method: "POST",
           headers: {
-            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
           },
+          body: JSON.stringify({
+            requestId,
+          }),
         }
       );
 
@@ -170,101 +313,154 @@ const loadSpeakerRequests = useCallback(
 
       if (!response.ok) {
         throw new Error(
-          result?.error || "Could not load speaker requests."
+          `result?.error || Could not ${action} this speaker.`
         );
       }
 
-      setSpeakerRequests(result.requests || []);
-    } catch (error) {
-      console.warn("Speaker requests error:", error);
-    }
-  },
-  []
-);
+      await refreshSpeakers(activeLiveId);
 
-// ==========================================
-// 🎤 REFRESH SPEAKER REQUESTS
-// ==========================================
-
-useEffect(() => {
-  if (!activeLiveId) {
-    setSpeakerRequests([]);
-    return;
-  }
-
-  loadSpeakerRequests(activeLiveId);
-
-  const interval = setInterval(() => {
-    loadSpeakerRequests(activeLiveId);
-  }, 5000);
-
-  return () => {
-    clearInterval(interval);
-  };
-}, [activeLiveId, loadSpeakerRequests]);
-
-
-// ==========================================
-// 🎤 APPROVE OR REJECT SPEAKER
-// ==========================================
-
-const handleSpeakerDecision = async (
-  requestId: string,
-  action: "approve" | "reject"
-) => {
-  if (!activeLiveId || busyRequestId) return;
-
-  setBusyRequestId(requestId);
-
-  try {
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    if (sessionError || !session?.access_token) {
-      throw new Error("Please log in again.");
-    }
-
-    const response = await fetch(
-      `https://livekit-server-c0z9.onrender.com/speaker/${action}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          requestId,
-        }),
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        `result?.error || Could not ${action} this speaker.`
+      showMessage(
+        action === "approve"
+          ? "Speaker approved"
+          : "Request rejected",
+        action === "approve"
+          ? "The viewer has been approved to join as a speaker."
+          : "The speaker request has been rejected."
       );
+    } catch (error: any) {
+      showMessage(
+        "Speaker request",
+        error?.message || "Something went wrong."
+      );
+    } finally {
+      setBusyRequestId(null);
+    }
+  };
+
+  // ==========================================
+  // 🎤 MUTE / UNMUTE / REMOVE SPEAKER
+  // ==========================================
+
+  const handleSpeakerControl = async (
+    requestId: string,
+    action: "mute" | "unmute" | "remove"
+  ) => {
+    if (!activeLiveId || busyRequestId) return;
+
+    const speaker = approvedSpeakers.find(
+      (item) => item.id === requestId
+    );
+
+    if (!speaker) return;
+
+    if (action === "remove") {
+      Alert.alert(
+        "Remove speaker?",
+        "This speaker will lose permission to speak and will be disconnected from the live broadcast.",
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+          {
+            text: "Remove",
+            style: "destructive",
+            onPress: () => {
+              executeSpeakerControl(requestId, action);
+            },
+          },
+        ]
+      );
+
+      return;
     }
 
-    await loadSpeakerRequests(activeLiveId);
+    await executeSpeakerControl(requestId, action);
+  };
 
-    showMessage(
-      action === "approve" ? "Speaker approved" : "Request rejected",
-      action === "approve"
-        ? "The viewer has been approved to join as a speaker."
-        : "The speaker request has been rejected."
-    );
-  } catch (error: any) {
-    showMessage(
-      "Speaker request",
-      error?.message || "Something went wrong."
-    );
-  } finally {
-    setBusyRequestId(null);
-  }
-};
+  // ==========================================
+  // 🎤 EXECUTE SPEAKER CONTROL
+  // ==========================================
+
+  const executeSpeakerControl = async (
+    requestId: string,
+    action: "mute" | "unmute" | "remove"
+  ) => {
+    if (!activeLiveId || busyRequestId) return;
+
+    setBusyRequestId(requestId);
+
+    try {
+      const accessToken = await getAccessToken();
+
+      const endpoint =
+        action === "remove"
+          ? "remove"
+          : "mute";
+
+      const body =
+        action === "remove"
+          ? {
+              requestId,
+            }
+          : {
+              requestId,
+              muted: action === "mute",
+            };
+
+      const response = await fetch(
+        `${LIVEKIT_SERVER}/speaker/${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify(body),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+           ` Could not ${action} this speaker.`
+        );
+      }
+
+      await refreshSpeakers(activeLiveId);
+
+      if (action === "mute") {
+        showMessage(
+          "Speaker muted",
+          result.connected
+            ? "The speaker's microphone has been muted. Their video can remain visible."
+            : "The speaker is currently offline. The mute setting will apply when they reconnect."
+        );
+      } else if (action === "unmute") {
+        showMessage(
+          "Speaker unmuted",
+          result.connected
+            ? "The speaker can now use their microphone again."
+            : "The speaker is currently offline. They can use their microphone when they reconnect."
+        );
+      } else {
+        showMessage(
+          "Speaker removed",
+          "The speaker's approval has been revoked."
+        );
+      }
+    } catch (error: any) {
+      showMessage(
+        "Speaker control",
+        error?.message || "Something went wrong."
+      );
+    } finally {
+      setBusyRequestId(null);
+    }
+  };
+
   // 🟡 ==================================================
   // 🟡 SEND WEB + MOBILE NOTIFICATIONS
   // 🟡 ==================================================
@@ -336,134 +532,134 @@ const handleSpeakerDecision = async (
   );
 
   // 🟡 ==================================================
-// 🟡 LOAD LIVE CHAT
-// 🟡 ==================================================
+  // 🟡 LOAD LIVE CHAT
+  // 🟡 ==================================================
 
-const loadMessages = useCallback(
-  async (streamId: string) => {
-    const { data, error } = await supabase
-      .from("live_chat_messages")
-      .select("*")
-      .eq("stream_id", streamId)
-      .order("created_at", { ascending: true })
-      .limit(100);
+  const loadMessages = useCallback(
+    async (streamId: string) => {
+      const { data, error } = await supabase
+        .from("live_chat_messages")
+        .select("*")
+        .eq("stream_id", streamId)
+        .order("created_at", { ascending: true })
+        .limit(100);
 
-    if (error) {
-      console.warn(
-        "Live chat loading error:",
-        error.message
-      );
+      if (error) {
+        console.warn(
+          "Live chat loading error:",
+          error.message
+        );
+        return;
+      }
+
+      setMessages((data || []) as LiveMessage[]);
+    },
+    []
+  );
+
+  // 🟡 ==================================================
+  // 🟡 LIVE CHAT REALTIME
+  // 🟡 ==================================================
+
+  useEffect(() => {
+    if (!activeLiveId) return;
+
+    loadMessages(activeLiveId);
+
+    const channel = supabase
+      .channel(`nasara-live-chat-${activeLiveId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "live_chat_messages",
+          filter: `stream_id=eq.${activeLiveId}`,
+        },
+        (payload) => {
+          const incoming = payload.new as LiveMessage;
+
+          setMessages((previous) => {
+            if (
+              previous.some(
+                (message) => message.id === incoming.id
+              )
+            ) {
+              return previous;
+            }
+
+            return [...previous, incoming].slice(-100);
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeLiveId, loadMessages]);
+
+  // 🟡 ==================================================
+  // 🟡 SEND LIVE CHAT MESSAGE — BROADCASTER
+  // 🟡 ==================================================
+
+  const sendMessage = async () => {
+    const messageText = newMessage.trim();
+
+    if (!messageText || !activeLiveId || sending) {
       return;
     }
 
-    setMessages((data || []) as LiveMessage[]);
-  },
-  []
-);
+    setSending(true);
 
-  // 🟡 ==================================================
-// 🟡 LIVE CHAT REALTIME
-// 🟡 ==================================================
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
-useEffect(() => {
-  if (!activeLiveId) return;
-
-  loadMessages(activeLiveId);
-
-  const channel = supabase
-    .channel(`nasara-live-chat-${activeLiveId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "live_chat_messages",
-        filter: `stream_id=eq.${activeLiveId}`,
-      },
-      (payload) => {
-        const incoming = payload.new as LiveMessage;
-
-        setMessages((previous) => {
-          if (
-            previous.some(
-              (message) => message.id === incoming.id
-            )
-          ) {
-            return previous;
-          }
-
-          return [...previous, incoming].slice(-100);
-        });
+      if (userError || !user) {
+        throw new Error("Please log in to send a message.");
       }
-    )
-    .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
+      const { data: insertedMessage, error } = await (supabase as any)
+        .from("live_chat_messages")
+        .insert({
+          stream_id: activeLiveId,
+          sender_id: user.id,
+          text: messageText,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setMessages((previous) => {
+        if (
+          previous.some(
+            (message) => message.id === insertedMessage.id
+          )
+        ) {
+          return previous;
+        }
+
+        return [...previous, insertedMessage as LiveMessage].slice(-100);
+      });
+
+      setNewMessage("");
+    } catch (error: any) {
+      console.error("Broadcaster chat error:", error);
+
+      showMessage(
+        "Message failed",
+        error?.message || "Could not send your message."
+      );
+    } finally {
+      setSending(false);
+    }
   };
-}, [activeLiveId, loadMessages]);
-
- // 🟡 ==================================================
-// 🟡 SEND LIVE CHAT MESSAGE — BROADCASTER
-// 🟡 ==================================================
-
-const sendMessage = async () => {
-  const messageText = newMessage.trim();
-
-  if (!messageText || !activeLiveId || sending) {
-    return;
-  }
-
-  setSending(true);
-
-  try {
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      throw new Error("Please log in to send a message.");
-    }
-
-    const { data: insertedMessage, error } = await (supabase as any)
-      .from("live_chat_messages")
-      .insert({
-        stream_id: activeLiveId,
-        sender_id: user.id,
-        text: messageText,
-      })
-      .select("*")
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    setMessages((previous) => {
-      if (
-        previous.some(
-          (message) => message.id === insertedMessage.id
-        )
-      ) {
-        return previous;
-      }
-
-      return [...previous, insertedMessage as LiveMessage].slice(-100);
-    });
-
-    setNewMessage("");
-  } catch (error: any) {
-    console.error("Broadcaster chat error:", error);
-
-    showMessage(
-      "Message failed",
-      error?.message || "Could not send your message."
-    );
-  } finally {
-    setSending(false);
-  }
-};
 
   // 🟡 ==================================================
   // 🟡 CONNECT TO EXISTING LIVE STREAM
@@ -708,7 +904,6 @@ const sendMessage = async () => {
 
     setConnected(true);
 
-    // Notifications are sent once per stream after connection.
     sendLiveNotifications(roomConfig.streamId);
   }, [roomConfig, sendLiveNotifications]);
 
@@ -746,6 +941,8 @@ const sendMessage = async () => {
       setConnected(false);
       setMessages([]);
       setNewMessage("");
+      setSpeakerRequests([]);
+      setApprovedSpeakers([]);
 
       router.replace("/browse" as any);
     } catch (error: any) {
@@ -802,6 +999,7 @@ const sendMessage = async () => {
           size="large"
           color={COLORS.gold}
         />
+
         <Text style={styles.loadingText}>
           Checking your live broadcast...
         </Text>
@@ -837,6 +1035,7 @@ const sendMessage = async () => {
             <Text style={styles.headerTitle}>
               NASARA LIVE
             </Text>
+
             <Text style={styles.headerSubtitle}>
               Your live broadcast studio
             </Text>
@@ -844,6 +1043,7 @@ const sendMessage = async () => {
 
           <View style={styles.liveBadge}>
             <View style={styles.liveDot} />
+
             <Text style={styles.liveBadgeText}>
               LIVE
             </Text>
@@ -859,7 +1059,7 @@ const sendMessage = async () => {
             {activeTitle}
           </Text>
 
-         {/* 🔴 LIVE VIDEO WITH EXPANDABLE COMMENTS */}
+          {/* 🔴 LIVE VIDEO WITH EXPANDABLE COMMENTS */}
 
           <View
             style={[
@@ -882,6 +1082,7 @@ const sendMessage = async () => {
                   size="large"
                   color={COLORS.gold}
                 />
+
                 <Text style={styles.videoPlaceholderText}>
                   Connecting to LiveKit...
                 </Text>
@@ -894,16 +1095,7 @@ const sendMessage = async () => {
               onPress={() =>
                 setExpandedVideo((previous) => !previous)
               }
-              style={{
-                position: "absolute",
-                top: 12,
-                right: 12,
-                zIndex: 20,
-                backgroundColor: "rgba(0,0,0,0.75)",
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                borderRadius: 10,
-              }}
+              style={styles.expandButton}
             >
               <Ionicons
                 name={expandedVideo ? "contract" : "expand"}
@@ -917,22 +1109,9 @@ const sendMessage = async () => {
             {expandedVideo && (
               <View
                 pointerEvents="box-none"
-                style={{
-                  position: "absolute",
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  padding: 12,
-                  backgroundColor: "rgba(0,0,0,0.55)",
-                }}
+                style={styles.videoComments}
               >
-                <Text
-                  style={{
-                    color: COLORS.gold,
-                    fontWeight: "900",
-                    marginBottom: 8,
-                  }}
-                >
+                <Text style={styles.videoCommentsTitle}>
                   LIVE COMMENTS
                 </Text>
 
@@ -944,26 +1123,14 @@ const sendMessage = async () => {
                   {messages.slice(-6).map((item) => (
                     <Text
                       key={item.id}
-                      style={{
-                        color: "white",
-                        fontSize: 13,
-                        paddingVertical: 4,
-                        textShadowColor: "black",
-                        textShadowRadius: 3,
-                      }}
+                      style={styles.videoCommentText}
                     >
                       {item.text}
                     </Text>
                   ))}
                 </ScrollView>
 
-                <View
-                  style={{
-                    flexDirection: "row",
-                    gap: 8,
-                    marginTop: 8,
-                  }}
-                >
+                <View style={styles.videoCommentInputRow}>
                   <TextInput
                     value={newMessage}
                     onChangeText={setNewMessage}
@@ -971,27 +1138,19 @@ const sendMessage = async () => {
                     placeholderTextColor="#CCCCCC"
                     returnKeyType="send"
                     onSubmitEditing={sendMessage}
-                    style={{
-                      flex: 1,
-                      backgroundColor: "rgba(255,255,255,0.95)",
-                      color: "#111827",
-                      borderRadius: 10,
-                      paddingHorizontal: 12,
-                      minHeight: 42,
-                    }}
+                    style={styles.videoCommentInput}
                   />
 
                   <TouchableOpacity
                     onPress={sendMessage}
                     disabled={sending || !newMessage.trim()}
-                    style={{
-                      backgroundColor: COLORS.gold,
-                      paddingHorizontal: 14,
-                      justifyContent: "center",
-                      borderRadius: 10,
-                      opacity:
-                        sending || !newMessage.trim() ? 0.5 : 1,
-                    }}
+                    style={[
+                      styles.videoCommentSend,
+                      {
+                        opacity:
+                          sending || !newMessage.trim() ? 0.5 : 1,
+                      },
+                    ]}
                   >
                     {sending ? (
                       <ActivityIndicator color="#07111F" />
@@ -1031,85 +1190,274 @@ const sendMessage = async () => {
             </View>
           )}
 
-          {/* 🎤 GUEST SPEAKER REQUESTS */}
+          {/* ====================================== */}
+          {/* 🎤 PENDING SPEAKER REQUESTS */}
+          {/* ====================================== */}
 
-<View style={styles.speakerCard}>
-  <View style={styles.speakerHeader}>
-    <Ionicons
-      name="mic"
-      size={21}
-      color={COLORS.gold}
-    />
+          <View style={styles.speakerCard}>
+            <View style={styles.speakerHeader}>
+              <Ionicons
+                name="mic"
+                size={21}
+                color={COLORS.gold}
+              />
 
-    <Text style={styles.speakerTitle}>
-      Speaker Requests
-    </Text>
+              <Text style={styles.speakerTitle}>
+                Speaker Requests
+              </Text>
 
-    <View style={styles.speakerCount}>
-      <Text style={styles.speakerCountText}>
-        {speakerRequests.length}
-      </Text>
-    </View>
-  </View>
+              <View style={styles.speakerCount}>
+                <Text style={styles.speakerCountText}>
+                  {speakerRequests.length}
+                </Text>
+              </View>
+            </View>
 
-  {speakerRequests.length === 0 ? (
-    <Text style={styles.emptySpeakers}>
-      No pending speaker requests.
-    </Text>
-  ) : (
-    speakerRequests.map((request) => (
-      <View key={request.id} style={styles.speakerRequest}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.speakerName}>
-            Viewer wants to speak
-          </Text>
+            {speakerRequests.length === 0 ? (
+              <Text style={styles.emptySpeakers}>
+                No pending speaker requests.
+              </Text>
+            ) : (
+              speakerRequests.map((request) => (
+                <View
+                  key={request.id}
+                  style={styles.speakerRequest}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.speakerName}>
+                      Viewer wants to speak
+                    </Text>
 
-          <Text style={styles.speakerId}>
-            ID: {request.user_id.slice(0, 8)}
-          </Text>
-        </View>
+                    <Text style={styles.speakerId}>
+                      ID: {request.user_id.slice(0, 8)}
+                    </Text>
+                  </View>
 
-        <TouchableOpacity
-          onPress={() =>
-            handleSpeakerDecision(request.id, "approve")
-          }
-          disabled={busyRequestId !== null}
-          style={[
-            styles.approveButton,
-            {
-              opacity: busyRequestId ? 0.5 : 1,
-            },
-          ]}
-        >
-          {busyRequestId === request.id ? (
-            <ActivityIndicator color="white" size="small" />
-          ) : (
-            <Text style={styles.decisionText}>
-              Approve
+                  <TouchableOpacity
+                    onPress={() =>
+                      handleSpeakerDecision(request.id, "approve")
+                    }
+                    disabled={busyRequestId !== null}
+                    style={[
+                      styles.approveButton,
+                      {
+                        opacity: busyRequestId ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    {busyRequestId === request.id ? (
+                      <ActivityIndicator
+                        color="white"
+                        size="small"
+                      />
+                    ) : (
+                      <Text style={styles.decisionText}>
+                        Approve
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      handleSpeakerDecision(request.id, "reject")
+                    }
+                    disabled={busyRequestId !== null}
+                    style={[
+                      styles.rejectButton,
+                      {
+                        opacity: busyRequestId ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={styles.decisionText}>
+                      Reject
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </View>
+
+          {/* ====================================== */}
+          {/* 🎤 APPROVED SPEAKERS */}
+          {/* ====================================== */}
+
+          <View style={styles.speakerCard}>
+            <View style={styles.speakerHeader}>
+              <Ionicons
+                name="people"
+                size={21}
+                color={COLORS.gold}
+              />
+
+              <Text style={styles.speakerTitle}>
+                Approved Speakers
+              </Text>
+
+              <View style={styles.speakerCount}>
+                <Text style={styles.speakerCountText}>
+                  {approvedSpeakers.length}
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.approvedSpeakerDescription}>
+              Manage everyone who has permission to speak in this live session.
             </Text>
-          )}
-        </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() =>
-            handleSpeakerDecision(request.id, "reject")
-          }
-          disabled={busyRequestId !== null}
-          style={[
-            styles.rejectButton,
-            {
-              opacity: busyRequestId ? 0.5 : 1,
-            },
-          ]}
-        >
-          <Text style={styles.decisionText}>
-            Reject
-          </Text>
-        </TouchableOpacity>
-      </View>
-    ))
-  )}
-</View>
+            {approvedSpeakers.length === 0 ? (
+              <Text style={styles.emptySpeakers}>
+                No approved speakers yet.
+              </Text>
+            ) : (
+              approvedSpeakers.map((speaker) => {
+                const isBusy =
+                  busyRequestId === speaker.id;
+
+                const displayName =
+                  speaker.participant_name?.trim() ||
+                  `Speaker ${speaker.user_id.slice(0, 8)}`;
+
+                return (
+                  <View
+                    key={speaker.id}
+                    style={styles.approvedSpeakerRow}
+                  >
+                    <View style={styles.approvedSpeakerInfo}>
+                      <View style={styles.speakerAvatar}>
+                        <Ionicons
+                          name="person"
+                          size={19}
+                          color={COLORS.gold}
+                        />
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.speakerName}>
+                          {displayName}
+                        </Text>
+
+                        <Text style={styles.speakerId}>
+                          ID: {speaker.user_id.slice(0, 8)}
+                        </Text>
+
+                        <View style={styles.speakerStatusRow}>
+                          <View
+                            style={[
+                              styles.speakerStatusDot,
+                              {
+                                backgroundColor:
+                                  speaker.is_connected
+                                    ? COLORS.green
+                                    : COLORS.muted,
+                              },
+                            ]}
+                          />
+
+                          <Text style={styles.speakerStatusText}>
+                            {speaker.is_connected
+                              ? "Connected"
+                              : "Offline"}
+                          </Text>
+
+                          {speaker.host_muted && (
+                            <View style={styles.mutedBadge}>
+                              <Ionicons
+                                name="mic-off"
+                                size={11}
+                                color={COLORS.red}
+                              />
+
+                              <Text style={styles.mutedBadgeText}>
+                                Muted by host
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* SPEAKER ACTIONS */}
+
+                    <View style={styles.speakerActions}>
+                      <TouchableOpacity
+                        onPress={() =>
+                          handleSpeakerControl(
+                            speaker.id,
+                            speaker.host_muted
+                              ? "unmute"
+                              : "mute"
+                          )
+                        }
+                        disabled={busyRequestId !== null}
+                        style={[
+                          speaker.host_muted
+                            ? styles.unmuteButton
+                            : styles.muteButton,
+                          {
+                            opacity:
+                              busyRequestId !== null ? 0.5 : 1,
+                          },
+                        ]}
+                      >
+                        {isBusy ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={COLORS.white}
+                          />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name={
+                                speaker.host_muted
+                                  ? "mic"
+                                  : "mic-off"
+                              }
+                              size={14}
+                              color={COLORS.white}
+                            />
+
+                            <Text style={styles.actionButtonText}>
+                              {speaker.host_muted
+                                ? "Unmute"
+                                : "Mute"}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() =>
+                          handleSpeakerControl(
+                            speaker.id,
+                            "remove"
+                          )
+                        }
+                        disabled={busyRequestId !== null}
+                        style={[
+                          styles.removeSpeakerButton,
+                          {
+                            opacity:
+                              busyRequestId !== null ? 0.5 : 1,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="person-remove"
+                          size={14}
+                          color={COLORS.white}
+                        />
+
+                        <Text style={styles.actionButtonText}>
+                          Remove
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
 
           {/* 💬 NORMAL LIVE CHAT */}
 
@@ -1247,6 +1595,7 @@ const sendMessage = async () => {
           <Text style={styles.headerTitle}>
             NASARA LIVE
           </Text>
+
           <Text style={styles.headerSubtitle}>
             Connect with your customers
           </Text>
@@ -1635,6 +1984,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
+  expandButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 20,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+
+  videoComments: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+
+  videoCommentsTitle: {
+    color: COLORS.gold,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
+
+  videoCommentText: {
+    color: "white",
+    fontSize: 13,
+    paddingVertical: 4,
+    textShadowColor: "black",
+    textShadowRadius: 3,
+  },
+
+  videoCommentInputRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+
+  videoCommentInput: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    color: "#111827",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    minHeight: 42,
+  },
+
+  videoCommentSend: {
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+
   connectionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1766,6 +2171,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 17,
   },
+
   // 🎤 SPEAKER REQUEST STYLES
 
   speakerCard: {
@@ -1857,5 +2263,122 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: "900",
     fontSize: 11,
+  },
+
+  // 🎤 APPROVED SPEAKER STYLES
+
+  approvedSpeakerDescription: {
+    color: COLORS.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 11,
+    marginBottom: 5,
+  },
+
+  approvedSpeakerRow: {
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: 12,
+  },
+
+  approvedSpeakerInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+
+  speakerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: COLORS.cardLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  speakerStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 7,
+    flexWrap: "wrap",
+  },
+
+  speakerStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 5,
+  },
+
+  speakerStatusText: {
+    color: COLORS.muted,
+    fontSize: 10,
+  },
+
+  mutedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#3A1820",
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    marginLeft: 5,
+  },
+
+  mutedBadgeText: {
+    color: COLORS.red,
+    fontSize: 9,
+    fontWeight: "800",
+  },
+
+  speakerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    paddingLeft: 49,
+  },
+
+  muteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "#6B3941",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    minWidth: 78,
+  },
+
+  unmuteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: COLORS.green,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+    minWidth: 78,
+  },
+
+  removeSpeakerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: COLORS.red,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+
+  actionButtonText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    fontSize: 10,
   },
 });

@@ -1,10 +1,14 @@
 // ==================================================
-// 🟢 LIVEKIT NATIVE VIEWER
+// 🟢 NASARA LIVEKIT NATIVE VIEWER
+// 🟢 ANDROID + IOS
+// 🟢 MULTIPLE APPROVED GUEST SPEAKERS
+// 🟢 ALL PUBLISHED VIDEO TRACKS
 // ==================================================
 
 import { useEffect } from "react";
 
 import {
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -37,20 +41,21 @@ interface LiveKitViewerProps {
 }
 
 // ==================================================
-// 🎥 REMOTE VIDEO
+// 🎥 MULTI-SPEAKER VIDEO GRID
 // ==================================================
 
-function RemoteVideo() {
+function RemoteVideoGrid() {
   const tracks = useTracks([
     Track.Source.Camera,
     Track.Source.ScreenShare,
   ]);
 
-  const videoTrack = tracks.find(
-    (item: any) => item.publication
+  // Collect every available published video track.
+  const publishedTracks = tracks.filter(
+    (item) => item.publication
   );
 
-  if (!videoTrack) {
+  if (publishedTracks.length === 0) {
     return (
       <View style={styles.waiting}>
         <Text style={styles.waitingText}>
@@ -60,11 +65,52 @@ function RemoteVideo() {
     );
   }
 
+  const columns = publishedTracks.length === 1 ? 1 : 2;
+
+  const tileWidth =
+    publishedTracks.length === 1
+      ? "100%"
+      : "50%";
+
+  const tileHeight =
+    publishedTracks.length <= 2
+      ? "100%"
+      : 240;
+
   return (
-    <VideoTrack
-      trackRef={videoTrack}
-      style={styles.video}
-    />
+    <ScrollView
+      style={styles.grid}
+      contentContainerStyle={styles.gridContent}
+      showsVerticalScrollIndicator={false}
+    >
+      {publishedTracks.map((trackRef) => (
+        <View
+          key={`${trackRef.participant.identity}-${trackRef.source}`}
+          style={[
+            styles.speakerTile,
+            {
+              width: tileWidth,
+              height: tileHeight,
+            },
+          ]}
+        >
+          <VideoTrack
+            trackRef={trackRef}
+            style={styles.video}
+          />
+
+          {/* SPEAKER NAME */}
+          <View style={styles.speakerNameContainer}>
+            <Text
+              style={styles.speakerName}
+              numberOfLines={1}
+            >
+              {trackRef.participant.identity}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -87,7 +133,10 @@ export default function LiveKitViewer({
           await AudioSession.startAudioSession();
         }
       } catch (error) {
-        console.log("LiveKit audio session error:", error);
+        console.log(
+          "LiveKit audio session error:",
+          error
+        );
       }
     };
 
@@ -97,7 +146,10 @@ export default function LiveKitViewer({
       mounted = false;
 
       AudioSession.stopAudioSession().catch((error) => {
-        console.log("LiveKit audio stop error:", error);
+        console.log(
+          "LiveKit audio stop error:",
+          error
+        );
       });
     };
   }, []);
@@ -111,7 +163,7 @@ export default function LiveKitViewer({
         audio={canPublish}
         video={canPublish}
       >
-        <RemoteVideo />
+        <RemoteVideoGrid />
       </LiveKitRoom>
     </View>
   );
@@ -127,9 +179,47 @@ const styles = StyleSheet.create({
     backgroundColor: "black",
   },
 
+  grid: {
+    flex: 1,
+    backgroundColor: "black",
+  },
+
+  gridContent: {
+    flexGrow: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignContent: "flex-start",
+  },
+
+  speakerTile: {
+    position: "relative",
+    backgroundColor: "#111",
+    borderWidth: 1,
+    borderColor: "#222",
+    overflow: "hidden",
+  },
+
   video: {
     width: "100%",
     height: "100%",
+  },
+
+  speakerNameContainer: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    right: 8,
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0,0,0,0.7)",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 5,
+  },
+
+  speakerName: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600",
   },
 
   waiting: {

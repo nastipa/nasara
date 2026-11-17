@@ -1,6 +1,8 @@
 // ==================================================
-// 🟢 LIVEKIT WEB VIEWER
-// 🟢 SUPPORTS VIEWING + APPROVED GUEST SPEAKERS
+// 🟢 NASARA LIVEKIT WEB VIEWER
+// 🟢 MULTIPLE APPROVED GUEST SPEAKERS
+// 🟢 ALL VIEWERS SEE ALL PUBLISHED VIDEO TRACKS
+// 🟢 SUPPORTS VIEWING + SPEAKER PUBLISHING
 // ==================================================
 
 import {
@@ -23,29 +25,34 @@ interface LiveKitViewerProps {
 }
 
 // ==================================================
-// 🎥 REMOTE VIDEO
+// 🎥 MULTI-SPEAKER VIDEO GRID
 // ==================================================
 
-function RemoteVideo() {
+function RemoteVideoGrid() {
   const tracks = useTracks([
     Track.Source.Camera,
     Track.Source.ScreenShare,
   ]);
 
-  const videoTrack = tracks.find(
-    (item: any) => item.publication
+  // Get every published video track.
+  // Do not stop at the first speaker.
+  const publishedTracks = tracks.filter(
+    (trackRef) => trackRef.publication
   );
 
-  if (!videoTrack) {
+  if (publishedTracks.length === 0) {
     return (
       <div
         style={{
-          flex: 1,
+          width: "100%",
+          height: "100%",
+          minHeight: 180,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           color: "white",
           backgroundColor: "black",
+          fontSize: 15,
         }}
       >
         Waiting for broadcaster video...
@@ -53,16 +60,74 @@ function RemoteVideo() {
     );
   }
 
+  const columns =
+    publishedTracks.length === 1
+      ? "minmax(0, 1fr)"
+      : "repeat(2, minmax(0, 1fr))";
+
   return (
-    <VideoTrack
-      trackRef={videoTrack}
+    <div
       style={{
         width: "100%",
         height: "100%",
-        objectFit: "contain",
+        display: "grid",
+        gridTemplateColumns: columns,
+        gridAutoRows:
+          publishedTracks.length <= 2
+            ? "minmax(0, 1fr)"
+            : "minmax(180px, 1fr)",
+        gap: 3,
+        overflowY: "auto",
         backgroundColor: "black",
+        alignContent: "start",
       }}
-    />
+    >
+      {publishedTracks.map((trackRef) => (
+        <div
+          key={`${trackRef.participant.identity}-${trackRef.source}`}
+          style={{
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            minHeight: 180,
+            overflow: "hidden",
+            backgroundColor: "#111",
+            borderRadius: 6,
+          }}
+        >
+          <VideoTrack
+            trackRef={trackRef}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              backgroundColor: "black",
+            }}
+          />
+
+          {/* SPEAKER NAME */}
+          <div
+            style={{
+              position: "absolute",
+              left: 8,
+              bottom: 8,
+              padding: "5px 9px",
+              borderRadius: 5,
+              backgroundColor: "rgba(0,0,0,0.7)",
+              color: "white",
+              fontSize: 12,
+              fontWeight: 600,
+              maxWidth: "85%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {trackRef.participant.identity}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -81,6 +146,7 @@ export default function LiveKitViewer({
         width: "100%",
         height: "100%",
         backgroundColor: "black",
+        overflow: "hidden",
       }}
     >
       <LiveKitRoom
@@ -90,8 +156,9 @@ export default function LiveKitViewer({
         audio={canPublish}
         video={canPublish}
       >
-        <RemoteVideo />
+        <RemoteVideoGrid />
 
+        {/* PLAY AUDIO FROM ALL SPEAKERS */}
         <RoomAudioRenderer />
       </LiveKitRoom>
     </div>
