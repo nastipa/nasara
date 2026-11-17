@@ -5,17 +5,17 @@
 import { useEffect } from "react";
 
 import {
-    StyleSheet,
-    Text,
-    View,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import {
-    AudioSession,
-    LiveKitRoom,
-    VideoTrack,
-    registerGlobals,
-    useTracks,
+  AudioSession,
+  LiveKitRoom,
+  VideoTrack,
+  registerGlobals,
+  useTracks,
 } from "@livekit/react-native";
 
 import { Track } from "livekit-client";
@@ -33,6 +33,7 @@ registerGlobals();
 interface LiveKitViewerProps {
   serverUrl: string;
   token: string;
+  canPublish?: boolean;
 }
 
 // ==================================================
@@ -68,13 +69,15 @@ function RemoteVideo() {
 }
 
 // ==================================================
-// 📺 VIEWER COMPONENT
+// 📺 VIEWER / APPROVED SPEAKER COMPONENT
 // ==================================================
 
 export default function LiveKitViewer({
   serverUrl,
   token,
+  canPublish = false,
 }: LiveKitViewerProps) {
+
   useEffect(() => {
     let mounted = true;
 
@@ -105,8 +108,8 @@ export default function LiveKitViewer({
         serverUrl={serverUrl}
         token={token}
         connect={true}
-        audio={false}
-        video={false}
+        audio={canPublish}
+        video={canPublish}
       >
         <RemoteVideo />
       </LiveKitRoom>

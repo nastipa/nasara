@@ -1,23 +1,25 @@
 // 📱 ==================================================
 // 📱 NASARA LIVEKIT HOST — ANDROID + IOS
+// 📱 LIVE VIEWER COUNT
 // 📱 ==================================================
 
 import { useEffect } from "react";
 
 import {
-    ActivityIndicator,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 
 import {
-    AudioSession,
-    isTrackReference,
-    LiveKitRoom,
-    registerGlobals,
-    useTracks,
-    VideoTrack,
+  AudioSession,
+  isTrackReference,
+  LiveKitRoom,
+  registerGlobals,
+  useRemoteParticipants,
+  useTracks,
+  VideoTrack,
 } from "@livekit/react-native";
 
 import { Track } from "livekit-client";
@@ -26,10 +28,13 @@ import { Track } from "livekit-client";
 
 registerGlobals();
 
+// 📱 TYPES
+
 type Props = {
   serverUrl: string;
   token: string;
   onConnected: () => void;
+  onViewerCountChange?: (count: number) => void;
 };
 
 // 📱 CAMERA PREVIEW
@@ -48,6 +53,7 @@ function NativeCameraPreview() {
           size="large"
           color="#E8B84A"
         />
+
         <Text style={styles.placeholderText}>
           Starting camera...
         </Text>
@@ -63,16 +69,33 @@ function NativeCameraPreview() {
   );
 }
 
+// 📱 LIVE VIEWER COUNT
+
+function NativeViewerCount({
+  onViewerCountChange,
+}: {
+  onViewerCountChange?: (count: number) => void;
+}) {
+  const participants = useRemoteParticipants();
+
+  const viewerCount = participants.length;
+
+  useEffect(() => {
+    onViewerCountChange?.(viewerCount);
+  }, [viewerCount, onViewerCountChange]);
+
+  return null;
+}
+
 // 📱 LIVEKIT NATIVE HOST
 
 export default function LiveKitHost({
   serverUrl,
   token,
   onConnected,
+  onViewerCountChange,
 }: Props) {
   useEffect(() => {
-    let mounted = true;
-
     const startAudio = async () => {
       try {
         await AudioSession.startAudioSession();
@@ -87,8 +110,6 @@ export default function LiveKitHost({
     startAudio();
 
     return () => {
-      mounted = false;
-
       AudioSession.stopAudioSession().catch((error) => {
         console.warn(
           "Could not stop LiveKit audio session:",
@@ -110,12 +131,14 @@ export default function LiveKitHost({
           pixelDensity: "screen",
         },
       }}
-      onConnected={() => {
-        onConnected();
-      }}
+      onConnected={onConnected}
     >
       <View style={styles.container}>
         <NativeCameraPreview />
+
+        <NativeViewerCount
+          onViewerCountChange={onViewerCountChange}
+        />
       </View>
     </LiveKitRoom>
   );

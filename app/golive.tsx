@@ -67,6 +67,14 @@ type RoomConfig = {
   url: string;
 };
 
+type SpeakerRequest = {
+  id: string;
+  stream_id: string;
+  user_id: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+};
+
 // 🟡 ==================================================
 // 🟡 MAIN SCREEN
 // 🟡 ==================================================
@@ -106,6 +114,13 @@ export default function GoLiveScreen() {
   const [expandedVideo, setExpandedVideo] = useState(false);
 
   // ==========================================
+// 🎤 GUEST SPEAKER STATES
+// ==========================================
+
+const [speakerRequests, setSpeakerRequests] = useState<SpeakerRequest[]>([]);
+const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+
+  // ==========================================
   // 🔒 REFS
   // ==========================================
 
@@ -124,6 +139,132 @@ export default function GoLiveScreen() {
     Alert.alert(messageTitle, message);
   };
 
+
+  // ==========================================
+// 🎤 LOAD PENDING SPEAKER REQUESTS
+// ==========================================
+
+const loadSpeakerRequests = useCallback(
+  async (streamId: string) => {
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        return;
+      }
+
+      const response = await fetch(
+        `https://livekit-server-c0z9.onrender.com/speaker/requests?streamId=${encodeURIComponent(streamId)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error || "Could not load speaker requests."
+        );
+      }
+
+      setSpeakerRequests(result.requests || []);
+    } catch (error) {
+      console.warn("Speaker requests error:", error);
+    }
+  },
+  []
+);
+
+// ==========================================
+// 🎤 REFRESH SPEAKER REQUESTS
+// ==========================================
+
+useEffect(() => {
+  if (!activeLiveId) {
+    setSpeakerRequests([]);
+    return;
+  }
+
+  loadSpeakerRequests(activeLiveId);
+
+  const interval = setInterval(() => {
+    loadSpeakerRequests(activeLiveId);
+  }, 5000);
+
+  return () => {
+    clearInterval(interval);
+  };
+}, [activeLiveId, loadSpeakerRequests]);
+
+
+// ==========================================
+// 🎤 APPROVE OR REJECT SPEAKER
+// ==========================================
+
+const handleSpeakerDecision = async (
+  requestId: string,
+  action: "approve" | "reject"
+) => {
+  if (!activeLiveId || busyRequestId) return;
+
+  setBusyRequestId(requestId);
+
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("Please log in again.");
+    }
+
+    const response = await fetch(
+      `https://livekit-server-c0z9.onrender.com/speaker/${action}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          requestId,
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        `result?.error || Could not ${action} this speaker.`
+      );
+    }
+
+    await loadSpeakerRequests(activeLiveId);
+
+    showMessage(
+      action === "approve" ? "Speaker approved" : "Request rejected",
+      action === "approve"
+        ? "The viewer has been approved to join as a speaker."
+        : "The speaker request has been rejected."
+    );
+  } catch (error: any) {
+    showMessage(
+      "Speaker request",
+      error?.message || "Something went wrong."
+    );
+  } finally {
+    setBusyRequestId(null);
+  }
+};
   // 🟡 ==================================================
   // 🟡 SEND WEB + MOBILE NOTIFICATIONS
   // 🟡 ==================================================
@@ -890,6 +1031,86 @@ const sendMessage = async () => {
             </View>
           )}
 
+          {/* 🎤 GUEST SPEAKER REQUESTS */}
+
+<View style={styles.speakerCard}>
+  <View style={styles.speakerHeader}>
+    <Ionicons
+      name="mic"
+      size={21}
+      color={COLORS.gold}
+    />
+
+    <Text style={styles.speakerTitle}>
+      Speaker Requests
+    </Text>
+
+    <View style={styles.speakerCount}>
+      <Text style={styles.speakerCountText}>
+        {speakerRequests.length}
+      </Text>
+    </View>
+  </View>
+
+  {speakerRequests.length === 0 ? (
+    <Text style={styles.emptySpeakers}>
+      No pending speaker requests.
+    </Text>
+  ) : (
+    speakerRequests.map((request) => (
+      <View key={request.id} style={styles.speakerRequest}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.speakerName}>
+            Viewer wants to speak
+          </Text>
+
+          <Text style={styles.speakerId}>
+            ID: {request.user_id.slice(0, 8)}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={() =>
+            handleSpeakerDecision(request.id, "approve")
+          }
+          disabled={busyRequestId !== null}
+          style={[
+            styles.approveButton,
+            {
+              opacity: busyRequestId ? 0.5 : 1,
+            },
+          ]}
+        >
+          {busyRequestId === request.id ? (
+            <ActivityIndicator color="white" size="small" />
+          ) : (
+            <Text style={styles.decisionText}>
+              Approve
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() =>
+            handleSpeakerDecision(request.id, "reject")
+          }
+          disabled={busyRequestId !== null}
+          style={[
+            styles.rejectButton,
+            {
+              opacity: busyRequestId ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Text style={styles.decisionText}>
+            Reject
+          </Text>
+        </TouchableOpacity>
+      </View>
+    ))
+  )}
+</View>
+
           {/* 💬 NORMAL LIVE CHAT */}
 
           {!expandedVideo && (
@@ -1544,5 +1765,97 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: "center",
     marginTop: 17,
+  },
+  // 🎤 SPEAKER REQUEST STYLES
+
+  speakerCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    marginBottom: 20,
+  },
+
+  speakerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    paddingBottom: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+
+  speakerTitle: {
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: "900",
+    flex: 1,
+  },
+
+  speakerCount: {
+    minWidth: 25,
+    height: 25,
+    borderRadius: 13,
+    backgroundColor: COLORS.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 7,
+  },
+
+  speakerCountText: {
+    color: COLORS.background,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+
+  emptySpeakers: {
+    color: COLORS.muted,
+    textAlign: "center",
+    paddingVertical: 20,
+    fontSize: 12,
+  },
+
+  speakerRequest: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+
+  speakerName: {
+    color: COLORS.white,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+
+  speakerId: {
+    color: COLORS.muted,
+    fontSize: 10,
+    marginTop: 4,
+  },
+
+  approveButton: {
+    backgroundColor: COLORS.green,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: 8,
+    minWidth: 65,
+    alignItems: "center",
+  },
+
+  rejectButton: {
+    backgroundColor: COLORS.red,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    borderRadius: 8,
+  },
+
+  decisionText: {
+    color: COLORS.white,
+    fontWeight: "900",
+    fontSize: 11,
   },
 });

@@ -1,13 +1,15 @@
 // ==================================================
 // 🟢 LIVEKIT WEB VIEWER
+// 🟢 SUPPORTS VIEWING + APPROVED GUEST SPEAKERS
 // ==================================================
 
 import {
-    LiveKitRoom,
-    RoomAudioRenderer,
-    VideoTrack,
-    useTracks,
+  LiveKitRoom,
+  RoomAudioRenderer,
+  VideoTrack,
+  useTracks,
 } from "@livekit/components-react";
+
 import { Track } from "livekit-client";
 
 // ==================================================
@@ -17,6 +19,7 @@ import { Track } from "livekit-client";
 interface LiveKitViewerProps {
   serverUrl: string;
   token: string;
+  canPublish?: boolean;
 }
 
 // ==================================================
@@ -70,6 +73,7 @@ function RemoteVideo() {
 export default function LiveKitViewer({
   serverUrl,
   token,
+  canPublish = false,
 }: LiveKitViewerProps) {
   return (
     <div
@@ -83,10 +87,11 @@ export default function LiveKitViewer({
         serverUrl={serverUrl}
         token={token}
         connect={true}
-        audio={false}
-        video={false}
+        audio={canPublish}
+        video={canPublish}
       >
         <RemoteVideo />
+
         <RoomAudioRenderer />
       </LiveKitRoom>
     </div>

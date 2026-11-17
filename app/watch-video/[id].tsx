@@ -4,7 +4,7 @@
 
 import * as Linking from "expo-linking";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -38,7 +38,18 @@ export default function WatchVideoScreen() {
 
   const [viewer, setViewer] = useState<any>(null);
   const [viewerError, setViewerError] = useState("");
+  // ==================================================
+// 🎤 GUEST SPEAKER STATES
+// ==================================================
 
+const [speakerStatus, setSpeakerStatus] = useState<
+  "none" | "pending" | "approved" | "rejected"
+>("none");
+
+const [speakerBusy, setSpeakerBusy] = useState(false);
+const [speakerMessage, setSpeakerMessage] = useState("");
+
+const speakerCheckingRef = useRef(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [chatText, setChatText] = useState("");
   const [lastSent, setLastSent] = useState(0);
@@ -264,6 +275,163 @@ const sendMessage = async () => {
     }
   }
 };
+// ==================================================
+// 🎤 REQUEST TO SPEAK
+// ==================================================
+
+const requestToSpeak = async () => {
+  if (!id || speakerBusy) return;
+
+  setSpeakerBusy(true);
+  setSpeakerMessage("");
+
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("Please log in to request to speak.");
+    }
+
+    const response = await fetch(
+      "https://livekit-server-c0z9.onrender.com/speaker/request",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          streamId: String(id),
+        }),
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || "Unable to send request.");
+    }
+
+    const status = result.request?.status;
+
+    if (status === "approved") {
+      setSpeakerStatus("approved");
+      setSpeakerMessage("You are approved to speak!");
+
+      const newToken = await fetchLiveKitToken(String(id));
+      setViewer(newToken);
+    } else {
+      setSpeakerStatus("pending");
+      setSpeakerMessage("Your request has been sent. Waiting for the host.");
+    }
+
+  } catch (error: any) {
+    setSpeakerMessage(
+      error?.message || "Could not request to speak."
+    );
+  } finally {
+    setSpeakerBusy(false);
+  }
+};
+
+// ==================================================
+// 🎤 CHECK SPEAKER APPROVAL
+// ==================================================
+
+const checkSpeakerStatus = async () => {
+  if (!id || speakerCheckingRef.current) return;
+
+  speakerCheckingRef.current = true;
+
+  try {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) return;
+
+    const response = await fetch(
+      `https://livekit-server-c0z9.onrender.com/speaker/status?streamId=${encodeURIComponent(
+        String(id)
+      )}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        setSpeakerMessage("This live stream has ended.");
+      }
+      return;
+    }
+
+    const status = result.request?.status;
+
+    if (status === "pending") {
+      setSpeakerStatus("pending");
+      setSpeakerMessage("Waiting for the host to approve your request.");
+    }
+
+    if (status === "rejected") {
+      setSpeakerStatus("rejected");
+      setSpeakerMessage("Your request was not approved. You can request again.");
+    }
+
+    if (status === "approved" && !viewer?.canPublish) {
+      setSpeakerStatus("approved");
+      setSpeakerMessage("The host approved you! Connecting your microphone and camera...");
+
+      const newToken = await fetchLiveKitToken(String(id));
+
+      if (newToken.canPublish === true) {
+        setViewer(newToken);
+        setSpeakerMessage("You are now approved to speak!");
+      } else {
+        setSpeakerMessage("Approval received. Please wait while your speaking access is prepared.");
+      }
+    }
+
+  } catch (error) {
+    console.log("Speaker status check error:", error);
+  } finally {
+    speakerCheckingRef.current = false;
+  }
+};
+
+// ==================================================
+// 🔄 AUTOMATIC SPEAKER APPROVAL CHECK
+// ==================================================
+
+useEffect(() => {
+  if (
+    !id ||
+    !live ||
+    live.status !== "live" ||
+    live.is_active !== true ||
+    !viewer ||
+    viewer.canPublish === true
+  ) {
+    return;
+  }
+
+  checkSpeakerStatus();
+
+  const interval = setInterval(() => {
+    checkSpeakerStatus();
+  }, 5000);
+
+  return () => clearInterval(interval);
+}, [id, live, viewer]);
   // ==================================================
   // 📺 YOUTUBE FALLBACK
   // ==================================================
@@ -378,9 +546,11 @@ const sendMessage = async () => {
 >
         {viewer ? (
           <LiveKitViewer
-            serverUrl={viewer.url}
-            token={viewer.token}
-          />
+  key={`${viewer.token}`}
+  serverUrl={viewer.url}
+  token={viewer.token}
+  canPublish={viewer.canPublish === true}
+/>
         ) : embedUrl ? (
           Platform.OS === "web" ? (
             <iframe
@@ -455,6 +625,110 @@ const sendMessage = async () => {
         )}
         
       </View>
+      {/* ==================================================
+    🎤 REQUEST TO SPEAK
+================================================== */}
+
+{live.status === "live" &&
+ live.is_active === true &&
+ viewer &&
+ viewer.canPublish !== true && (
+  <View
+    style={{
+      marginTop: 12,
+      padding: 14,
+      backgroundColor: "#07111F",
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: "#E8B84A",
+    }}
+  >
+    <Text
+      style={{
+        color: "#E8B84A",
+        fontWeight: "900",
+        fontSize: 15,
+        marginBottom: 6,
+      }}
+    >
+      🎤 Join the Conversation
+    </Text>
+
+    <Text
+      style={{
+        color: "white",
+        fontSize: 12,
+        marginBottom: 12,
+      }}
+    >
+      Request permission from the host to join this live session with your camera and microphone.
+    </Text>
+
+    <TouchableOpacity
+      onPress={requestToSpeak}
+      disabled={speakerBusy || speakerStatus === "pending"}
+      style={{
+        backgroundColor:
+          speakerStatus === "pending" ? "#64748b" : "#E8B84A",
+        padding: 13,
+        borderRadius: 10,
+        alignItems: "center",
+        opacity: speakerBusy ? 0.6 : 1,
+      }}
+    >
+      {speakerBusy ? (
+        <ActivityIndicator color="#07111F" />
+      ) : (
+        <Text
+          style={{
+            color: "#07111F",
+            fontWeight: "900",
+          }}
+        >
+          {speakerStatus === "pending"
+            ? "REQUEST PENDING..."
+            : speakerStatus === "rejected"
+              ? "REQUEST TO SPEAK AGAIN"
+              : "REQUEST TO SPEAK"}
+        </Text>
+      )}
+    </TouchableOpacity>
+
+    {speakerMessage ? (
+      <Text
+        style={{
+          color: speakerStatus === "rejected" ? "#FCA5A5" : "#E8B84A",
+          marginTop: 10,
+          textAlign: "center",
+          fontSize: 12,
+        }}
+      >
+        {speakerMessage}
+      </Text>
+    ) : null}
+  </View>
+)}
+
+{viewer?.canPublish === true && (
+  <View
+    style={{
+      marginTop: 12,
+      padding: 12,
+      backgroundColor: "#DCFCE7",
+      borderRadius: 10,
+    }}
+  >
+    <Text
+      style={{
+        color: "#166534",
+        fontWeight: "900",
+        textAlign: "center",
+      }}
+    >
+      🎤 You are approved as a guest speaker!
+    </Text>
+  </View>
+)}
       {/* FULLSCREEN CONTROL */}
 
 <TouchableOpacity

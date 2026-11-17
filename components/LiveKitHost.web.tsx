@@ -1,19 +1,26 @@
 // 🌐 ==================================================
 // 🌐 NASARA LIVEKIT HOST — WEB
+// 🌐 LIVE VIEWER COUNT
 // 🌐 ==================================================
 
+import { useEffect } from "react";
+
 import {
-    LiveKitRoom,
-    useTracks,
-    VideoTrack,
+  LiveKitRoom,
+  useRemoteParticipants,
+  useTracks,
+  VideoTrack,
 } from "@livekit/components-react";
 
 import { Track } from "livekit-client";
+
+// 🌐 TYPES
 
 type Props = {
   serverUrl: string;
   token: string;
   onConnected: () => void;
+  onViewerCountChange?: (count: number) => void;
 };
 
 // 🌐 CAMERA PREVIEW
@@ -65,12 +72,31 @@ function WebCameraPreview() {
   );
 }
 
+// 🌐 LIVE VIEWER COUNT
+
+function WebViewerCount({
+  onViewerCountChange,
+}: {
+  onViewerCountChange?: (count: number) => void;
+}) {
+  const participants = useRemoteParticipants();
+
+  const viewerCount = participants.length;
+
+  useEffect(() => {
+    onViewerCountChange?.(viewerCount);
+  }, [viewerCount, onViewerCountChange]);
+
+  return null;
+}
+
 // 🌐 LIVEKIT WEB HOST
 
 export default function LiveKitHost({
   serverUrl,
   token,
   onConnected,
+  onViewerCountChange,
 }: Props) {
   return (
     <LiveKitRoom
@@ -82,6 +108,10 @@ export default function LiveKitHost({
       onConnected={onConnected}
     >
       <WebCameraPreview />
+
+      <WebViewerCount
+        onViewerCountChange={onViewerCountChange}
+      />
     </LiveKitRoom>
   );
 }

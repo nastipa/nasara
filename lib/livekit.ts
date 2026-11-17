@@ -1,30 +1,26 @@
-// ==================================================
-// 📦 IMPORTS
-// ==================================================
-
 import { supabase } from "./supabase";
 
 // ==================================================
-// 🌐 LIVEKIT SERVER
+// LIVEKIT SERVER
 // ==================================================
 
 const LIVEKIT_TOKEN_SERVER =
   "https://livekit-server-c0z9.onrender.com";
 
 // ==================================================
-// 🧾 LIVEKIT TOKEN RESPONSE
+// LIVEKIT TOKEN RESPONSE
 // ==================================================
 
 export interface LiveKitTokenResponse {
   token: string;
   url: string;
   roomName: string;
-  role: "host" | "viewer";
+  role: "host" | "viewer" | "speaker";
   canPublish: boolean;
 }
 
 // ==================================================
-// 🔐 FETCH SECURE LIVEKIT TOKEN
+// FETCH SECURE LIVEKIT TOKEN
 // ==================================================
 
 export async function fetchLiveKitToken(
@@ -34,7 +30,6 @@ export async function fetchLiveKitToken(
     throw new Error("A live stream ID is required.");
   }
 
-  // Get the currently logged-in user's session.
   const {
     data: { session },
     error: sessionError,
@@ -44,17 +39,14 @@ export async function fetchLiveKitToken(
     throw new Error("Please log in again to continue.");
   }
 
-  // Request a secure token from the Render backend.
   const response = await fetch(
     `${LIVEKIT_TOKEN_SERVER}/token`,
     {
       method: "POST",
-
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
-
       body: JSON.stringify({
         streamId,
       }),
@@ -70,7 +62,17 @@ export async function fetchLiveKitToken(
   }
 
   if (!data?.token || !data?.url || !data?.roomName) {
-    throw new Error("The LiveKit server returned an invalid response.");
+    throw new Error(
+      "The LiveKit server returned an invalid response."
+    );
+  }
+
+  if (
+    data.role !== "host" &&
+    data.role !== "viewer" &&
+    data.role !== "speaker"
+  ) {
+    throw new Error("Invalid LiveKit participant role.");
   }
 
   return {
@@ -78,6 +80,6 @@ export async function fetchLiveKitToken(
     url: data.url,
     roomName: data.roomName,
     role: data.role,
-    canPublish: data.canPublish,
+    canPublish: data.canPublish === true,
   };
 }
