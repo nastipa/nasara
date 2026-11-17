@@ -1331,7 +1331,6 @@ export default function GoLiveScreen() {
                           color={COLORS.gold}
                         />
                       </View>
-
                       <View style={{ flex: 1 }}>
                         <Text style={styles.speakerName}>
                           {displayName}

@@ -113,7 +113,6 @@ function RemoteVideoGrid() {
     </ScrollView>
   );
 }
-
 // ==================================================
 // 📺 VIEWER / APPROVED SPEAKER COMPONENT
 // ==================================================
