@@ -1292,11 +1292,13 @@ const loadLiveStreams = async () => {
   // 🟡 =====================================================
 
   const openSellerChat = async (item: Item) => {
+  try {
     const { data, error: authError } =
       await supabase.auth.getUser();
 
     const currentUserId = data.user?.id;
     const sellerId = item.user_id;
+    const postId = item.original_id || item.id;
 
     if (authError || !currentUserId) {
       router.push("/(auth)/login");
@@ -1304,7 +1306,7 @@ const loadLiveStreams = async () => {
     }
 
     if (!sellerId) {
-      Alert.alert("Error", "Seller not found");
+      Alert.alert("Error", "Seller not found.");
       return;
     }
 
@@ -1313,90 +1315,163 @@ const loadLiveStreams = async () => {
       return;
     }
 
-    try {
-      let existingRoom: any = null;
+    let room: any = null;
 
-      // 🔵 FIRST: Search using the normal buyer/seller order.
-      const { data: directRoom, error: directError } =
+    // FIND EXISTING ROOM: BUYER -> SELLER
+    const { data: directRoom, error: directError } =
+      await (supabase as any)
+        .from("chat_rooms")
+        .select("id")
+        .eq("buyer_id", currentUserId)
+        .eq("seller_id", sellerId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (directError) {
+      console.log("Direct room search:", directError);
+      Alert.alert("Chat Error", directError.message);
+      return;
+    }
+
+    room = directRoom;
+
+    // FIND EXISTING ROOM: SELLER -> BUYER
+    if (!room) {
+      const { data: reverseRoom, error: reverseError } =
         await (supabase as any)
           .from("chat_rooms")
           .select("id")
-          .eq("buyer_id", currentUserId)
-          .eq("seller_id", sellerId)
+          .eq("buyer_id", sellerId)
+          .eq("seller_id", currentUserId)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
-      if (directError) {
-        console.log("Direct chat search error:", directError);
-        Alert.alert("Chat Error", directError.message);
+      if (reverseError) {
+        console.log("Reverse room search:", reverseError);
+        Alert.alert("Chat Error", reverseError.message);
         return;
       }
 
-      existingRoom = directRoom;
+      room = reverseRoom;
+    }
 
-      // 🔵 SECOND: Search with buyer and seller reversed.
-      if (!existingRoom) {
-        const { data: reverseRoom, error: reverseError } =
-          await (supabase as any)
-            .from("chat_rooms")
-            .select("id")
-            .eq("buyer_id", sellerId)
-            .eq("seller_id", currentUserId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+    // CREATE ONLY IF NO EXISTING ROOM EXISTS
+    if (!room) {
+      const { data: newRoom, error: createError } =
+        await (supabase as any)
+          .from("chat_rooms")
+          .insert({
+            item_id: postId,
+            buyer_id: currentUserId,
+            seller_id: sellerId,
+          })
+          .select("id")
+          .single();
 
-        if (reverseError) {
-          console.log("Reverse chat search error:", reverseError);
-          Alert.alert("Chat Error", reverseError.message);
-          return;
-        }
+      if (createError) {
+        // A concurrent request or unique constraint may have
+        // created the room already. Search for it again.
+        if (createError.code === "23505") {
+          const { data: retryRoom, error: retryError } =
+            await (supabase as any)
+              .from("chat_rooms")
+              .select("id")
+              .eq("buyer_id", currentUserId)
+              .eq("seller_id", sellerId)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
 
-        existingRoom = reverseRoom;
-      }
+          if (retryError || !retryRoom) {
+            console.log("Duplicate room recovery:", retryError);
+            Alert.alert(
+              "Chat Error",
+              "The existing conversation could not be opened."
+            );
+            return;
+          }
 
-      let roomId = existingRoom?.id;
-
-      // 🟢 CREATE A ROOM ONLY IF NO OLD CONVERSATION EXISTS.
-      if (!roomId) {
-        const postId = item.original_id || item.id;
-
-        const { data: newRoom, error: createError } =
-          await (supabase as any)
-            .from("chat_rooms")
-            .insert({
-              item_id: postId,
-              buyer_id: currentUserId,
-              seller_id: sellerId,
-            })
-            .select("id")
-            .single();
-
-        if (createError) {
+          room = retryRoom;
+        } else {
           console.log("Chat creation error:", createError);
           Alert.alert("Chat Failed", createError.message);
           return;
         }
-
-        roomId = newRoom.id;
+      } else {
+        room = newRoom;
       }
-
-      // 🟡 RECORD FEED ACTIVITY.
-      trackInteraction(item, "chat");
-      await trackFeedAction(item, "chat");
-
-      // 🟢 OPEN THE EXISTING OR NEW ROOM.
-      router.push({
-        pathname: "/chat/[id]",
-        params: { id: roomId },
-      });
-
-    } catch (error: any) {
-      console.log("Browse chat error:", error);
-      Alert.alert("Error", "Could not open chat.");
     }
-  };
+
+    const roomId = room.id;
+
+    // ASSOCIATE THE CURRENT PRODUCT WITH THE ROOM.
+    // This allows the chat screen to load its product preview.
+    const { error: productUpdateError } =
+      await (supabase as any)
+        .from("chat_rooms")
+        .update({ item_id: postId })
+        .eq("id", roomId);
+
+    if (productUpdateError) {
+      console.log(
+        "Product association error:",
+        productUpdateError
+      );
+    }
+
+    // OPENING ENQUIRY MESSAGE
+    const openingMessage =
+      `Hello, I'm interested in your ${item.title || "product"} listed on Nasara. Is it still available?`;
+
+    const { data: existingMessage, error: checkError } =
+      await (supabase as any)
+        .from("messages")
+        .select("id")
+        .eq("room_id", roomId)
+        .eq("sender_id", currentUserId)
+        .eq("text", openingMessage)
+        .limit(1)
+        .maybeSingle();
+
+    if (checkError) {
+      console.log("Message check error:", checkError);
+    } else if (!existingMessage) {
+      const { error: insertError } =
+        await (supabase as any)
+          .from("messages")
+          .insert({
+            room_id: roomId,
+            sender_id: currentUserId,
+            receiver_id: sellerId,
+            text: openingMessage,
+          });
+
+      if (insertError) {
+        console.log("Opening message error:", insertError);
+      }
+    }
+
+    // PRESERVE EXISTING FEED TRACKING
+    trackInteraction(item, "chat");
+    await trackFeedAction(item, "chat");
+
+    // OPEN CHAT
+    router.push({
+      pathname: "/chat/[id]",
+      params: { id: String(roomId) },
+    });
+
+  } catch (error: any) {
+    console.log("Browse chat error:", error);
+
+    Alert.alert(
+      "Chat Error",
+      error?.message || "Could not open chat."
+    );
+  }
+}
   // 🟡 =====================================================
   // 🟡 MAIN UI
   // 🟡 =====================================================

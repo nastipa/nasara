@@ -1,5 +1,5 @@
 // ==========================================
-// 🟢 NASARA - EDIT ITEM SCREEN
+// 🟢 NASARA - SECURE EDIT ITEM SCREEN
 // ==========================================
 
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -43,81 +43,108 @@ export default function ItemEdit() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // ==========================================
-// 🟡 CROSS-PLATFORM MESSAGE
-// ==========================================
-
-const showMessage = (title: string, message: string) => {
-  if (Platform.OS === "web") {
-    window.alert(title + "\n\n" + message);
-  } else {
-    Alert.alert(title, message);
-  }
-};
 
   // ==========================================
-  // 🟡 LOAD ITEM FROM SUPABASE
+  // 🟡 CROSS-PLATFORM MESSAGE
+  // ==========================================
+
+  const showMessage = (heading: string, message: string) => {
+    if (Platform.OS === "web") {
+      window.alert(heading + "\n\n" + message);
+    } else {
+      Alert.alert(heading, message);
+    }
+  };
+
+  // ==========================================
+  // 🟢 LOAD ITEM SECURELY
   // ==========================================
 
   useEffect(() => {
     let isMounted = true;
 
     const loadItem = async () => {
-      if (!itemId) {
-        Alert.alert("Error", "Item ID is missing.");
-
+      if (!itemId || !/^\d+$/.test(itemId)) {
         if (isMounted) {
           setLoading(false);
+          showMessage("Invalid Item", "The item ID is missing or invalid.");
+        }
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        // GET AUTHENTICATED USER
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          if (isMounted) {
+            showMessage(
+              "Login Required",
+              "Please sign in again to edit your item."
+            );
+            setLoading(false);
+          }
+          return;
         }
 
-        return;
-      }
+        // LOAD ONLY THE LOGGED-IN USER'S ITEM
+        const { data, error } = await (supabase as any)
+          .from("items_live")
+          .select(
+            "id, user_id, title, price, location, description, seller_phone"
+          )
+          .eq("id", Number(itemId))
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-      setLoading(true);
+        if (!isMounted) return;
 
-      const { data, error } = await (supabase as any)
-        .from("items_live")
-        .select(
-          "id, title, price, location, description, seller_phone"
-        )
-        .eq("id", itemId)
-        .single();
+        if (error) {
+          console.error("Load item error:", error);
 
-      if (!isMounted) return;
+          showMessage(
+            "Unable to Load Item",
+            error.message || "Please try again."
+          );
 
-      if (error) {
-        console.error("Load item error:", error.message);
+          setLoading(false);
+          return;
+        }
 
-        Alert.alert(
-          "Unable to Load Item",
-          error.message
-        );
+        if (!data) {
+          showMessage(
+            "Item Not Available",
+            "This item does not exist or you do not have permission to edit it."
+          );
+
+          setLoading(false);
+          return;
+        }
+
+        // POPULATE FORM
+        setTitle(data.title ?? "");
+        setPrice(data.price == null ? "" : String(data.price));
+        setLocation(data.location ?? "");
+        setDescription(data.description ?? "");
+        setSellerPhone(data.seller_phone ?? "");
 
         setLoading(false);
-        return;
+      } catch (error: any) {
+        console.error("LOAD ITEM ERROR:", error);
+
+        if (isMounted) {
+          showMessage(
+            "Loading Error",
+            error?.message || "Unable to retrieve your item."
+          );
+          setLoading(false);
+        }
       }
-
-      if (!data) {
-        Alert.alert(
-          "Item Not Found",
-          "This item could not be found."
-        );
-
-        setLoading(false);
-        return;
-      }
-
-      // ==========================================
-      // 🟢 POPULATE ALL EDITABLE FIELDS
-      // ==========================================
-
-      setTitle(data.title ?? "");
-      setPrice(String(data.price ?? ""));
-      setLocation(data.location ?? "");
-      setDescription(data.description ?? "");
-      setSellerPhone(data.seller_phone ?? "");
-
-      setLoading(false);
     };
 
     loadItem();
@@ -127,93 +154,113 @@ const showMessage = (title: string, message: string) => {
     };
   }, [itemId]);
 
- // 💾 SAVE ITEM — ALL FIELDS OPTIONAL
-const saveItem = async () => {
-  if (!itemId) {
-    showMessage("Error", "Item ID is missing.");
-    return;
-  }
+  // ==========================================
+  // 💾 SAVE ITEM SECURELY
+  // ==========================================
 
-  setSaving(true);
+  const saveItem = async () => {
+    if (saving) return;
 
-  try {
-    const updateData: any = {};
-
-    // 📝 UPDATE ONLY FIELDS THE USER ENTERED
-    if (title.trim() !== "") {
-      updateData.title = title.trim();
-    }
-
-    if (price.trim() !== "") {
-      const numericPrice = Number(price.trim());
-
-      if (!Number.isFinite(numericPrice) || numericPrice < 0) {
-        showMessage("Invalid Price", "Enter a valid price.");
-        return;
-      }
-
-      updateData.price = numericPrice;
-    }
-
-    if (location.trim() !== "") {
-      updateData.location = location.trim();
-    }
-
-    if (description.trim() !== "") {
-      updateData.description = description.trim();
-    }
-
-    if (sellerPhone.trim() !== "") {
-      updateData.seller_phone = sellerPhone.trim();
-    }
-
-    // ⚠️ NOTHING ENTERED
-    if (Object.keys(updateData).length === 0) {
-      showMessage("No Changes", "Enter at least one field to update.");
+    if (!itemId || !/^\d+$/.test(itemId)) {
+      showMessage("Invalid Item", "The item ID is missing or invalid.");
       return;
     }
 
-    console.log("Updating item:", itemId);
-    console.log("Update data:", updateData);
-
-    // 🔄 UPDATE SUPABASE
-    const { data, error } = await (supabase as any)
-      .from("items_live")
-      .update(updateData)
-      .eq("id", Number(itemId))
-      .select("id")
-      .maybeSingle();
-
-    if (error) {
-      console.error("SUPABASE UPDATE ERROR:", error);
-      showMessage("Save Failed", error.message);
+    // REQUIRED TITLE
+    if (!title.trim()) {
+      showMessage("Title Required", "Please enter your product title.");
       return;
     }
 
-    // 🔍 CHECK WHETHER A ROW WAS UPDATED
-    if (!data) {
+    // REQUIRED PRICE
+    if (!price.trim()) {
+      showMessage("Price Required", "Please enter your selling price.");
+      return;
+    }
+
+    const numericPrice = Number(price.trim());
+
+    if (!Number.isFinite(numericPrice) || numericPrice < 0) {
       showMessage(
-        "Update Failed",
-        "No item was updated. Check that the item exists and you have permission to edit it."
+        "Invalid Price",
+        "Enter a valid price greater than or equal to zero."
       );
       return;
     }
 
-    // ✅ SUCCESS
-    showMessage("Success", "Your item has been updated successfully.");
-    router.back();
+    setSaving(true);
 
-  } catch (error: any) {
-    console.error("SAVE ITEM ERROR:", error);
+    try {
+      // VERIFY AUTHENTICATED USER AGAIN
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    showMessage(
-      "Unexpected Error",
-      error?.message || "Unable to save your item."
-    );
-  } finally {
-    setSaving(false);
-  }
-};
+      if (authError || !user) {
+        showMessage(
+          "Login Required",
+          "Your session may have expired. Please sign in again."
+        );
+        return;
+      }
+
+      // ALL FIELDS ARE SENT.
+      // OPTIONAL FIELDS CAN NOW BE CLEARED.
+      const updateData = {
+        title: title.trim(),
+        price: numericPrice,
+        location: location.trim() || null,
+        description: description.trim() || null,
+        seller_phone: sellerPhone.trim() || null,
+      };
+
+      console.log("Updating Nasara item:", itemId);
+
+      // UPDATE ONLY IF THE ITEM BELONGS TO THIS USER
+      const { data, error } = await (supabase as any)
+        .from("items_live")
+        .update(updateData)
+        .eq("id", Number(itemId))
+        .eq("user_id", user.id)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        console.error("SUPABASE UPDATE ERROR:", error);
+
+        showMessage(
+          "Save Failed",
+          error.message || "Unable to update your item."
+        );
+        return;
+      }
+
+      if (!data) {
+        showMessage(
+          "Update Not Allowed",
+          "No item was updated. Make sure you own this item and have permission to edit it."
+        );
+        return;
+      }
+
+      showMessage(
+        "Success",
+        "Your Nasara marketplace item has been updated successfully."
+      );
+
+      router.back();
+    } catch (error: any) {
+      console.error("SAVE ITEM ERROR:", error);
+
+      showMessage(
+        "Unexpected Error",
+        error?.message || "Unable to save your item."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // ==========================================
   // 🟣 REUSABLE INPUT COMPONENT
@@ -232,9 +279,7 @@ const saveItem = async () => {
   ) => {
     return (
       <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>
-          {label}
-        </Text>
+        <Text style={styles.inputLabel}>{label}</Text>
 
         <TextInput
           value={value}
@@ -243,9 +288,7 @@ const saveItem = async () => {
           placeholderTextColor="#9CA3AF"
           multiline={options?.multiline}
           keyboardType={options?.keyboardType || "default"}
-          textAlignVertical={
-            options?.multiline ? "top" : "center"
-          }
+          textAlignVertical={options?.multiline ? "top" : "center"}
           editable={!saving}
           style={[
             styles.input,
@@ -254,9 +297,7 @@ const saveItem = async () => {
         />
 
         {options?.helper ? (
-          <Text style={styles.helperText}>
-            {options.helper}
-          </Text>
+          <Text style={styles.helperText}>{options.helper}</Text>
         ) : null}
       </View>
     );
@@ -270,15 +311,10 @@ const saveItem = async () => {
     return (
       <View style={styles.loadingContainer}>
         <View style={styles.loadingIcon}>
-          <ActivityIndicator
-            size="large"
-            color="#07865B"
-          />
+          <ActivityIndicator size="large" color="#07865B" />
         </View>
 
-        <Text style={styles.loadingTitle}>
-          Loading Your Item
-        </Text>
+        <Text style={styles.loadingTitle}>Loading Your Item</Text>
 
         <Text style={styles.loadingSubtitle}>
           Please wait while we retrieve your product details.
@@ -301,7 +337,7 @@ const saveItem = async () => {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* 🟢 HEADER */}
+        {/* HEADER */}
 
         <View style={styles.header}>
           <TouchableOpacity
@@ -310,15 +346,11 @@ const saveItem = async () => {
             disabled={saving}
             activeOpacity={0.7}
           >
-            <Text style={styles.backButtonText}>
-              ‹
-            </Text>
+            <Text style={styles.backButtonText}>‹</Text>
           </TouchableOpacity>
 
           <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>
-              Edit Item
-            </Text>
+            <Text style={styles.headerTitle}>Edit Item</Text>
 
             <Text style={styles.headerSubtitle}>
               Manage your marketplace listing
@@ -326,28 +358,24 @@ const saveItem = async () => {
           </View>
         </View>
 
-        {/* 🟡 INTRODUCTION CARD */}
+        {/* INTRODUCTION CARD */}
 
         <View style={styles.introCard}>
           <View style={styles.introIconContainer}>
-            <Text style={styles.introIcon}>
-              ✏️
-            </Text>
+            <Text style={styles.introIcon}>✏️</Text>
           </View>
 
           <View style={styles.introTextContainer}>
-            <Text style={styles.introTitle}>
-              Update Your Product
-            </Text>
+            <Text style={styles.introTitle}>Update Your Product</Text>
 
             <Text style={styles.introDescription}>
-              Keep your product information accurate so
-              buyers can easily contact you.
+              Keep your product information accurate so buyers can easily
+              contact you.
             </Text>
           </View>
         </View>
 
-        {/* 🟢 PRODUCT DETAILS */}
+        {/* PRODUCT DETAILS */}
 
         <View style={styles.formCard}>
           <View style={styles.sectionHeader}>
@@ -356,9 +384,7 @@ const saveItem = async () => {
             </View>
 
             <View>
-              <Text style={styles.sectionTitle}>
-                Product Details
-              </Text>
+              <Text style={styles.sectionTitle}>Product Details</Text>
 
               <Text style={styles.sectionSubtitle}>
                 Basic information about your product
@@ -406,7 +432,7 @@ const saveItem = async () => {
           )}
         </View>
 
-        {/* 🟢 SELLER CONTACT DETAILS */}
+        {/* SELLER CONTACT DETAILS */}
 
         <View style={styles.formCard}>
           <View style={styles.sectionHeader}>
@@ -415,9 +441,7 @@ const saveItem = async () => {
             </View>
 
             <View>
-              <Text style={styles.sectionTitle}>
-                Seller Contact
-              </Text>
+              <Text style={styles.sectionTitle}>Seller Contact</Text>
 
               <Text style={styles.sectionSubtitle}>
                 Contact information for buyers
@@ -432,23 +456,22 @@ const saveItem = async () => {
             "Enter seller phone number",
             {
               keyboardType: "phone-pad",
-              helper: "Enter the phone number buyers should use to contact you.",
+              helper:
+                "Enter the phone number buyers should use to contact you.",
             }
           )}
 
           <View style={styles.contactNotice}>
-            <Text style={styles.contactNoticeIcon}>
-              ℹ️
-            </Text>
+            <Text style={styles.contactNoticeIcon}>ℹ️</Text>
 
             <Text style={styles.contactNoticeText}>
-              Make sure your contact number is correct
-              before saving your changes.
+              Make sure your contact number is correct before saving your
+              changes.
             </Text>
           </View>
         </View>
 
-        {/* 🟡 SAVE BUTTON */}
+        {/* SAVE BUTTON */}
 
         <TouchableOpacity
           onPress={saveItem}
@@ -461,39 +484,30 @@ const saveItem = async () => {
         >
           {saving ? (
             <View style={styles.savingContent}>
-              <ActivityIndicator
-                color="#FFFFFF"
-                size="small"
-              />
+              <ActivityIndicator color="#FFFFFF" size="small" />
 
               <Text style={styles.saveButtonText}>
                 Saving Changes...
               </Text>
             </View>
           ) : (
-            <Text style={styles.saveButtonText}>
-              ✓  Save Changes
-            </Text>
+            <Text style={styles.saveButtonText}>✓  Save Changes</Text>
           )}
         </TouchableOpacity>
 
-        {/* 🔴 CANCEL BUTTON */}
+        {/* CANCEL BUTTON */}
 
         <TouchableOpacity
           onPress={() => router.back()}
           disabled={saving}
           style={styles.cancelButton}
         >
-          <Text style={styles.cancelButtonText}>
-            Cancel
-          </Text>
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
 
-        {/* ⚪ FOOTER */}
+        {/* FOOTER */}
 
-        <Text style={styles.footerText}>
-          NASARA GHANA
-        </Text>
+        <Text style={styles.footerText}>NASARA GHANA</Text>
 
         <Text style={styles.footerSubtitle}>
           Connecting buyers and sellers
@@ -504,7 +518,7 @@ const saveItem = async () => {
 }
 
 // ==========================================
-// 🎨 BEAUTIFUL NASARA UI STYLES
+// 🎨 NASARA UI STYLES
 // ==========================================
 
 const styles = StyleSheet.create({
@@ -518,10 +532,6 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 45,
   },
-
-  // ==========================================
-  // 🔵 LOADING
-  // ==========================================
 
   loadingContainer: {
     flex: 1,
@@ -554,10 +564,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 19,
   },
-
-  // ==========================================
-  // 🟢 HEADER
-  // ==========================================
 
   header: {
     flexDirection: "row",
@@ -601,10 +607,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // ==========================================
-  // 🟡 INTRODUCTION
-  // ==========================================
-
   introCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -647,10 +649,6 @@ const styles = StyleSheet.create({
     color: "#537765",
   },
 
-  // ==========================================
-  // 🟢 FORM CARDS
-  // ==========================================
-
   formCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 19,
@@ -688,10 +686,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // ==========================================
-  // 🟣 INPUT FIELDS
-  // ==========================================
-
   inputGroup: {
     marginBottom: 19,
   },
@@ -728,10 +722,6 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
 
-  // ==========================================
-  // 🟡 CONTACT NOTICE
-  // ==========================================
-
   contactNotice: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -752,10 +742,6 @@ const styles = StyleSheet.create({
     color: "#527361",
     lineHeight: 17,
   },
-
-  // ==========================================
-  // 🟢 SAVE BUTTON
-  // ==========================================
 
   saveButton: {
     backgroundColor: "#07865B",
@@ -784,10 +770,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
 
-  // ==========================================
-  // 🔴 CANCEL
-  // ==========================================
-
   cancelButton: {
     paddingVertical: 15,
     alignItems: "center",
@@ -799,10 +781,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
   },
-
-  // ==========================================
-  // ⚪ FOOTER
-  // ==========================================
 
   footerText: {
     textAlign: "center",

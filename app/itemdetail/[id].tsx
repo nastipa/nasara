@@ -445,46 +445,72 @@ const trackView = async (itemId: number) => {
   
 
   // ==========================================
-  // ❤️ FAVORITE ITEM
-  // ==========================================
+// ❤️ FAVORITE ITEM
+// ==========================================
 
-  const toggleFavorite = async () => {
-    if (!userId || !item) return;
+const toggleFavorite = async () => {
+  if (!userId || !item) return;
 
+  try {
     if (isFav) {
-      await (supabase as any)
+      // REMOVE FROM FAVORITES TABLE
+      const { error } = await (supabase as any)
         .from("favorites")
         .delete()
         .eq("user_id", userId)
         .eq("item_id", item.id);
 
+      if (error) {
+        console.error("REMOVE FAVORITE ERROR:", error.message);
+        return;
+      }
+
       setIsFav(false);
 
-      setSaveCount((p) =>
-        Math.max(0, p - 1)
+      setSaveCount((previous) =>
+        Math.max(0, previous - 1)
       );
     } else {
-      await (supabase as any)
-        .from("item_engagement")
+      // ADD TO FAVORITES TABLE
+      const { error } = await (supabase as any)
+        .from("favorites")
         .insert({
-          item_id: item.id,
           user_id: userId,
-          action: "favorite",
+          item_id: item.id,
         });
+
+      if (error) {
+        console.error("ADD FAVORITE ERROR:", error.message);
+        return;
+      }
 
       setIsFav(true);
 
-      setSaveCount((p) => p + 1);
+      setSaveCount((previous) => previous + 1);
 
-      await (supabase as any)
+      // RECORD ANALYTICS SEPARATELY
+      const { error: analyticsError } = await (supabase as any)
         .from("analytics_events")
         .insert({
           user_id: userId,
           event_type: "favorite_item",
           item_id: item.id,
         });
+
+      if (analyticsError) {
+        console.error(
+          "FAVORITE ANALYTICS ERROR:",
+          analyticsError.message
+        );
+      }
     }
-  };
+  } catch (error: any) {
+    console.error(
+      "TOGGLE FAVORITE ERROR:",
+      error?.message || error
+    );
+  }
+};
 
   // ==========================================
   // 🔗 SHARE ITEM

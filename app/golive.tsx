@@ -1674,7 +1674,7 @@ export default function GoLiveScreen() {
               </Text>
 
               <Text style={styles.infoDescription}>
-                Broadcast using LiveKit on browsers,
+                Broadcast using browsers,
                 Android and iOS.
               </Text>
             </View>

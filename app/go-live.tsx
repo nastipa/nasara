@@ -81,11 +81,17 @@ export default function GoLiveScreen() {
   const [uploadingVideo, setUploadingVideo] = useState(false);
 
   // ==========================================
-  // 💬 MESSAGE HELPER
+  // 💬 CROSS-PLATFORM MESSAGE HELPER
   // ==========================================
 
   const showMessage = (heading: string, message?: string) => {
-    Alert.alert(heading, message);
+    if (Platform.OS === "web") {
+      window.alert(
+        message ? `${heading}\n\n${message}` : heading
+      );
+    } else {
+      Alert.alert(heading, message);
+    }
   };
 
   // ==========================================
@@ -325,10 +331,12 @@ export default function GoLiveScreen() {
   };
 
   // ==========================================
-  // 🔴 START LIVE SESSION
+  // 🔴 START OR RESUME LIVE SESSION
   // ==========================================
 
   const startLive = async () => {
+    if (loading) return;
+
     if (!title.trim()) {
       showMessage(
         "Enter Live Title",
@@ -340,9 +348,7 @@ export default function GoLiveScreen() {
     setLoading(true);
 
     try {
-      // ==========================================
-      // 🔐 CHECK USER LOGIN
-      // ==========================================
+      // CHECK USER LOGIN
 
       const auth = await supabase.auth.getUser();
 
@@ -350,7 +356,9 @@ export default function GoLiveScreen() {
         throw auth.error;
       }
 
-      if (!auth.data.user) {
+      const user = auth.data.user;
+
+      if (!user) {
         showMessage(
           "Login Required",
           "Please login before going live."
@@ -358,14 +366,12 @@ export default function GoLiveScreen() {
         return;
       }
 
-      // ==========================================
-      // 💳 CHECK SELLER MOMO DETAILS
-      // ==========================================
+      // CHECK SELLER MOMO DETAILS
 
       const profileRes = await (supabase as any)
         .from("profiles")
         .select("momo_name, momo_number")
-        .eq("id", auth.data.user.id)
+        .eq("id", user.id)
         .single();
 
       if (profileRes.error) {
@@ -383,41 +389,97 @@ export default function GoLiveScreen() {
         return;
       }
 
-      // ==========================================
-      // 💾 CREATE LIVE SESSION
-      // ==========================================
+      // FIND SELLER'S EXISTING ACTIVE SESSION
 
-      const res = await (supabase as any)
+      const existingRes = await (supabase as any)
         .from("live_sessions")
-        .insert({
-          seller_id: auth.data.user.id,
-          title: title.trim(),
-          is_live: true,
-          momo_name: profileRes.data.momo_name,
-          momo_number: profileRes.data.momo_number,
-        })
-        .select("id")
-        .single();
+        .select("id, title, created_at")
+        .eq("seller_id", user.id)
+        .eq("is_live", true)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (res.error) {
-        throw res.error;
+      if (existingRes.error) {
+        throw existingRes.error;
       }
 
-      if (!res.data) {
-        throw new Error("Could not create your live session.");
+      let sessionId: number;
+
+      // RESUME EXISTING SESSION
+
+      if (existingRes.data) {
+        const updateRes = await (supabase as any)
+          .from("live_sessions")
+          .update({
+            title: title.trim(),
+            momo_name: profileRes.data.momo_name,
+            momo_number: profileRes.data.momo_number,
+            is_live: true,
+          })
+          .eq("id", existingRes.data.id)
+          .eq("seller_id", user.id)
+          .select("id")
+          .single();
+
+        if (updateRes.error) {
+          throw updateRes.error;
+        }
+
+        sessionId = updateRes.data.id;
+
+        console.log(
+          "Resumed existing Nasara live session:",
+          sessionId
+        );
+      } else {
+        // CREATE NEW LIVE SESSION
+
+        const insertRes = await (supabase as any)
+          .from("live_sessions")
+          .insert({
+            seller_id: user.id,
+            title: title.trim(),
+            is_live: true,
+            momo_name: profileRes.data.momo_name,
+            momo_number: profileRes.data.momo_number,
+          })
+          .select("id")
+          .single();
+
+        if (insertRes.error) {
+          throw insertRes.error;
+        }
+
+        if (!insertRes.data) {
+          throw new Error(
+            "Could not create your live session."
+          );
+        }
+
+        sessionId = insertRes.data.id;
+
+        console.log(
+          "Created new Nasara live session:",
+          sessionId
+        );
       }
 
-      // ==========================================
-      // ✅ LIVE SESSION STARTED
-      // ==========================================
+      // SET ACTIVE SESSION
+
+      setTitle(title.trim());
 
       setLive({
-        id: res.data.id,
+        id: sessionId,
       });
 
       showMessage(
-        "You Are Live!",
-        "Your live session has started. You can now add products for buyers."
+        existingRes.data
+          ? "Welcome Back!"
+          : "You Are Live!",
+        existingRes.data
+          ? "Your existing live session has been resumed. Your previously added products are still attached."
+          : "Your live session has started. You can now add products for buyers."
       );
     } catch (error: any) {
       console.error("Start live error:", error);
@@ -436,6 +498,8 @@ export default function GoLiveScreen() {
   // ==========================================
 
   const addItem = async () => {
+    if (loading) return;
+
     if (!live) {
       showMessage(
         "Start Live First",
@@ -484,25 +548,19 @@ export default function GoLiveScreen() {
       let imageUrl: string | null = null;
       let videoUrl: string | null = null;
 
-      // ==========================================
-      // 🖼️ UPLOAD IMAGE
-      // ==========================================
+      // UPLOAD IMAGE
 
       if (imageUri) {
         imageUrl = await uploadLiveImage();
       }
 
-      // ==========================================
-      // 🎥 UPLOAD VIDEO
-      // ==========================================
+      // UPLOAD VIDEO
 
       if (videoUri) {
         videoUrl = await uploadLiveVideo(videoUri);
       }
 
-      // ==========================================
-      // 💾 SAVE LIVE ITEM
-      // ==========================================
+      // SAVE LIVE ITEM
 
       const res = await (supabase as any)
         .from("live_items")
@@ -518,9 +576,7 @@ export default function GoLiveScreen() {
         throw res.error;
       }
 
-      // ==========================================
-      // 🧹 CLEAR ITEM FORM
-      // ==========================================
+      // CLEAR ITEM FORM
 
       setItemTitle("");
       setPrice("");
@@ -548,12 +604,117 @@ export default function GoLiveScreen() {
   // ⏹️ END LIVE SESSION
   // ==========================================
 
-  const endLive = async () => {
-    if (!live) return;
+  const confirmEndLive = async () => {
+    if (loading) return;
+
+    if (!live?.id) {
+      showMessage(
+        "No Active Live",
+        "There is no active live session to end."
+      );
+      return;
+    }
+
+    const sessionId = live.id;
+
+    setLoading(true);
+
+    try {
+      // VERIFY SELLER LOGIN
+
+      const auth = await supabase.auth.getUser();
+
+      if (auth.error) {
+        throw auth.error;
+      }
+
+      const user = auth.data.user;
+
+      if (!user) {
+        throw new Error(
+          "Please login again to end your live session."
+        );
+      }
+
+      // END ONLY THIS SELLER'S SESSION
+
+      const { data, error } = await (supabase as any)
+        .from("live_sessions")
+        .update({
+          is_live: false,
+        })
+        .eq("id", sessionId)
+        .eq("seller_id", user.id)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data) {
+        throw new Error(
+          "The session could not be ended. Please check that you own this session."
+        );
+      }
+
+      // PRESERVE PRODUCTS
+      // Only is_live is changed above.
+      // No live_items are deleted.
+
+      setLive(null);
+
+      showMessage(
+        "Live Ended Successfully",
+        "Your live session has ended. Your products have been preserved."
+      );
+
+      router.replace("/(tabs)/browse");
+    } catch (error: any) {
+      console.error("End live error:", error);
+
+      showMessage(
+        "Could Not End Live",
+        error?.message || "Something went wrong. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ==========================================
+  // ⏹️ END LIVE BUTTON ACTION
+  // ==========================================
+
+  const endLive = () => {
+    if (loading) return;
+
+    if (!live?.id) {
+      showMessage(
+        "No Active Live",
+        "There is no active live session to end."
+      );
+      return;
+    }
+
+    // WEB CONFIRMATION
+
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm(
+        "Are you sure you want to end your live session?\n\nYour products will remain saved on Nasara."
+      );
+
+      if (!confirmed) return;
+
+      void confirmEndLive();
+      return;
+    }
+
+    // ANDROID AND IOS CONFIRMATION
 
     Alert.alert(
       "End Live Session?",
-      "Are you sure you want to end your live session?",
+      "Are you sure you want to end your live session? Your products will remain saved on Nasara.",
       [
         {
           text: "Continue Live",
@@ -562,37 +723,12 @@ export default function GoLiveScreen() {
         {
           text: "End Live",
           style: "destructive",
-          onPress: async () => {
-            setLoading(true);
-
-            try {
-              const { error } = await (supabase as any)
-                .from("live_sessions")
-                .update({
-                  is_live: false,
-                })
-                .eq("id", live.id);
-
-              if (error) {
-                throw error;
-              }
-
-              setLive(null);
-
-              router.replace("/(tabs)/browse");
-            } catch (error: any) {
-              console.error("End live error:", error);
-
-              showMessage(
-                "Could Not End Live",
-                error?.message || "Something went wrong."
-              );
-            } finally {
-              setLoading(false);
-            }
+          onPress: () => {
+            void confirmEndLive();
           },
         },
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
@@ -606,9 +742,7 @@ export default function GoLiveScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* ======================================
-            🔵 HEADER
-        ====================================== */}
+        {/* HEADER */}
 
         <View style={styles.header}>
           <TouchableOpacity
@@ -646,9 +780,7 @@ export default function GoLiveScreen() {
           </View>
         </View>
 
-        {/* ======================================
-            🔴 LIVE STATUS
-        ====================================== */}
+        {/* LIVE STATUS */}
 
         <View
           style={[
@@ -705,9 +837,7 @@ export default function GoLiveScreen() {
           </View>
         </View>
 
-        {/* ======================================
-            🔴 BEFORE GOING LIVE
-        ====================================== */}
+        {/* BEFORE GOING LIVE */}
 
         {!live && (
           <>
@@ -815,9 +945,7 @@ export default function GoLiveScreen() {
           </>
         )}
 
-        {/* ======================================
-            🛍️ LIVE SESSION ACTIVE
-        ====================================== */}
+        {/* LIVE SESSION ACTIVE */}
 
         {live && (
           <>
@@ -854,9 +982,7 @@ export default function GoLiveScreen() {
               </View>
             </View>
 
-            {/* ======================================
-                📝 ADD PRODUCT SECTION
-            ====================================== */}
+            {/* ADD PRODUCT SECTION */}
 
             <View style={styles.section}>
               <View style={styles.sectionHeading}>
@@ -879,9 +1005,7 @@ export default function GoLiveScreen() {
                 </View>
               </View>
 
-              {/* ======================================
-                  🛍️ ITEM TITLE
-              ====================================== */}
+              {/* ITEM TITLE */}
 
               <Text style={styles.inputLabel}>
                 Product Name
@@ -905,9 +1029,7 @@ export default function GoLiveScreen() {
                 />
               </View>
 
-              {/* ======================================
-                  💰 PRODUCT PRICE
-              ====================================== */}
+              {/* PRODUCT PRICE */}
 
               <Text style={[styles.inputLabel, styles.priceLabel]}>
                 Selling Price (GH₵)
@@ -931,9 +1053,7 @@ export default function GoLiveScreen() {
                 />
               </View>
 
-              {/* ======================================
-                  🖼️ PRODUCT IMAGE
-              ====================================== */}
+              {/* PRODUCT IMAGE */}
 
               <Text style={[styles.inputLabel, styles.mediaLabel]}>
                 Product Image
@@ -952,7 +1072,7 @@ export default function GoLiveScreen() {
                     <Image
                       source={{ uri: imageUri }}
                       style={styles.imagePreview}
-                      resizeMode="cover"
+                      resizeMode="contain"
                     />
 
                     <View style={styles.imageSelectedBadge}>
@@ -1012,9 +1132,7 @@ export default function GoLiveScreen() {
                 )}
               </TouchableOpacity>
 
-              {/* ======================================
-                  🎥 PRODUCT VIDEO
-              ====================================== */}
+              {/* PRODUCT VIDEO */}
 
               <Text style={[styles.inputLabel, styles.mediaLabel]}>
                 Product Video (Optional)
@@ -1102,9 +1220,7 @@ export default function GoLiveScreen() {
                 </TouchableOpacity>
               )}
 
-              {/* ======================================
-                  ☁️ UPLOAD INFORMATION
-              ====================================== */}
+              {/* UPLOAD INFORMATION */}
 
               <View style={styles.uploadInfo}>
                 <Ionicons
@@ -1119,9 +1235,7 @@ export default function GoLiveScreen() {
                 </Text>
               </View>
 
-              {/* ======================================
-                  🟢 ADD ITEM BUTTON
-              ====================================== */}
+              {/* ADD ITEM BUTTON */}
 
               <TouchableOpacity
                 onPress={addItem}
@@ -1155,32 +1269,38 @@ export default function GoLiveScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* ======================================
-                ⏹️ END LIVE BUTTON
-            ====================================== */}
+            {/* END LIVE BUTTON */}
 
             <TouchableOpacity
               onPress={endLive}
               disabled={loading}
-              style={styles.endLiveButton}
+              style={[
+                styles.endLiveButton,
+                loading && styles.disabledButton,
+              ]}
               activeOpacity={0.85}
             >
-              <Ionicons
-                name="stop-circle-outline"
-                size={21}
-                color={COLORS.red}
-              />
+              {loading ? (
+                <ActivityIndicator
+                  color={COLORS.red}
+                  size="small"
+                />
+              ) : (
+                <Ionicons
+                  name="stop-circle-outline"
+                  size={21}
+                  color={COLORS.red}
+                />
+              )}
 
               <Text style={styles.endLiveButtonText}>
-                End Live Session
+                {loading ? "Ending Live Session..." : "End Live Session"}
               </Text>
             </TouchableOpacity>
           </>
         )}
 
-        {/* ======================================
-            🏷️ FOOTER
-        ====================================== */}
+        {/* FOOTER */}
 
         <Text style={styles.footer}>
           POWERED BY NASARA
@@ -1204,9 +1324,7 @@ const styles = StyleSheet.create({
     paddingBottom: 45,
   },
 
-  // ==========================================
-  // 🔵 HEADER
-  // ==========================================
+  // HEADER
 
   header: {
     backgroundColor: COLORS.navy,
@@ -1264,9 +1382,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
-  // ==========================================
-  // 🔴 STATUS CARD
-  // ==========================================
+  // STATUS CARD
 
   statusCard: {
     marginHorizontal: 18,
@@ -1352,9 +1468,7 @@ const styles = StyleSheet.create({
     color: COLORS.green,
   },
 
-  // ==========================================
-  // 📦 FORM SECTION
-  // ==========================================
+  // FORM SECTION
 
   section: {
     marginHorizontal: 18,
@@ -1394,9 +1508,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
 
-  // ==========================================
-  // 📝 INPUTS
-  // ==========================================
+  // INPUTS
 
   inputLabel: {
     color: COLORS.text,
@@ -1439,9 +1551,7 @@ const styles = StyleSheet.create({
     marginTop: 21,
   },
 
-  // ==========================================
-  // ℹ️ INFORMATION CARD
-  // ==========================================
+  // INFORMATION CARD
 
   infoCard: {
     marginHorizontal: 18,
@@ -1471,9 +1581,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
 
-  // ==========================================
-  // 🔴 START LIVE BUTTON
-  // ==========================================
+  // START LIVE BUTTON
 
   startLiveButton: {
     marginHorizontal: 18,
@@ -1498,9 +1606,7 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
 
-  // ==========================================
-  // 🔴 LIVE SESSION BANNER
-  // ==========================================
+  // LIVE SESSION BANNER
 
   liveSessionBanner: {
     marginHorizontal: 18,
@@ -1569,9 +1675,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  // ==========================================
-  // 🖼️ IMAGE UPLOAD
-  // ==========================================
+  // IMAGE UPLOAD
 
   imageUploadBox: {
     minHeight: 185,
@@ -1635,6 +1739,7 @@ const styles = StyleSheet.create({
   imagePreviewContainer: {
     width: "100%",
     height: 225,
+    backgroundColor: COLORS.white,
   },
 
   imagePreview: {
@@ -1680,9 +1785,7 @@ const styles = StyleSheet.create({
     marginLeft: 5,
   },
 
-  // ==========================================
-  // 🎥 VIDEO UPLOAD
-  // ==========================================
+  // VIDEO UPLOAD
 
   videoUploadBox: {
     minHeight: 72,
@@ -1776,9 +1879,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
 
-  // ==========================================
-  // 🟢 ADD ITEM BUTTON
-  // ==========================================
+  // ADD ITEM BUTTON
 
   addItemButton: {
     marginTop: 20,
@@ -1798,9 +1899,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  // ==========================================
-  // ⏹️ END LIVE BUTTON
-  // ==========================================
+  // END LIVE BUTTON
 
   endLiveButton: {
     marginHorizontal: 18,
@@ -1822,9 +1921,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
 
-  // ==========================================
-  // 🏷️ FOOTER
-  // ==========================================
+  // FOOTER
 
   footer: {
     textAlign: "center",
