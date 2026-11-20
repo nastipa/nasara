@@ -414,8 +414,7 @@ const trackView = async (itemId: number) => {
   // ==========================================
 
   const toggleFollow = async () => {
-    if (!userId || !seller?.id) return;
-
+    if (!seller?.id || !requireAccount("follow")) return;
     if (isFollowing) {
       await (supabase as any)
         .from("follows")
@@ -449,8 +448,7 @@ const trackView = async (itemId: number) => {
 // ==========================================
 
 const toggleFavorite = async () => {
-  if (!userId || !item) return;
-
+  if (!item || !requireAccount("favorite")) return;
   try {
     if (isFav) {
       // REMOVE FROM FAVORITES TABLE
@@ -639,6 +637,27 @@ const toggleFavorite = async () => {
 
   const isSeller = userId === item.user_id;
 
+// ==========================================
+// 🔐 REQUIRE LOGIN BEFORE BUYER INTERACTIONS
+// ==========================================
+
+const requireAccount = (action: string): boolean => {
+  if (userId) return true;
+
+  const sellerShop = `/sellers/${item.user_id}`;
+
+  router.push({
+    pathname: "/(auth)/login",
+    params: {
+      returnTo: sellerShop,
+      sellerId: String(item.user_id),
+      action,
+      itemId: String(item.id),
+    },
+  } as any);
+
+  return false;
+};
   // 🟡 =====================================================
 // 🟡 START CHAT - REUSE EXISTING BUYER/SELLER CONVERSATION
 // 🟡 Same chat system used by Browse
@@ -653,9 +672,9 @@ const startChat = async () => {
     const currentUserId = user?.id;
     const sellerId = item.user_id;
     if (authError || !currentUserId) {
-      router.push("/(auth)/login");
-      return;
-    }
+  requireAccount("chat");
+  return;
+}
     if (!sellerId) {
       Alert.alert("Error", "Seller not found.");
       return;
@@ -787,6 +806,7 @@ const startChat = async () => {
   // ==========================================
 
   const submitOffer = async () => {
+    if (!requireAccount("offer")) return;
     if (!offerPrice.trim()) {
       Alert.alert("Enter amount");
       return;
@@ -1215,11 +1235,11 @@ const startChat = async () => {
                 {!!item.seller_phone && (
                   <TouchableOpacity
                     activeOpacity={0.88}
-                    onPress={() =>
-                      Linking.openURL(
-                        `tel:${item.seller_phone}`
-                      )
-                    }
+                    onPress={() => {
+  if (!requireAccount("call")) return;
+
+  Linking.openURL(`tel:${item.seller_phone}`);
+}}
                     style={styles.callButton}
                   >
                     <Text style={styles.callButtonIcon}>
@@ -1237,9 +1257,11 @@ const startChat = async () => {
                 {item.is_negotiable && (
                   <TouchableOpacity
                     activeOpacity={0.88}
-                    onPress={() =>
-                      setShowOffer(!showOffer)
-                    }
+                    onPress={() => {
+  if (!requireAccount("offer")) return;
+
+  setShowOffer(!showOffer);
+}}
                     style={styles.offerButton}
                   >
                     <Text style={styles.offerButtonIcon}>

@@ -1,7 +1,10 @@
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
 import { VideoView, useVideoPlayer } from "expo-video";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import QRCode from "react-native-qrcode-svg";
+import { captureRef } from "react-native-view-shot";
 
 import {
   ActivityIndicator,
@@ -13,6 +16,7 @@ import {
   Platform,
   RefreshControl,
   ScrollView,
+  Share,
   Text,
   TouchableOpacity,
   View,
@@ -39,9 +43,6 @@ const COLORS = {
 
 /* =====================================================
    FETCH ALL ROWS IN PAGES
-
-   Prevents Supabase's default row limit from
-   silently reducing the listing results.
 ===================================================== */
 
 async function fetchAllPages<T>(
@@ -444,6 +445,16 @@ export default function My() {
   const [paymentLoading, setPaymentLoading] = useState(false);
 
   /* ===================================================
+     SELLER QR CODE
+  =================================================== */
+
+  const [sellerId, setSellerId] = useState("");
+  const [shopUrl, setShopUrl] = useState("");
+  const [qrSharing, setQrSharing] = useState(false);
+
+  const qrRef = useRef<View>(null);
+
+  /* ===================================================
      NASARA MOMO ACCOUNT
 
      PRESERVED
@@ -469,6 +480,8 @@ export default function My() {
       if (authError || !user) {
         setItems([]);
         setListingCount(0);
+        setSellerId("");
+        setShopUrl("");
 
         showAlert(
           "Login Required",
@@ -478,9 +491,16 @@ export default function My() {
         return;
       }
 
-      /* -----------------------------------------------
-         EXACT LISTING COUNT
-      ----------------------------------------------- */
+      /* GET UNIQUE SELLER SHOP URL */
+
+      setSellerId(user.id);
+
+      const uniqueShopUrl =
+        "https://nasara1.vercel.app/sellers/" + user.id;
+
+      setShopUrl(uniqueShopUrl);
+
+      /* EXACT LISTING COUNT */
 
       const {
         count: exactListingCount,
@@ -500,9 +520,7 @@ export default function My() {
         );
       }
 
-      /* -----------------------------------------------
-         FETCH ALL SELLER LISTINGS
-      ----------------------------------------------- */
+      /* FETCH ALL SELLER LISTINGS */
 
       const sellerItems = await fetchAllPages<any>(
         async (from, to) => {
@@ -524,31 +542,21 @@ export default function My() {
         return;
       }
 
-      /* -----------------------------------------------
-         FETCH ACTUAL ITEMDETAIL COUNTS
-
-         Views:
-         Uses the existing record_item_view RPC through
-         lib/itemViewTracking.ts.
-
-         Favourites:
-         Uses the same exact count query as ItemDetail.
-
-         These are read for each seller product.
-      ----------------------------------------------- */
+      /* FETCH ACTUAL ITEMDETAIL COUNTS */
 
       const enrichedItems = await Promise.all(
         sellerItems.map(async (item) => {
           const itemId = Number(item.id);
-
-          /* GET ACTUAL VIEW COUNT */
 
           let actualViews = 0;
 
           try {
             const viewCount = await recordItemView(itemId);
 
-            if (viewCount !== null && Number.isFinite(Number(viewCount))) {
+            if (
+              viewCount !== null &&
+              Number.isFinite(Number(viewCount))
+            ) {
               actualViews = Number(viewCount);
             } else {
               console.warn(
@@ -564,54 +572,116 @@ export default function My() {
             );
           }
 
-         /* GET ACTUAL FAVOURITE COUNT */
+          /* GET ACTUAL FAVOURITE COUNT */
 
-let actualFavourites = 0;
+          let actualFavourites = 0;
 
-const {
-  data: favouriteCount,
-  error: favouriteError,
-} = await (supabase as any).rpc("get_item_favorite_count", {
-  p_item_id: Number(item.id),
-});
+          const {
+            data: favouriteCount,
+            error: favouriteError,
+          } = await (supabase as any).rpc(
+            "get_item_favorite_count",
+            {
+              p_item_id: Number(item.id),
+            }
+          );
 
-if (favouriteError) {
-  console.error(
-    "FAVOURITE COUNT ERROR:",
-    item.id,
-    favouriteError.message
+          if (favouriteError) {
+            console.error(
+              "FAVOURITE COUNT ERROR:",
+              item.id,
+              favouriteError.message
+            );
+          } else {
+            actualFavourites = Number(favouriteCount || 0);
+          }
+
+          return {
+            ...item,
+            views_count: actualViews,
+            favorites_count: actualFavourites,
+            chats_count: Number(item.chats_count || 0),
+          };
+        })
+      );
+
+      setItems(enrichedItems);
+    } catch (error: any) {
+      console.error("BUSINESS DASHBOARD ERROR:", error);
+
+      showAlert(
+        "Loading Error",
+        error?.message || "Unable to load your business dashboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchMyItems();
+    }, [fetchMyItems])
   );
-} else {
-  actualFavourites = Number(favouriteCount || 0);
-}
 
-return {
-  ...item,
-  views_count: actualViews,
-  favorites_count: actualFavourites,
-  chats_count: Number(item.chats_count || 0),
-};
-})
-);
+  /* ===================================================
+     SHARE / SAVE QR CODE
+  =================================================== */
 
-setItems(enrichedItems);
-} catch (error: any) {
-  console.error("BUSINESS DASHBOARD ERROR:", error);
+  const shareShopQr = async () => {
+    if (!shopUrl || qrSharing) {
+      return;
+    }
 
-  showAlert(
-    "Loading Error",
-    error?.message || "Unable to load your business dashboard."
-  );
-} finally {
-  setLoading(false);
-}
-}, []);
+    setQrSharing(true);
 
-useFocusEffect(
-  useCallback(() => {
-    fetchMyItems();
-  }, [fetchMyItems])
-);
+    try {
+      if (Platform.OS === "web") {
+        await Share.share({
+          title: "My Nasara Shop",
+          message: shopUrl,
+          url: shopUrl,
+        });
+
+        return;
+      }
+
+      if (!qrRef.current) {
+        throw new Error("QR code is not ready yet.");
+      }
+
+      const imageUri = await captureRef(qrRef, {
+        format: "png",
+        quality: 1,
+        result: "tmpfile",
+      });
+
+      const available = await Sharing.isAvailableAsync();
+
+      if (!available) {
+        await Share.share({
+          message: shopUrl,
+          title: "My Nasara Shop",
+        });
+
+        return;
+      }
+
+      await Sharing.shareAsync(imageUri, {
+        mimeType: "image/png",
+        dialogTitle: "Share my Nasara Shop QR Code",
+        UTI: "public.png",
+      });
+    } catch (error: any) {
+      showAlert(
+        "QR Code Error",
+        error?.message || "Unable to share your QR code."
+      );
+    } finally {
+      setQrSharing(false);
+    }
+  };
+
   /* ===================================================
      DASHBOARD STATISTICS
   =================================================== */
@@ -725,8 +795,7 @@ useFocusEffect(
         ? [post.image_url]
         : [];
 
-      /* VIDEO OR PRODUCT WITH NO IMAGES:
-         DELETE THE COMPLETE LISTING. */
+      /* VIDEO OR PRODUCT WITH NO IMAGES */
 
       if (post.video_url || images.length === 0) {
         const { error: deleteError } = await supabase
@@ -844,8 +913,7 @@ useFocusEffect(
   /* ===================================================
      SEND PROMOTION PAYMENT REQUEST
 
-     Existing Nasara MoMo instructions preserved.
-     Creates ONE payment and ONE promotion record.
+     EXISTING MOMO INSTRUCTIONS PRESERVED
   =================================================== */
 
   const sendPayment = async () => {
@@ -1164,6 +1232,143 @@ useFocusEffect(
           </View>
         ))}
       </View>
+
+      {/* =================================================
+          MY NASARA SHOP QR CODE
+      ================================================= */}
+
+      <View
+        style={{
+          backgroundColor: COLORS.white,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          padding: 18,
+          marginBottom: 22,
+          alignItems: "center",
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.navy,
+            fontSize: 19,
+            fontWeight: "900",
+          }}
+        >
+          My Nasara Shop QR Code
+        </Text>
+
+        <Text
+          style={{
+            color: COLORS.muted,
+            fontSize: 12,
+            textAlign: "center",
+            marginTop: 7,
+            marginBottom: 15,
+            lineHeight: 19,
+          }}
+        >
+          Let customers scan this code to visit your shop and browse your products.
+        </Text>
+
+        {shopUrl ? (
+          <>
+            <View
+              ref={qrRef}
+              collapsable={false}
+              style={{
+                backgroundColor: COLORS.white,
+                padding: 18,
+                borderRadius: 12,
+                alignItems: "center",
+              }}
+            >
+              <QRCode
+                value={shopUrl}
+                size={220}
+                color={COLORS.navy}
+                backgroundColor="#FFFFFF"
+              />
+
+              <Text
+                style={{
+                  color: COLORS.navy,
+                  fontSize: 14,
+                  fontWeight: "900",
+                  marginTop: 12,
+                }}
+              >
+                NASARA MARKETPLACE
+              </Text>
+            </View>
+
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 11,
+                textAlign: "center",
+                marginTop: 12,
+              }}
+            >
+              Your unique shop address
+            </Text>
+
+            <Text
+              selectable
+              style={{
+                color: COLORS.blue,
+                fontSize: 11,
+                textAlign: "center",
+                marginTop: 5,
+              }}
+            >
+              {shopUrl}
+            </Text>
+
+            <TouchableOpacity
+              onPress={shareShopQr}
+              disabled={qrSharing}
+              style={{
+                backgroundColor: COLORS.navy,
+                padding: 15,
+                borderRadius: 10,
+                width: "100%",
+                marginTop: 18,
+                opacity: qrSharing ? 0.6 : 1,
+              }}
+            >
+              {qrSharing ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text
+                  style={{
+                    color: "white",
+                    textAlign: "center",
+                    fontWeight: "900",
+                  }}
+                >
+                  Share / Save My QR Code
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 11,
+                marginTop: 10,
+                textAlign: "center",
+              }}
+            >
+              Share your QR code with customers or save it for printing.
+            </Text>
+          </>
+        ) : (
+          <ActivityIndicator color={COLORS.gold} />
+        )}
+      </View>
+
+      {/* MY PRODUCTS */}
 
       <View
         style={{
