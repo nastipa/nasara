@@ -11,7 +11,6 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 
 import {
-  Alert,
   Image,
   Platform,
   ScrollView,
@@ -20,7 +19,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -307,6 +306,25 @@ export default function Sell() {
     "others",
   ];
 
+  // ============================================================
+// 🔔 CROSS-PLATFORM MESSAGE
+// ============================================================
+
+const showMessage = (
+  title: string,
+  message?: string
+) => {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") {
+      window.alert(
+        message ? `${title}\n\n${message}` : title
+      );
+    }
+    return;
+  }
+
+  showMessage(title, message);
+};
   // ==========================================================
   // 📍 GET DEVICE LOCATION
   // ==========================================================
@@ -348,7 +366,7 @@ export default function Sell() {
       const remaining = 10 - imageUris.length;
 
       if (remaining <= 0) {
-        Alert.alert(
+        showMessage(
           "Image limit",
           "You can select a maximum of 10 images."
         );
@@ -373,7 +391,7 @@ export default function Sell() {
         setVideoUri(null);
       }
     } catch (error) {
-      Alert.alert(
+      showMessage(
         "Image selection failed",
         "Please try again."
       );
@@ -406,7 +424,7 @@ export default function Sell() {
         setImageUris([]);
       }
     } catch (error) {
-      Alert.alert(
+      showMessage(
         "Video selection failed",
         "Please try again."
       );
@@ -604,7 +622,7 @@ export default function Sell() {
     // --------------------------------------------------------
 
     if (!title.trim()) {
-      Alert.alert(
+     showMessage(
         "Product title required",
         "Please enter the name of your product."
       );
@@ -612,7 +630,7 @@ export default function Sell() {
     }
 
     if (!category) {
-      Alert.alert(
+      showMessage(
         "Category required",
         "Please select a product category."
       );
@@ -623,7 +641,7 @@ export default function Sell() {
       !Number.isFinite(Number(price)) ||
       Number(price) < 0
     )) {
-      Alert.alert(
+      showMessage(
         "Invalid price",
         "Please enter a valid product price."
       );
@@ -636,7 +654,7 @@ export default function Sell() {
         !Number.isFinite(Number(dealPrice)) ||
         Number(dealPrice) <= 0
       ) {
-        Alert.alert(
+        showMessage(
           "Friday Deal price required",
           "Enter a valid Friday Deal price."
         );
@@ -647,7 +665,7 @@ export default function Sell() {
         price.trim() &&
         Number(dealPrice) >= Number(price)
       ) {
-        Alert.alert(
+       showMessage(
           "Invalid Friday Deal price",
           "The Friday Deal price should be lower than the normal price."
         );
@@ -674,7 +692,7 @@ export default function Sell() {
       } = await supabase.auth.getUser();
 
       if (authError || !user) {
-        Alert.alert(
+        showMessage(
           "Login required",
           "Please log in before publishing an item."
         );
@@ -846,7 +864,7 @@ longitude,
       // 🎉 SUCCESS
       // ------------------------------------------------------
 
-      Alert.alert(
+      showMessage(
         "Published successfully! 🚀",
         "Your item has been published on Nasara."
       );
@@ -893,7 +911,7 @@ longitude,
           ? err.message
           : "Something went wrong while publishing your item.";
 
-      Alert.alert(
+     showMessage(
         "Publishing failed",
         message
       );

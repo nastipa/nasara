@@ -16,6 +16,10 @@ import { supabase } from "../lib/supabase";
 /* 🔥 PUSH */
 import { registerPush } from "../lib/registerPush";
 
+import {
+  enableBrowserNotifications,
+} from "../lib/registerBrowserPush";
+
 /* 🔥 SOUND */
 import { playSound } from "../lib/playSound";
 
@@ -251,6 +255,15 @@ export default function RootLayout() {
               "/chat"
             );
           }
+
+          /* ===== ADMIN NOTIFICATION ===== */
+
+if (
+  data?.type === "admin_notification"
+) {
+  router.push("/(admin)/notifications");
+  return;
+}
           if (
   data?.type ===
   "food_order"
@@ -385,7 +398,29 @@ const itemsChannel = supabase
           ) {
             return;
           }
+          /* ===== GENERAL NASARA ADMIN ALERTS ===== */
 
+if (
+  notif.data?.scope === "admin" ||
+  notif.data?.url === "/admin/notifications" ||
+  notif.type === "admin_notification"
+) {
+  playSound("message");
+
+  playWebNotificationSound();
+
+  // Browser system notifications are delivered
+  // through browserPush.js and public/sw.js.
+  // Do not show another notification here,
+  // otherwise the browser may display duplicates.
+
+  // Android and iOS notifications are delivered
+  // through the existing Expo push system.
+  // The foreground notification handler above
+  // displays the incoming push notification.
+
+  return;
+}
           /* ===== FOOD ORDER ===== */
 
           if (
@@ -677,34 +712,51 @@ useEffect(() => {
     };
   }, []);
 
-  /* ================= 🔥 REGISTER PUSH TOKEN ================= */
+ /* ================= 🔥 REGISTER NASARA PUSH ================= */
 
-  useEffect(() => {
-    const setupPush =
-      async () => {
-        if (
-          !session?.user
-        )
-          return;
+useEffect(() => {
+  const setupPush = async () => {
+    if (!session?.user?.id) return;
 
-        try {
-          await registerPush(
+    try {
+      // 🌐 WEB BROWSER PUSH
+      if (Platform.OS === "web") {
+        const result =
+          await enableBrowserNotifications(
             session.user.id
           );
 
+        if (result.success) {
           console.log(
-            "✅ Push token saved"
+            "✅ NASARA BROWSER PUSH REGISTERED"
           );
-        } catch (err) {
+        } else {
           console.log(
-            "Push setup error:",
-            err
+            "⚠️ NASARA BROWSER PUSH:",
+            result.message
           );
         }
-      };
 
-    setupPush();
-  }, [session]);
+        return;
+      }
+
+      // 📱 ANDROID + iOS EXPO PUSH
+      await registerPush(session.user.id);
+
+      console.log(
+        "✅ NASARA NATIVE PUSH REGISTERED"
+      );
+
+    } catch (error) {
+      console.log(
+        "NASARA PUSH REGISTRATION ERROR:",
+        error
+      );
+    }
+  };
+
+  setupPush();
+}, [session?.user?.id]);
 
   /* ================= SAFE ROUTING ================= */
 
