@@ -71,30 +71,20 @@ const sections: AdminSection[] = [
     ],
   },
 
-  {
-    title: "Engagement & Notifications",
-    icon: "🔔",
-    items: [
-      {
-        label: "Engagement Manager",
-        route: "/(admin)/engagement",
-        icon: "📣",
-        description: "Manage daily campaigns and reminders",
-      },
-      {
-        label: "Notification Campaigns",
-        route: "/(admin)/engagement",
-        icon: "📨",
-        description: "Create and manage announcements",
-      },
-      {
-        label: "Campaign Analytics",
-        route: "/(admin)/engagement",
-        icon: "📊",
-        description: "Review notification delivery statistics",
-      },
-    ],
-  },
+  
+   {
+  title: "Engagement & Notifications",
+  icon: "🔔",
+  items: [
+    {
+      label: "Engagement Manager",
+      route: "/(admin)/engagement",
+      icon: "📣",
+      description: "Manage daily campaigns and reminders",
+    },
+    
+  ],
+},
   {
     title: "Delivery & Logistics",
     icon: "🚚",
