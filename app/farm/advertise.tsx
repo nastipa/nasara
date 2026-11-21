@@ -3,22 +3,21 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
 
 const PRICE_PER_DAY = 30;
+const API_URL = "https://nasara-upload-server.onrender.com";
 
-const uploadFile = async (
-  uri: string
-): Promise<string> => {
+const uploadFile = async (uri: string): Promise<string> => {
   const formData = new FormData();
 
   formData.append("file", {
@@ -27,16 +26,16 @@ const uploadFile = async (
     type: "image/jpeg",
   } as any);
 
-  const res = await fetch(
-    "https://nasara-upload-server.onrender.com/upload",
-    {
-      method: "POST",
-      body: formData,
-    }
-  );
+  const res = await fetch(`${API_URL}/upload`, {
+    method: "POST",
+    body: formData,
+  });
 
-  const data =
-    await res.json();
+  const data = await res.json();
+
+  if (!res.ok || !data.url) {
+    throw new Error(data.error || "Banner image upload failed.");
+  }
 
   return data.url;
 };
@@ -44,166 +43,193 @@ const uploadFile = async (
 export default function FarmAdvertiseScreen() {
   const router = useRouter();
 
-  const [farmId, setFarmId] =
-    useState<number | null>(null);
-
-  const [userId, setUserId] =
-    useState("");
-
-  const [title, setTitle] =
-    useState("");
-
-  const [phone, setPhone] =
-    useState("");
-
-  const [days, setDays] =
-    useState("1");
-
-  const [reference, setReference] =
-    useState("");
-
-  const [bannerUri, setBannerUri] =
-    useState<string | null>(null);
-
-  const [loading, setLoading] =
-    useState(false);
+  const [farmId, setFarmId] = useState<number | null>(null);
+  const [userId, setUserId] = useState("");
+  const [title, setTitle] = useState("");
+  const [phone, setPhone] = useState("");
+  const [days, setDays] = useState("1");
+  const [reference, setReference] = useState("");
+  const [bannerUri, setBannerUri] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadFarm();
   }, []);
 
   const loadFarm = async () => {
-    const {
-      data: { user },
-    } =
-      await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (!user) return;
+      if (authError || !user) {
+        Alert.alert("Login Required", "Please log in to continue.");
+        return;
+      }
 
-    setUserId(user.id);
+      setUserId(user.id);
 
-    const { data } =
-      await (supabase as any)
+      const { data, error } = await (supabase as any)
         .from("farm_profiles")
         .select("id")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-    if (data) {
-      setFarmId(data.id);
+      if (error) throw error;
+
+      if (data) {
+        setFarmId(data.id);
+      }
+    } catch (error: any) {
+      console.log("LOAD FARM ERROR:", error);
+      Alert.alert("Error", error.message || "Could not load your farm.");
     }
   };
 
-  const pickBanner =
-    async () => {
-      const result =
-        await ImagePicker.launchImageLibraryAsync({
-          mediaTypes:
-            ImagePicker.MediaTypeOptions.Images,
-          quality: 0.8,
-        });
+  const pickBanner = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
 
-      if (
-        !result.canceled
-      ) {
-        setBannerUri(
-          result.assets[0].uri
-        );
+      if (!result.canceled) {
+        setBannerUri(result.assets[0].uri);
       }
-    };
+    } catch (error: any) {
+      Alert.alert("Image Error", error.message || "Could not select image.");
+    }
+  };
 
-  const submit =
-    async () => {
+  const submit = async () => {
+    if (loading) return;
+
+    try {
+      if (!farmId || !userId) {
+        Alert.alert("Farm Not Found", "Your farm profile could not be found.");
+        return;
+      }
+
+      if (!title.trim()) {
+        Alert.alert("Enter Title", "Enter your advertisement title.");
+        return;
+      }
+
+      if (!phone.trim()) {
+        Alert.alert("Enter Phone Number", "Enter your contact phone number.");
+        return;
+      }
+
+      if (!reference.trim()) {
+        Alert.alert("Payment Reference", "Enter your MoMo reference.");
+        return;
+      }
+
+      if (!bannerUri) {
+        Alert.alert("Select Banner Image", "Please select an advertisement image.");
+        return;
+      }
+
+      const numberOfDays = Number(days);
+
+      if (!Number.isInteger(numberOfDays) || numberOfDays < 1) {
+        Alert.alert("Invalid Duration", "Enter a valid number of days.");
+        return;
+      }
+
+      setLoading(true);
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Your login session has expired. Please log in again.");
+      }
+
+      // Upload advertisement banner.
+      const bannerUrl = await uploadFile(bannerUri);
+
+      const total = numberOfDays * PRICE_PER_DAY;
+
+      // Save advertisement request.
+      const { data: adRequest, error: requestError } =
+        await (supabase as any)
+          .from("farm_ad_requests")
+          .insert({
+            farm_id: farmId,
+            user_id: userId,
+            title: title.trim(),
+            phone: phone.trim(),
+            days: numberOfDays,
+            amount: total,
+            momo_reference: reference.trim(),
+            banner_url: bannerUrl,
+            status: "pending",
+          })
+          .select("id")
+          .single();
+
+      if (requestError) throw requestError;
+
+      // Notify Nasara administrators.
+      let notificationSent = false;
+
       try {
-        if (!farmId) {
-          Alert.alert(
-            "Farm not found"
-          );
-          return;
-        }
-
-        if (!title.trim()) {
-          Alert.alert(
-            "Enter title"
-          );
-          return;
-        }
-
-        if (!phone.trim()) {
-          Alert.alert(
-            "Enter phone number"
-          );
-          return;
-        }
-
-        if (!reference.trim()) {
-          Alert.alert(
-            "Enter MoMo reference"
-          );
-          return;
-        }
-
-        if (!bannerUri) {
-          Alert.alert(
-            "Select banner image"
-          );
-          return;
-        }
-
-        setLoading(true);
-
-        const bannerUrl =
-          await uploadFile(
-            bannerUri
-          );
-
-        const total =
-          Number(days) *
-          PRICE_PER_DAY;
-
-        const { error } =
-          await (supabase as any)
-            .from(
-              "farm_ad_requests"
-            )
-            .insert({
-              farm_id: farmId,
-              user_id: userId,
-              title,
-              phone,
-              days:
-                Number(days),
-              amount: total,
-              momo_reference:
-                reference,
-              banner_url:
-                bannerUrl,
-              status:
-                "pending",
-            });
-
-        if (error)
-          throw error;
-
-        Alert.alert(
-          "Success",
-          "Advertisement submitted"
+        const response = await fetch(
+          `${API_URL}/notifications/admin-submit`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              type: "farm_ad_request",
+              ref_id: adRequest.id,
+            }),
+          }
         );
 
-        router.back();
-      } catch (e: any) {
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          console.log("FARM AD NOTIFICATION ERROR:", result);
+        } else {
+          notificationSent = true;
+        }
+      } catch (notificationError) {
+        console.log("FARM AD NOTIFICATION ERROR:", notificationError);
+      }
+
+      if (notificationSent) {
         Alert.alert(
-          "Error",
-          e.message
+          "Advertisement Submitted",
+          "Your farm advertisement has been submitted. Nasara admins have been notified to verify your payment."
+        );
+      } else {
+        Alert.alert(
+          "Advertisement Saved",
+          "Your advertisement request has been saved and is awaiting payment verification. However, the admin notification could not be sent."
         );
       }
 
-      setLoading(false);
-    };
+      router.back();
+    } catch (error: any) {
+      console.log("FARM AD SUBMISSION ERROR:", error);
 
-  const total =
-    Number(days || 0) *
-    PRICE_PER_DAY;
+      Alert.alert(
+        "Error",
+        error.message || "Could not submit advertisement."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const total = Number(days || 0) * PRICE_PER_DAY;
 
   return (
     <ScrollView
@@ -223,32 +249,21 @@ export default function FarmAdvertiseScreen() {
 
       <View
         style={{
-          backgroundColor:
-            "#f3f4f6",
+          backgroundColor: "#f3f4f6",
           padding: 15,
           borderRadius: 12,
           marginBottom: 20,
         }}
       >
         <Text>
-          Price:
-          GH₵30 per day
+          Price: GH₵30 per day
         </Text>
 
-        <Text
-          style={{
-            marginTop: 10,
-          }}
-        >
+        <Text style={{ marginTop: 10 }}>
           MTN MoMo
         </Text>
 
-        <Text
-          style={{
-            fontWeight:
-              "bold",
-          }}
-        >
+        <Text style={{ fontWeight: "bold" }}>
           0539703374
         </Text>
 
@@ -260,9 +275,8 @@ export default function FarmAdvertiseScreen() {
       <TextInput
         placeholder="Advertisement Title"
         value={title}
-        onChangeText={
-          setTitle
-        }
+        onChangeText={setTitle}
+        editable={!loading}
         style={{
           borderWidth: 1,
           borderRadius: 10,
@@ -274,9 +288,9 @@ export default function FarmAdvertiseScreen() {
       <TextInput
         placeholder="Phone Number"
         value={phone}
-        onChangeText={
-          setPhone
-        }
+        onChangeText={setPhone}
+        keyboardType="phone-pad"
+        editable={!loading}
         style={{
           borderWidth: 1,
           borderRadius: 10,
@@ -289,9 +303,8 @@ export default function FarmAdvertiseScreen() {
         placeholder="Days"
         keyboardType="numeric"
         value={days}
-        onChangeText={
-          setDays
-        }
+        onChangeText={setDays}
+        editable={!loading}
         style={{
           borderWidth: 1,
           borderRadius: 10,
@@ -302,21 +315,18 @@ export default function FarmAdvertiseScreen() {
 
       <Text
         style={{
-          fontWeight:
-            "bold",
+          fontWeight: "bold",
           marginBottom: 15,
         }}
       >
-        Total:
-        GH₵ {total}
+        Total: GH₵ {total}
       </Text>
 
       <TextInput
         placeholder="MoMo Reference"
         value={reference}
-        onChangeText={
-          setReference
-        }
+        onChangeText={setReference}
+        editable={!loading}
         style={{
           borderWidth: 1,
           borderRadius: 10,
@@ -326,12 +336,10 @@ export default function FarmAdvertiseScreen() {
       />
 
       <TouchableOpacity
-        onPress={
-          pickBanner
-        }
+        onPress={pickBanner}
+        disabled={loading}
         style={{
-          backgroundColor:
-            "#2563eb",
+          backgroundColor: "#2563eb",
           padding: 14,
           borderRadius: 10,
         }}
@@ -339,10 +347,8 @@ export default function FarmAdvertiseScreen() {
         <Text
           style={{
             color: "#fff",
-            textAlign:
-              "center",
-            fontWeight:
-              "bold",
+            textAlign: "center",
+            fontWeight: "bold",
           }}
         >
           Select Banner
@@ -351,9 +357,7 @@ export default function FarmAdvertiseScreen() {
 
       {bannerUri && (
         <Image
-          source={{
-            uri: bannerUri,
-          }}
+          source={{ uri: bannerUri }}
           style={{
             width: "100%",
             height: 180,
@@ -368,8 +372,7 @@ export default function FarmAdvertiseScreen() {
         onPress={submit}
         disabled={loading}
         style={{
-          backgroundColor:
-            "#16a34a",
+          backgroundColor: loading ? "#9ca3af" : "#16a34a",
           padding: 16,
           borderRadius: 12,
           marginTop: 25,
@@ -377,20 +380,16 @@ export default function FarmAdvertiseScreen() {
         }}
       >
         {loading ? (
-          <ActivityIndicator
-            color="#fff"
-          />
+          <ActivityIndicator color="#fff" />
         ) : (
           <Text
             style={{
               color: "#fff",
-              textAlign:
-                "center",
-              fontWeight:
-                "bold",
+              textAlign: "center",
+              fontWeight: "bold",
             }}
           >
-            Submit Advertisement
+            I've Paid - Submit for Verification
           </Text>
         )}
       </TouchableOpacity>

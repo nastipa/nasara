@@ -145,84 +145,125 @@ export default function BoostItem() {
   /* ===============================
      STEP 2: SEND PAYMENT REQUEST
   ================================ */
-  const sendPayment = async () => {
-    if (!amountInput.trim() || !selectedPlan || !itemId) {
-      showAlert("Error", "Missing payment info");
+const sendPayment = async () => {
+  if (!amountInput.trim() || !selectedPlan || !itemId) {
+    showAlert("Error", "Missing payment info");
+    return;
+  }
+
+  try {
+    setProcessing(true);
+
+    // ==========================================
+    // GET USER SESSION
+    // ==========================================
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.user || !session.access_token) {
+      showAlert("Login Required", "Please sign in again.");
       return;
     }
 
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth?.user) return;
+    const user = session.user;
+    const amount = Number(amountInput);
 
-    try {
-      setProcessing(true);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showAlert("Error", "Enter a valid payment amount.");
+      return;
+    }
 
-      /* ===============================
-   LOAD ITEM DETAILS (FIX TS)
-================================ */
+    // ==========================================
+    // LOAD ITEM DETAILS
+    // ==========================================
 
-const { data, error: itemError } = await supabase
-  .from("items_live")
-  .select("title,image_url,video_url,price")
-  .eq("id", itemId)
-  .single();
+    const { data, error: itemError } = await supabase
+      .from("items_live")
+      .select("title,image_url,video_url,price,user_id")
+      .eq("id", itemId)
+      .single();
 
-if (itemError || !data) {
-  showAlert("Error", "Item not found. Cannot boost.");
-  setProcessing(false);
-  return;
-}
+    if (itemError || !data) {
+      showAlert("Error", "Item not found. Cannot boost.");
+      return;
+    }
 
-/* ✅ FIX TYPE HERE */
-const itemData = data as {
-  title: string;
-  image_url: string | null;
-  video_url: string | null;
-  price: number;
-};
+    const itemData = data as {
+      title: string;
+      image_url: string | null;
+      video_url: string | null;
+      price: number;
+      user_id: string;
+    };
 
-/* ✅ DEBUG */
-console.log("ITEM DATA:", itemData);
-      /* ===============================
-         AUTO PAYMENT CODE
-      ================================ */
-      const paymentCode =
-        "BOOST-" + auth.user.id.slice(0, 6) + "-" + Date.now();
+    if (itemData.user_id !== user.id) {
+      showAlert("Error", "You can only boost your own item.");
+      return;
+    }
 
-      /* ===============================
-         INSERT BOOST REQUEST (ADMIN CAN SEE IMAGE)
-      ================================ */
-      const { error } = await (supabase as any).from("boost").insert({
-  live_item_id: itemId,
+    console.log("ITEM DATA:", itemData);
 
-  plan_id: selectedPlan.id,
-  days: selectedPlan.days,
-  amount: Number(amountInput),
+    // ==========================================
+    // GENERATE PAYMENT CODE
+    // ==========================================
 
-  seller_id: auth.user.id,
+    const paymentCode =
+      "BOOST-" + user.id.slice(0, 6) + "-" + Date.now();
 
-  item_title: itemData.title,
-  item_image_url: itemData.image_url,
-  item_video_url: itemData.video_url, // ✅ NO ?? null
-  item_price: itemData.price,
+    // ==========================================
+    // INSERT BOOST REQUEST
+    // ==========================================
 
-  payment_code: paymentCode,
-  network: adminMomoNetwork,
+    const { data: boostData, error: boostError } = await (
+      supabase as any
+    )
+      .from("boost")
+      .insert({
+        live_item_id: itemId,
+        plan_id: selectedPlan.id,
+        days: selectedPlan.days,
+        amount,
 
-  status: "pending",
-});
-      if (error) {
-        showAlert("Boost Failed", error.message);
-        return;
-      }
+        seller_id: user.id,
 
-      /* ===============================
-         INSERT PAYMENT RECORD
-      ================================ */
-      await (supabase as any).from("payments").insert({
-        user_id: auth.user.id,
+        item_title: itemData.title,
+        item_image_url: itemData.image_url,
+        item_video_url: itemData.video_url,
+        item_price: itemData.price,
+
+        payment_code: paymentCode,
+        network: adminMomoNetwork,
+
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    if (boostError || !boostData) {
+      console.log("BOOST INSERT ERROR:", boostError);
+
+      showAlert(
+        "Boost Failed",
+        boostError?.message || "Could not create boost request."
+      );
+      return;
+    }
+
+    // ==========================================
+    // INSERT PENDING PAYMENT
+    // ==========================================
+
+    const { data: paymentData, error: paymentError } = await (
+      supabase as any
+    )
+      .from("payments")
+      .insert({
+        user_id: user.id,
         product_type: "boost",
-        amount: Number(amountInput),
+        amount,
 
         momo_name: adminMomoName,
         momo_number: adminMomoNumber,
@@ -230,22 +271,102 @@ console.log("ITEM DATA:", itemData);
 
         code: paymentCode,
         status: "pending",
-      });
+      })
+      .select("id")
+      .single();
+
+    if (paymentError || !paymentData) {
+      console.log("BOOST PAYMENT ERROR:", paymentError);
+
+      // Roll back the boost request if payment creation fails.
+      await (supabase as any)
+        .from("boost")
+        .delete()
+        .eq("id", boostData.id)
+        .eq("seller_id", user.id);
 
       showAlert(
-        "Boost Request Sent ✅",
-        "Your boost is pending admin approval.\n\nPayment Code:\n" +
-          paymentCode
+        "Payment Error",
+        paymentError?.message || "Could not save payment record."
+      );
+      return;
+    }
+
+    // ==========================================
+    // NOTIFY NASARA ADMINS
+    // ==========================================
+
+    let notificationSent = false;
+
+    try {
+      const response = await fetch(
+        "https://nasara-upload-server.onrender.com/notifications/admin-submit",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            type: "boost_payment_request",
+            ref_id: paymentData.id,
+            related_id: boostData.id,
+          }),
+        }
       );
 
-      setPayVisible(false);
-      router.back();
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    } finally {
-      setProcessing(false);
+      const result = await response.json().catch(() => ({}));
+
+      if (response.ok && result.success === true) {
+  notificationSent = true;
+
+  console.log(
+    "BOOST ADMIN NOTIFICATION CONFIRMED:",
+    result
+  );
+} else {
+  notificationSent = false;
+
+  console.log(
+    "BOOST ADMIN NOTIFICATION FAILED:",
+    result
+  );
+}
+    } catch (notificationError) {
+      console.log(
+        "BOOST NOTIFICATION NETWORK ERROR:",
+        notificationError
+      );
     }
-  };
+
+    // ==========================================
+    // SUCCESS MESSAGE
+    // ==========================================
+
+    showAlert(
+      "Boost Payment Submitted",
+      "Your boost request has been saved and is pending admin verification.\n\nPayment Code:\n" +
+        paymentCode +
+        "\n\n" +
+        (notificationSent
+          ? "Nasara admins have been notified."
+          : "Your payment request is saved, but the admin notification could not be sent.")
+    );
+
+    setPayVisible(false);
+    router.back();
+
+  } catch (e: any) {
+    console.log("BOOST PAYMENT ERROR:", e);
+
+    showAlert(
+      "Error",
+      e?.message || "Something went wrong while submitting your boost."
+    );
+  } finally {
+    setProcessing(false);
+  }
+};
 
   /* ===============================
      UI LOADING

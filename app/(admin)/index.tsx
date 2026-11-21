@@ -204,22 +204,7 @@ const sections: AdminSection[] = [
       },
     ],
   },
-  {
-    title: "Marketplace",
-    icon: "🛍️",
-    items: [
-      {
-        label: "Delete Listings",
-        route: "/(admin)/delete-listings",
-        icon: "🗑️",
-      },
-      {
-        label: "Remove Fake Items",
-        route: "/(admin)/remove-fake-items",
-        icon: "⚠️",
-      },
-    ],
-  },
+  
   {
     title: "Reels & Music",
     icon: "🎵",
@@ -231,31 +216,12 @@ const sections: AdminSection[] = [
       },
     ],
   },
-  {
-    title: "Live System",
-    icon: "📡",
-    items: [
-      {
-        label: "Stop Live Stream",
-        route: "/(admin)/stop-live-stream",
-        icon: "🔴",
-      },
-      {
-        label: "End Auction",
-        route: "/(admin)/end-auction",
-        icon: "🔨",
-      },
-    ],
-  },
+  
   {
     title: "Finance",
     icon: "💰",
     items: [
-      {
-        label: "MoMo Payouts",
-        route: "/(admin)/momo-payouts",
-        icon: "📲",
-      },
+      
       {
         label: "Revenue",
         route: "/(admin)/revenue",

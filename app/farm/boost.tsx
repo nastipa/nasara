@@ -1,12 +1,12 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    Alert,
-    ScrollView,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 import { supabase } from "../../lib/supabase";
@@ -61,77 +61,163 @@ export default function FarmBoostScreen() {
     Number(days || 0) *
     PRICE_PER_DAY;
 
-  const submitBoost =
-    async () => {
-      try {
-        if (!farmId) {
-          Alert.alert(
-            "Farm not found"
-          );
-          return;
+ const submitBoost = async () => {
+  try {
+    if (!farmId) {
+      Alert.alert("Farm Not Found", "Your farm profile could not be found.");
+      return;
+    }
+
+    const numberOfDays = Number(days);
+
+    if (!Number.isInteger(numberOfDays) || numberOfDays < 1) {
+      Alert.alert("Invalid Days", "Please enter at least 1 day.");
+      return;
+    }
+
+    if (!reference.trim()) {
+      Alert.alert("Missing Reference", "Enter your MoMo payment reference.");
+      return;
+    }
+
+    setLoading(true);
+
+    // ==========================================
+    // 1. GET AUTHENTICATED SESSION
+    // ==========================================
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.user || !session.access_token) {
+      Alert.alert("Login Required", "Please sign in again.");
+      return;
+    }
+
+    const authenticatedUserId = session.user.id;
+
+    // ==========================================
+    // 2. VERIFY FARM OWNERSHIP
+    // ==========================================
+
+    const { data: farm, error: farmError } = await (
+      supabase as any
+    )
+      .from("farm_profiles")
+      .select("id")
+      .eq("id", farmId)
+      .eq("user_id", authenticatedUserId)
+      .single();
+
+    if (farmError || !farm) {
+      Alert.alert("Error", "Your farm profile could not be verified.");
+      return;
+    }
+
+    // ==========================================
+    // 3. CALCULATE PAYMENT
+    // ==========================================
+
+    const totalAmount = numberOfDays * PRICE_PER_DAY;
+
+    // ==========================================
+    // 4. SAVE FARM BOOST REQUEST
+    // ==========================================
+
+    const { data: boostRequest, error: boostError } = await (
+      supabase as any
+    )
+      .from("farm_boost_requests")
+      .insert({
+        farm_id: farmId,
+        user_id: authenticatedUserId,
+        days: numberOfDays,
+        amount: totalAmount,
+        momo_reference: reference.trim(),
+        status: "pending",
+      })
+      .select("id")
+      .single();
+
+    if (boostError || !boostRequest) {
+      console.log("FARM BOOST INSERT ERROR:", boostError);
+
+      throw new Error(
+        boostError?.message || "Could not save farm boost request."
+      );
+    }
+
+    // ==========================================
+    // 5. NOTIFY NASARA ADMINS
+    // ==========================================
+
+    let notificationSent = false;
+
+    try {
+      const response = await fetch(
+        "https://nasara-upload-server.onrender.com/notifications/admin-submit",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            type: "farm_boost_request",
+            ref_id: boostRequest.id,
+          }),
         }
+      );
 
-        if (
-          !days ||
-          Number(days) < 1
-        ) {
-          Alert.alert(
-            "Enter valid days"
-          );
-          return;
-        }
+      const result = await response.json().catch(() => ({}));
 
-        if (!reference.trim()) {
-          Alert.alert(
-            "Enter MoMo reference"
-          );
-          return;
-        }
+      if (response.ok) {
+        notificationSent = true;
 
-        setLoading(true);
-
-        const { error } =
-          await (supabase as any)
-            .from(
-              "farm_boost_requests"
-            )
-            .insert({
-              farm_id: farmId,
-              user_id: userId,
-
-              days:
-                Number(days),
-
-              amount,
-
-              momo_reference:
-                reference,
-
-              status:
-                "pending",
-            });
-
-        if (error)
-          throw error;
-
-        Alert.alert(
-          "Success",
-          "Boost request submitted. Waiting for admin approval."
-        );
-
-        router.back();
-      } catch (e: any) {
-        console.log(e);
-
-        Alert.alert(
-          "Error",
-          e?.message ||
-            "Failed to submit request"
-        );
+        console.log("FARM BOOST ADMIN NOTIFICATION SENT:", result);
+      } else {
+        console.log("FARM BOOST NOTIFICATION FAILED:", result);
       }
+    } catch (notificationError) {
+      console.log(
+        "FARM BOOST NOTIFICATION NETWORK ERROR:",
+        notificationError
+      );
+    }
 
-      setLoading(false);
-    };
+    // ==========================================
+    // 6. SUCCESS MESSAGE
+    // ==========================================
+
+    Alert.alert(
+      "Farm Boost Submitted",
+      "Your farm boost request has been saved and is awaiting admin verification.\n\n" +
+        "MoMo Reference:\n" +
+        reference.trim() +
+        "\n\n" +
+        "Amount: GH₵ " +
+        totalAmount.toFixed(2) +
+        "\n\n" +
+        (notificationSent
+          ? "Nasara admins have been notified."
+          : "Your request is saved, but the admin notification could not be sent.")
+    );
+
+    router.back();
+
+  } catch (e: any) {
+    console.log("FARM BOOST ERROR:", e);
+
+    Alert.alert(
+      "Error",
+      e?.message || "Failed to submit farm boost request."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <ScrollView

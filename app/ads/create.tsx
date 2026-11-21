@@ -348,7 +348,7 @@ export default function CreateAd() {
   };
 
   // ==========================================
-  // 💳 GENERATE PAYMENT REQUEST
+  // 💳 SUBMIT PAYMENT FOR ADMIN VERIFICATION
   // ==========================================
 
   const sendPayment = async () => {
@@ -359,7 +359,8 @@ export default function CreateAd() {
     try {
       const code = "AD-" + Date.now();
 
-      const { error } = await (supabase as any)
+      // 1. SAVE PAYMENT IN SUPABASE
+      const { data: payment, error } = await (supabase as any)
         .from("payments")
         .insert({
           user_id: adData.user.id,
@@ -370,23 +371,95 @@ export default function CreateAd() {
           network: momoNetwork,
           code,
           status: "pending",
-        });
+        })
+        .select("id")
+        .single();
 
       if (error) {
         throw error;
       }
 
+      if (!payment?.id) {
+        throw new Error("Payment record was saved, but its ID could not be retrieved.");
+      }
+
+      // 2. GET CURRENT ACCESS TOKEN
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error(
+          "Payment was saved, but your login session could not be verified. Please contact support."
+        );
+      }
+
+      // 3. SEND CENTRAL ADMIN NOTIFICATION
+      try {
+        const response = await fetch(
+          `${BASE_URL}/notifications/admin-submit`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              type: "ad_payment_request",
+              ref_id: payment.id,
+              related_id: adData.adId,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          console.log(
+            "ADMIN NOTIFICATION SUBMISSION FAILED:",
+            result
+          );
+
+          showAlert(
+            "Payment Submitted",
+            `Your payment record has been saved.\n\nPayment Code: ${code}\n\nHowever, the admin notification could not be sent. Please contact support to confirm your submission.`
+          );
+
+          setPayVisible(false);
+          router.replace("/ads/my-ads");
+          return;
+        }
+      } catch (notificationError) {
+        console.log(
+          "ADMIN NOTIFICATION ERROR:",
+          notificationError
+        );
+
+        showAlert(
+          "Payment Submitted",
+          `Your payment record has been saved.\n\nPayment Code: ${code}\n\nPlease contact support because the admin notification could not be confirmed.`
+        );
+
+        setPayVisible(false);
+        router.replace("/ads/my-ads");
+        return;
+      }
+
+      // 4. SUCCESS
       showAlert(
-        "Request Sent",
-        `Your advertisement request has been submitted!\n\nPay GH₵${totalAmount} to:\n${momoName}\n${momoNumber} (${momoNetwork})\n\nPayment Code: ${code}`
+        "Payment Submitted",
+        `Your advertisement payment has been submitted for verification.\n\nPayment Code: ${code}\n\nOur admin team will verify your payment before approving your advertisement.`
       );
 
       setPayVisible(false);
       router.replace("/ads/my-ads");
+
     } catch (error: any) {
       showAlert(
         "Payment Error",
-        error?.message || "Could not generate your payment request."
+        error?.message ||
+          "Could not submit your payment. Please try again."
       );
     } finally {
       setPaymentLoading(false);
@@ -1232,7 +1305,7 @@ export default function CreateAd() {
                     fontSize: 14,
                   }}
                 >
-                  Generate Payment Code
+                 I've Paid – Submit for Verification
                 </Text>
               )}
             </TouchableOpacity>

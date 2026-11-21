@@ -696,85 +696,48 @@ export default function RequestDelivery() {
          INSERT DELIVERY
       ================================================= */
 
-      const {
+     const {
+        data: delivery,
         error,
-      } =
-        await (supabase as any)
-          .from("deliveries")
-          .insert({
-            sender_id:
-              user.id,
+      } = await (supabase as any)
+        .from("deliveries")
+        .insert({
+          sender_id: user.id,
+          customer_id: user.id,
+          rider_id: null,
 
-            customer_id:
-              user.id,
+          item_name: finalItemName,
 
-            rider_id:
-              null,
+          pickup_address:
+            pickupAddress || "Current Location",
 
-            item_name:
-              finalItemName,
+          dropoff_address:
+            dropoffAddress.trim(),
 
-            pickup_address:
-              pickupAddress ||
-              "Current Location",
+          receiver_phone:
+            requestType === "delivery"
+              ? receiverPhone.trim()
+              : null,
 
-            dropoff_address:
-              dropoffAddress.trim(),
+          pickup_phone:
+            pickupPhone.trim(),
 
-            receiver_phone:
-              requestType ===
-              "delivery"
-                ? receiverPhone.trim()
-                : null,
+          pickup_lat: pickupLat,
+          pickup_lng: pickupLng,
 
-            /*
-             * Phone number of the person
-             * requesting the ride/delivery.
-             */
-            pickup_phone:
-              pickupPhone.trim(),
+          dropoff_lat: dropoffLat,
+          dropoff_lng: dropoffLng,
 
-            pickup_lat:
-              pickupLat,
+          amount: Number(amount.toFixed(2)),
 
-            pickup_lng:
-              pickupLng,
+          otp_code: otp,
 
-            dropoff_lat:
-              dropoffLat,
-
-            dropoff_lng:
-              dropoffLng,
-
-            amount:
-              Number(
-                amount.toFixed(2)
-              ),
-
-            /*
-             * IMPORTANT:
-             *
-             * Store the OTP in the delivery.
-             *
-             * This OTP belongs to the requester.
-             */
-            otp_code:
-              otp,
-
-            payment_status:
-              "pending",
-
-            /*
-             * Keep request hidden from
-             * riders until admin approves
-             * the payment.
-             */
-            status:
-              "pending_payment",
-
-            auto_assigned:
-              false,
-          });
+          payment_status: "pending",
+          status: "pending_payment",
+          auto_assigned: false,
+        })
+        .select("id")
+        .single();
 
       if (error) {
         console.log(
@@ -792,6 +755,101 @@ export default function RequestDelivery() {
         );
 
         return;
+      }
+
+      /* =================================================
+         SEND DELIVERY PAYMENT NOTIFICATION TO ADMIN
+      ================================================= */
+
+      if (!delivery?.id) {
+        throw new Error(
+          "Delivery was saved but its ID was not returned."
+        );
+      }
+
+      try {
+        const {
+          data: sessionData,
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          throw sessionError;
+        }
+
+        const accessToken =
+          sessionData?.session?.access_token;
+
+        if (!accessToken) {
+          throw new Error(
+            "Your login session has expired. Please log in again."
+          );
+        }
+
+        const response = await fetch(
+          "https://nasara-upload-server.onrender.com/notifications/admin-submit",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+
+            body: JSON.stringify({
+              type: "delivery_payment_request",
+              ref_id: String(delivery.id),
+            }),
+          }
+        );
+
+        const responseText =
+          await response.text();
+
+        let result: any = {};
+
+        try {
+          result = responseText
+            ? JSON.parse(responseText)
+            : {};
+        } catch {
+          throw new Error(
+            `Backend returned an invalid response: ${responseText}`
+          );
+        }
+
+        console.log(
+          "DELIVERY NOTIFICATION HTTP STATUS:",
+          response.status
+        );
+
+        console.log(
+          "DELIVERY NOTIFICATION RESPONSE:",
+          result
+        );
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.error ||
+              `Notification failed with HTTP ${response.status}.`
+          );
+        }
+
+        console.log(
+          "SUCCESS: NASARA ADMIN HAS BEEN NOTIFIED",
+          delivery.id
+        );
+
+      } catch (notificationError: any) {
+        console.error(
+          "DELIVERY ADMIN NOTIFICATION FAILED:",
+          notificationError
+        );
+
+        showMessage(
+          "Delivery Saved - Notification Failed",
+          `Your delivery request was saved, but the administrator notification failed.\n\n${notificationError?.message || "Unknown notification error"}\n\nPlease contact Nasara support to ensure payment verification.`
+        );
       }
 
       /* =================================================

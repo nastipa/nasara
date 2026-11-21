@@ -432,6 +432,7 @@ function MyItemCard({
 ===================================================== */
 
 export default function My() {
+  const router = useRouter();
   const [items, setItems] = useState<any[]>([]);
   const [listingCount, setListingCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -917,68 +918,71 @@ export default function My() {
   =================================================== */
 
   const sendPayment = async () => {
-    if (!selectedItemId || paymentLoading) {
+  if (!selectedItemId || paymentLoading) {
+    return;
+  }
+
+  setPaymentLoading(true);
+
+  try {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      showAlert("Login Required", "Please login first.");
       return;
     }
 
-    setPaymentLoading(true);
+    // VERIFY PRODUCT OWNERSHIP
+    const { data: product, error: productError } =
+      await supabase
+        .from("items_live")
+        .select("id")
+        .eq("id", selectedItemId)
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-    try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
+    if (productError || !product) {
+      showAlert(
+        "Error",
+        "This product does not belong to your account."
+      );
+      return;
+    }
 
-      if (authError || !user) {
-        showAlert(
-          "Login Required",
-          "Please login first."
-        );
-        return;
-      }
+    const selectedDays = Number(days);
 
-      /* VERIFY PRODUCT OWNERSHIP */
+    if (![3, 7, 14].includes(selectedDays)) {
+      showAlert(
+        "Invalid Selection",
+        "Please select 3, 7 or 14 days."
+      );
+      return;
+    }
 
-      const { data: product, error: productError } =
-        await supabase
-          .from("items_live")
-          .select("id")
-          .eq("id", selectedItemId)
-          .eq("user_id", user.id)
-          .maybeSingle();
+    const totalAmount = selectedDays * dailyRate;
 
-      if (productError || !product) {
-        showAlert(
-          "Error",
-          "This product does not belong to your account."
-        );
-        return;
-      }
+    const expiryDate = new Date(
+      Date.now() + selectedDays * 24 * 60 * 60 * 1000
+    ).toISOString();
 
-      const selectedDays = Number(days);
+    const code = "PROMO-" + Date.now();
 
-      if (![3, 7, 14].includes(selectedDays)) {
-        showAlert(
-          "Invalid Selection",
-          "Please select 3, 7 or 14 days."
-        );
-        return;
-      }
+    // GET LOGIN SESSION FOR ADMIN NOTIFICATION REQUEST
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-      const totalAmount = selectedDays * dailyRate;
+    if (sessionError || !session?.access_token) {
+      throw new Error("Please log in again and retry.");
+    }
 
-      const expiryDate = new Date(
-        Date.now() +
-          selectedDays * 24 * 60 * 60 * 1000
-      ).toISOString();
-
-      const code = "PROMO-" + Date.now();
-
-      /* CREATE ONE PAYMENT RECORD */
-
-      const { error: payError } = await (
-        supabase as any
-      )
+    // CREATE PAYMENT RECORD
+    const { data: payment, error: payError } =
+      await (supabase as any)
         .from("payments")
         .insert({
           user_id: user.id,
@@ -989,18 +993,21 @@ export default function My() {
           network: momoNetwork,
           code,
           status: "pending",
-        });
+        })
+        .select("id")
+        .single();
 
-      if (payError) {
-        showAlert("Payment Error", payError.message);
-        return;
-      }
+    if (payError) {
+      throw new Error(payError.message);
+    }
 
-      /* CREATE ONE PROMOTION RECORD */
+    if (!payment?.id) {
+      throw new Error("Payment was saved but its ID is missing.");
+    }
 
-      const { error: promoError } = await (
-        supabase as any
-      )
+    // CREATE PROMOTION RECORD
+    const { data: promotion, error: promoError } =
+      await (supabase as any)
         .from("promoted")
         .insert({
           seller_id: user.id,
@@ -1009,40 +1016,84 @@ export default function My() {
           status: "pending",
           promoted_until: expiryDate,
           payment_code: code,
-        });
+        })
+        .select("id")
+        .single();
 
-      if (promoError) {
-        /* CLEAN UP PAYMENT IF PROMOTION INSERT FAILS */
+    if (promoError) {
+      // CLEAN UP PAYMENT IF PROMOTION INSERT FAILS
+      await (supabase as any)
+        .from("payments")
+        .delete()
+        .eq("id", payment.id)
+        .eq("user_id", user.id);
 
-        await (supabase as any)
-          .from("payments")
-          .delete()
-          .eq("user_id", user.id)
-          .eq("code", code);
-
-        showAlert("Promotion Error", promoError.message);
-        return;
-      }
-
-      showAlert(
-        "Request Sent ✅",
-        `Promotion Request Submitted!\n\nPay GH₵${totalAmount} to:\n${momoName}\n${momoNumber} (${momoNetwork})\n\nCode: ${code}`
-      );
-
-      setPayVisible(false);
-      setSelectedItemId(null);
-
-      await fetchMyItems();
-    } catch (error: any) {
-      showAlert(
-        "Payment Error",
-        error?.message || "Unable to submit promotion request."
-      );
-    } finally {
-      setPaymentLoading(false);
+      throw new Error(promoError.message);
     }
-  };
 
+    // NOTIFY NASARA ADMINS
+    let notificationSent = false;
+
+    try {
+      const response = await fetch(
+        "https://nasara-upload-server.onrender.com/notifications/admin-submit",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            type: "promotion_payment_request",
+            ref_id: payment.id,
+            related_id: promotion.id,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      notificationSent =
+        response.ok && result.success === true;
+
+      if (!notificationSent) {
+        console.log(
+          "PROMOTION ADMIN NOTIFICATION FAILED:",
+          result
+        );
+      }
+    } catch (notificationError) {
+      console.log(
+        "PROMOTION ADMIN NOTIFICATION ERROR:",
+        notificationError
+      );
+    }
+
+    if (notificationSent) {
+      showAlert(
+        "Payment Submitted",
+        `Your promotion payment has been submitted for admin verification.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nPlease allow the admin team to verify receipt in their MoMo account.`
+      );
+    } else {
+      showAlert(
+        "Payment Saved",
+        `Your promotion payment record has been saved.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nHowever, the admin notification could not be confirmed. Please contact support.`
+      );
+    }
+
+    setPayVisible(false);
+    setSelectedItemId(null);
+
+    await fetchMyItems();
+  } catch (error: any) {
+    showAlert(
+      "Payment Error",
+      error?.message || "Unable to submit promotion request."
+    );
+  } finally {
+    setPaymentLoading(false);
+  }
+};
   /* ===================================================
      DASHBOARD HEADER
   =================================================== */
@@ -1368,6 +1419,78 @@ export default function My() {
         )}
       </View>
 
+      {/* MY ADVERTISEMENTS AND BANNERS */}
+
+<View
+  style={{
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 22,
+  }}
+>
+  <TouchableOpacity
+    onPress={() => router.push("/ads/my-ads")}
+    style={{
+      flex: 1,
+      backgroundColor: COLORS.navy,
+      padding: 15,
+      borderRadius: 12,
+      alignItems: "center",
+    }}
+  >
+    <Text style={{ fontSize: 23 }}>📢</Text>
+    <Text
+      style={{
+        color: COLORS.white,
+        fontWeight: "900",
+        marginTop: 7,
+      }}
+    >
+      My Ads
+    </Text>
+    <Text
+      style={{
+        color: "#D7DFED",
+        fontSize: 11,
+        marginTop: 4,
+      }}
+    >
+      View my advertisements
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() => router.push("/banner/my-banner")}
+    style={{
+      flex: 1,
+      backgroundColor: COLORS.gold,
+      padding: 15,
+      borderRadius: 12,
+      alignItems: "center",
+    }}
+  >
+    <Text style={{ fontSize: 23 }}>🖼️</Text>
+    <Text
+      style={{
+        color: COLORS.navy,
+        fontWeight: "900",
+        marginTop: 7,
+      }}
+    >
+      My Banners
+    </Text>
+    <Text
+      style={{
+        color: COLORS.navy,
+        fontSize: 11,
+        marginTop: 4,
+      }}
+    >
+      View my banners
+    </Text>
+  </TouchableOpacity>
+</View>
+
       {/* MY PRODUCTS */}
 
       <View
@@ -1651,7 +1774,7 @@ export default function My() {
                       fontWeight: "900",
                     }}
                   >
-                    Generate Payment Code
+                   I've Paid – Submit for Verification
                   </Text>
                 )}
               </TouchableOpacity>

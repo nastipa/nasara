@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 
 import {
+  Alert,
   Image,
   Platform,
   ScrollView,
@@ -323,7 +324,7 @@ const showMessage = (
     return;
   }
 
-  showMessage(title, message);
+  Alert.alert(title, message || "");
 };
   // ==========================================================
   // 📍 GET DEVICE LOCATION
@@ -1101,6 +1102,8 @@ longitude,
           ))}
         </View>
       </View>
+       
+     
 
       {/* ================================================== */}
       {/* 🟢 SELL ITEM FORM */}
@@ -2575,4 +2578,5 @@ const styles = StyleSheet.create({
     marginLeft: 7,
     textAlign: "center",
   },
+  
 });

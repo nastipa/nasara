@@ -349,8 +349,8 @@ export default function CreateBanner() {
     }
   };
 
-  // ==========================================
-  // 💳 GENERATE PAYMENT REQUEST
+ // ==========================================
+  // 💳 SUBMIT BANNER PAYMENT FOR VERIFICATION
   // ==========================================
 
   const sendPayment = async () => {
@@ -361,7 +361,18 @@ export default function CreateBanner() {
     try {
       const code = "BANNER-" + Date.now();
 
-      const { error } = await (supabase as any)
+      // 1. GET LOGIN SESSION
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Please log in again and retry.");
+      }
+
+      // 2. SAVE PAYMENT IN SUPABASE
+      const { data: payment, error } = await (supabase as any)
         .from("payments")
         .insert({
           user_id: bannerData.user.id,
@@ -372,23 +383,70 @@ export default function CreateBanner() {
           network: momoNetwork,
           code,
           status: "pending",
-        });
+        })
+        .select("id")
+        .single();
 
-      if (error) {
-        throw error;
+      if (error) throw error;
+
+      if (!payment?.id) {
+        throw new Error("Payment record saved, but payment ID is missing.");
       }
 
-      showAlert(
-        "Request Sent",
-        `Your banner request has been submitted!\n\nPay GH₵${totalAmount} to:\n${momoName}\n${momoNumber} (${momoNetwork})\n\nPayment Code: ${code}`
-      );
+      // 3. NOTIFY ALL NASARA ADMINS
+      let notificationSent = false;
+
+      try {
+        const response = await fetch(
+          `${BASE_URL}/notifications/admin-submit`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              type: "banner_payment_request",
+              ref_id: payment.id,
+              related_id: bannerData.bannerId,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        notificationSent = response.ok && result.success === true;
+
+        if (!notificationSent) {
+          console.log("BANNER ADMIN NOTIFICATION FAILED:", result);
+        }
+      } catch (notificationError) {
+        console.log(
+          "BANNER ADMIN NOTIFICATION ERROR:",
+          notificationError
+        );
+      }
+
+      // 4. SHOW RESULT
+      if (notificationSent) {
+        showAlert(
+          "Payment Submitted",
+          `Your banner payment has been submitted for admin verification.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nPlease allow the admin team to verify receipt in their MoMo account.`
+        );
+      } else {
+        showAlert(
+          "Payment Saved",
+          `Your payment record has been saved.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nHowever, the admin notification could not be confirmed. Please contact support.`
+        );
+      }
 
       setPayVisible(false);
       router.replace("/banner/my-banner");
+
     } catch (error: any) {
       showAlert(
         "Payment Error",
-        error?.message || "Could not generate your payment request."
+        error?.message || "Could not submit your banner payment."
       );
     } finally {
       setPaymentLoading(false);
@@ -1232,7 +1290,7 @@ export default function CreateBanner() {
                     fontSize: 14,
                   }}
                 >
-                  Generate Payment Code
+                 I've Paid – Submit for Verification
                 </Text>
               )}
             </TouchableOpacity>

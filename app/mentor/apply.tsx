@@ -23,6 +23,8 @@ import { useRouter } from "expo-router";
 
 import { supabase } from "../../lib/supabase";
 
+const API_URL = "https://nasara-upload-server.onrender.com";
+
 // 🟡 ==========================================
 // 🟡 COLOUR SYSTEM
 // 🟡 ==========================================
@@ -63,88 +65,141 @@ export default function ApplyMentorScreen() {
   // 🔵 ==========================================
 
   const applyMentor = async () => {
-    try {
-      if (
-        !fullName.trim() ||
-        !field.trim() ||
-        !phoneNumber.trim() ||
-        !email.trim()
-      ) {
-        Alert.alert(
-          "Missing Info",
-          "Please fill all required fields"
-        );
+  try {
+    if (
+      !fullName.trim() ||
+      !field.trim() ||
+      !phoneNumber.trim() ||
+      !email.trim()
+    ) {
+      Alert.alert(
+        "Missing Info",
+        "Please fill all required fields"
+      );
+      return;
+    }
 
-        return;
-      }
+    setLoading(true);
 
-      setLoading(true);
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    if (sessionError || !session?.user || !session.access_token) {
+      Alert.alert(
+        "Login Required",
+        "Please login first"
+      );
+      return;
+    }
 
-      if (!user) {
-        Alert.alert(
-          "Login Required",
-          "Please login first"
-        );
+    const user = session.user;
 
-        setLoading(false);
-        return;
-      }
+    // ==========================================
+    // SAVE MENTOR APPLICATION
+    // ==========================================
 
-      const { error } = await (supabase as any)
+    const { data: mentorApplication, error } =
+      await (supabase as any)
         .from("mentors")
         .insert({
           user_id: user.id,
-          full_name: fullName,
-          field,
-          bio,
-          phone_number: phoneNumber,
-          email,
-          occupation,
-          years_experience: yearsExperience,
-          availability,
-        });
+          full_name: fullName.trim(),
+          field: field.trim(),
+          bio: bio.trim(),
+          phone_number: phoneNumber.trim(),
+          email: email.trim(),
+          occupation: occupation.trim(),
+          years_experience: yearsExperience.trim(),
+          availability: availability.trim(),
+        })
+        .select("id")
+        .single();
 
-      if (error) {
-        console.log(error);
-
-        Alert.alert(
-          "Error",
-          error.message
-        );
-
-        setLoading(false);
-        return;
-      }
-
-      if (Platform.OS === "web") {
-        window.alert(
-          "Mentor application submitted successfully"
-        );
-      } else {
-        Alert.alert(
-          "Success",
-          "Application submitted successfully"
-        );
-      }
-
-      router.back();
-
-    } catch (e: any) {
-      console.log(e);
+    if (error) {
+      console.log("MENTOR APPLICATION ERROR:", error);
 
       Alert.alert(
         "Error",
-        e.message
+        error.message
       );
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
 
+    // ==========================================
+    // CENTRAL NASARA ADMIN NOTIFICATION
+    // ==========================================
+
+    let notificationSent = false;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/notifications/admin-submit`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            type: "mentor_application",
+            ref_id: mentorApplication.id,
+          }),
+        }
+      );
+
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        console.log(
+          "MENTOR ADMIN NOTIFICATION ERROR:",
+          result
+        );
+      } else {
+        notificationSent = true;
+      }
+    } catch (notificationError) {
+      console.log(
+        "MENTOR ADMIN NOTIFICATION ERROR:",
+        notificationError
+      );
+    }
+
+    // ==========================================
+    // SUBMISSION RESULT
+    // ==========================================
+
+    const message = notificationSent
+      ? "Your mentor application has been submitted successfully. Nasara administrators have been notified to review your application."
+      : "Your mentor application has been saved and is awaiting review. However, the admin notification could not be sent.";
+
+    if (Platform.OS === "web") {
+      window.alert(
+        notificationSent
+          ? "Mentor application submitted successfully. Nasara administrators have been notified."
+          : "Mentor application saved, but the admin notification could not be sent."
+      );
+    } else {
+      Alert.alert(
+        notificationSent ? "Application Submitted" : "Application Saved",
+        message
+      );
+    }
+
+    router.back();
+
+  } catch (e: any) {
+    console.log("MENTOR APPLICATION SUBMISSION ERROR:", e);
+
+    Alert.alert(
+      "Error",
+      e.message || "Could not submit your mentor application."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   // 🟢 ==========================================
   // 🟢 REUSABLE FORM FIELD
   // 🟢 ==========================================

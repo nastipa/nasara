@@ -22,6 +22,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
 import { supabase } from "../../lib/supabase";
+const API_URL =
+  "https://nasara-upload-server.onrender.com";
 
 // 🟡 ==========================================
 // 🟡 COLOUR SYSTEM
@@ -61,6 +63,9 @@ export default function RequestMentorScreen() {
   // 🔵 ==========================================
 
   const requestMentor = async () => {
+    let requestSaved = false;
+    let notificationSent = false;
+
     try {
       if (
         !fullName.trim() ||
@@ -72,75 +77,146 @@ export default function RequestMentorScreen() {
           "Missing Info",
           "Please fill all required fields"
         );
-
         return;
       }
 
       setLoading(true);
 
+      // Get the logged-in user's session for authentication.
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (!user) {
+      if (sessionError || !session?.user) {
         Alert.alert(
           "Login Required",
           "Please login first"
         );
-
-        setLoading(false);
         return;
       }
 
-      const { error } = await (supabase as any)
+      const user = session.user;
+
+      // Save the mentee request first.
+      const { data: mentorRequest, error } = await (
+        supabase as any
+      )
         .from("mentor_requests")
         .insert({
           user_id: user.id,
-          full_name: fullName,
-          field,
-          goals,
-          phone_number: phoneNumber,
-          email,
-          occupation,
-        });
+          full_name: fullName.trim(),
+          field: field.trim(),
+          goals: goals.trim(),
+          phone_number: phoneNumber.trim(),
+          email: email.trim(),
+          occupation: occupation.trim(),
+        })
+        .select("id")
+        .single();
 
       if (error) {
-        console.log(error);
-
-        Alert.alert(
-          "Error",
-          error.message
+        console.log(
+          "MENTEE REQUEST SAVE ERROR:",
+          error
         );
 
-        setLoading(false);
+        Alert.alert(
+          "Submission Error",
+          error.message
+        );
         return;
       }
 
-      if (Platform.OS === "web") {
-        window.alert(
-          "Mentor request submitted successfully"
+      if (!mentorRequest?.id) {
+        Alert.alert(
+          "Submission Error",
+          "Your request could not be confirmed. Please try again."
         );
+        return;
+      }
+
+      requestSaved = true;
+
+      // Notify Nasara administrators.
+      try {
+        const response = await fetch(
+          `${API_URL}/notifications/admin-submit`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              type: "mentee_request",
+              ref_id: mentorRequest.id,
+            }),
+          }
+        );
+
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          console.log(
+            "MENTEE ADMIN NOTIFICATION ERROR:",
+            result
+          );
+        } else {
+          notificationSent = true;
+        }
+      } catch (notificationError) {
+        console.log(
+          "MENTEE ADMIN NOTIFICATION FAILED:",
+          notificationError
+        );
+      }
+
+      const successMessage = notificationSent
+        ? "Your mentor request has been submitted successfully."
+        : "Your mentor request has been saved, but the admin notification could not be sent. Nasara administrators may need to check the request.";
+
+      if (Platform.OS === "web") {
+        window.alert(successMessage);
       } else {
         Alert.alert(
-          "Success",
-          "Mentor request submitted successfully"
+          "Request Submitted",
+          successMessage
         );
       }
 
       router.back();
 
     } catch (e: any) {
-      console.log(e);
-
-      Alert.alert(
-        "Error",
-        e.message
+      console.log(
+        "MENTEE REQUEST ERROR:",
+        e
       );
+
+      const errorMessage =
+        e?.message || "Something went wrong. Please try again.";
+
+      if (requestSaved) {
+        if (Platform.OS === "web") {
+          window.alert(
+            "Your request was saved. Please contact Nasara support if you need confirmation."
+          );
+        } else {
+          Alert.alert(
+            "Request Saved",
+            "Your request was saved. Please contact Nasara support if you need confirmation."
+          );
+        }
+      } else {
+        Alert.alert(
+          "Error",
+          errorMessage
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
-
   // 🟢 ==========================================
   // 🟢 REUSABLE FORM FIELD
   // 🟢 ==========================================
