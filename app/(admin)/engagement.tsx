@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -95,7 +96,18 @@ export default function EngagementManagerScreen() {
   const [testBody, setTestBody] = useState(
     "Your Nasara notifications are connected."
   );
+  const showMessage = (title: string, message?: string) => {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") {
+      window.alert(
+        message ? `${title}\n\n${message}` : title
+      );
+    }
+    return;
+  }
 
+  Alert.alert(title, message || "");
+};
   const getAuthHeaders = useCallback(async () => {
     const {
       data: { session },
@@ -164,7 +176,7 @@ export default function EngagementManagerScreen() {
       setCampaigns(result.campaigns || []);
       setHistory(result.history || []);
     } catch (error: any) {
-      Alert.alert(
+      showMessage(
         "Unable to load",
         error?.message || "Could not load engagement settings."
       );
@@ -233,7 +245,7 @@ export default function EngagementManagerScreen() {
       minute < 0 ||
       minute > 59
     ) {
-      Alert.alert(
+      showMessage(
         "Invalid time",
         "Enter a valid hour from 00–23 and minute from 00–59."
       );
@@ -280,12 +292,12 @@ export default function EngagementManagerScreen() {
         setMinuteInput(String(minute).padStart(2, "0"));
       }
 
-      Alert.alert(
+      showMessage(
         "Saved",
         "Daily reminder settings have been updated."
       );
     } catch (error: any) {
-      Alert.alert(
+      showMessage(
         "Save failed",
         error?.message || "Could not save settings."
       );
@@ -340,13 +352,12 @@ export default function EngagementManagerScreen() {
           )
         );
       }
-
-      Alert.alert(
+showMessage(
         "Campaign saved",
         `${WEEKDAYS[campaign.weekday]}'s campaign has been updated.`
       );
     } catch (error: any) {
-      Alert.alert(
+      showMessage(
         "Save failed",
         error?.message || "Could not save campaign."
       );
@@ -354,14 +365,13 @@ export default function EngagementManagerScreen() {
       setSavingCampaign(null);
     }
   };
-
-  // =====================================================
+// =====================================================
   // TEST NOTIFICATION
   // =====================================================
 
   const sendTestNotification = async () => {
     if (!testTitle.trim() || !testBody.trim()) {
-      Alert.alert(
+      showMessage(
         "Missing details",
         "Enter a title and message first."
       );
@@ -380,12 +390,33 @@ export default function EngagementManagerScreen() {
         }
       );
 
-      Alert.alert(
-        "Test sent",
-        `The notification was accepted through the ${result.channel || "available"} channel.`
-      );
+      const browserSent = Number(result.browserSent || 0);
+      const nativeAccepted = result.native === true;
+      const browserAccepted = result.browser === true;
+
+      if (browserAccepted && nativeAccepted) {
+        showMessage(
+          "Test notification sent",
+          `Web browser: ${browserSent} notification(s) accepted.\nAndroid/iOS: accepted.`
+        );
+      } else if (browserAccepted) {
+        showMessage(
+          "Web test sent",
+          `${browserSent} browser notification(s) accepted.`
+        );
+      } else if (nativeAccepted) {
+        showMessage(
+          "Mobile test sent",
+          "Android/iOS accepted the notification, but no web browser notification was confirmed."
+        );
+      } else {
+        showMessage(
+          "Delivery incomplete",
+          "Neither notification channel confirmed delivery."
+        );
+      }
     } catch (error: any) {
-      Alert.alert(
+      showMessage(
         "Test failed",
         error?.message || "Could not send the test notification."
       );
