@@ -315,13 +315,19 @@ export async function createBrowserPushSubscription(): Promise<PushSubscription 
 
     return subscription;
   } catch (error) {
-    console.error(
-      "Creating browser push subscription failed:",
-      error
-    );
+  const pushError = error as Error;
 
-    return null;
-  }
+  const errorDetails =
+    `${pushError.name || "Error"}: ${pushError.message || String(error)}`;
+
+  console.error(
+    "Creating browser push subscription failed:",
+    errorDetails,
+    error
+  );
+
+  throw new Error(errorDetails);
+}
 }
 
 // =====================================================
