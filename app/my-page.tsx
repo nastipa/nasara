@@ -18,6 +18,7 @@ import {
   ScrollView,
   Share,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -25,6 +26,7 @@ import {
 import { recordItemView } from "../lib/itemViewTracking";
 import { supabase } from "../lib/supabase";
 
+const API_BASE = "https://nasara-upload-server.onrender.com";
 const dailyRate = 30;
 const PAGE_SIZE = 1000;
 
@@ -68,9 +70,7 @@ async function fetchAllPages<T>(
     const page = data || [];
     allRows.push(...page);
 
-    if (page.length < PAGE_SIZE) {
-      break;
-    }
+    if (page.length < PAGE_SIZE) break;
 
     from += PAGE_SIZE;
   }
@@ -94,9 +94,18 @@ const showAlert = (title: string, message: string) => {
    FORMAT NUMBER
 ===================================================== */
 
-const formatNumber = (value: number) => {
-  return Number(value || 0).toLocaleString();
-};
+const formatNumber = (value: number) =>
+  Number(value || 0).toLocaleString();
+
+const formatMoney = (value: number) =>
+  "GH₵ " + Number(value || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const getOrderStatus = (order: any) =>
+  String(order.payment_status || order.status || "pending")
+    .toLowerCase();
 
 /* =====================================================
    VIDEO PREVIEW
@@ -228,7 +237,6 @@ function MyItemCard({
   onPromote: (id: number) => void;
 }) {
   const router = useRouter();
-
   const postId = Number(item.original_id || item.id);
 
   const promoted =
@@ -279,9 +287,7 @@ function MyItemCard({
               marginTop: 15,
             }}
           >
-            <Text style={{ color: COLORS.muted }}>
-              No Media
-            </Text>
+            <Text style={{ color: COLORS.muted }}>No Media</Text>
           </View>
         )}
 
@@ -433,17 +439,36 @@ function MyItemCard({
 
 export default function My() {
   const router = useRouter();
+
   const [items, setItems] = useState<any[]>([]);
   const [listingCount, setListingCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const [days, setDays] = useState("3");
   const [payVisible, setPayVisible] = useState(false);
-
   const [selectedItemId, setSelectedItemId] =
     useState<number | null>(null);
-
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [buyerOrders, setBuyerOrders] = useState<any[]>([]);
+const [buyerOrdersLoading, setBuyerOrdersLoading] = useState(false);
+
+const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
+  /* ===================================================
+     MARKETPLACE ORDER STATE
+  =================================================== */
+
+  const [marketplaceOrders, setMarketplaceOrders] = useState<any[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [orderActionLoading, setOrderActionLoading] =
+    useState<string | null>(null);
+
+  const [orderModalVisible, setOrderModalVisible] = useState(false);
+  const [orderModalType, setOrderModalType] = useState<
+  "reject" | "commission" | "buyer-payment" | null
+>(null);
+  const [selectedOrder, setSelectedOrder] = useState<any>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [transactionReference, setTransactionReference] = useState("");
 
   /* ===================================================
      SELLER QR CODE
@@ -452,13 +477,10 @@ export default function My() {
   const [sellerId, setSellerId] = useState("");
   const [shopUrl, setShopUrl] = useState("");
   const [qrSharing, setQrSharing] = useState(false);
-
   const qrRef = useRef<View>(null);
 
   /* ===================================================
      NASARA MOMO ACCOUNT
-
-     PRESERVED
   =================================================== */
 
   const momoName = "NASARA MARKET";
@@ -466,7 +488,7 @@ export default function My() {
   const momoNetwork = "MTN";
 
   /* ===================================================
-     FETCH SELLER PRODUCTS AND ACTUAL METRICS
+     FETCH SELLER PRODUCTS AND METRICS
   =================================================== */
 
   const fetchMyItems = useCallback(async () => {
@@ -492,16 +514,12 @@ export default function My() {
         return;
       }
 
-      /* GET UNIQUE SELLER SHOP URL */
-
       setSellerId(user.id);
 
       const uniqueShopUrl =
         "https://nasara1.vercel.app/sellers/" + user.id;
 
       setShopUrl(uniqueShopUrl);
-
-      /* EXACT LISTING COUNT */
 
       const {
         count: exactListingCount,
@@ -521,19 +539,16 @@ export default function My() {
         );
       }
 
-      /* FETCH ALL SELLER LISTINGS */
-
       const sellerItems = await fetchAllPages<any>(
-        async (from, to) => {
-          return await supabase
+        async (from, to) =>
+          await supabase
             .from("items_live")
             .select("*")
             .eq("user_id", user.id)
             .is("deleted_at", null)
             .order("created_at", { ascending: false })
             .order("id", { ascending: false })
-            .range(from, to);
-        }
+            .range(from, to)
       );
 
       setListingCount(exactListingCount || 0);
@@ -543,12 +558,9 @@ export default function My() {
         return;
       }
 
-      /* FETCH ACTUAL ITEMDETAIL COUNTS */
-
       const enrichedItems = await Promise.all(
         sellerItems.map(async (item) => {
           const itemId = Number(item.id);
-
           let actualViews = 0;
 
           try {
@@ -572,8 +584,6 @@ export default function My() {
               viewError
             );
           }
-
-          /* GET ACTUAL FAVOURITE COUNT */
 
           let actualFavourites = 0;
 
@@ -619,20 +629,469 @@ export default function My() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchMyItems();
-    }, [fetchMyItems])
-  );
+  /* ===================================================
+     FETCH SELLER MARKETPLACE ORDERS
+     Uses existing Supabase tables and RLS.
+     No new backend endpoint.
+  =================================================== */
+
+  const fetchMarketplaceOrders = useCallback(async () => {
+    setOrdersLoading(true);
+
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        setMarketplaceOrders([]);
+        return;
+      }
+
+      const { data: orders, error: ordersError } =
+        await (supabase as any)
+          .from("nasara_marketplace_orders")
+          .select("*")
+          .eq("seller_id", user.id)
+          .order("created_at", { ascending: false });
+
+      if (ordersError) {
+        throw new Error(ordersError.message);
+      }
+
+      if (!orders || orders.length === 0) {
+        setMarketplaceOrders([]);
+        return;
+      }
+
+      const orderIds = orders.map((order: any) => order.id);
+
+      const [
+        { data: orderItems, error: itemsError },
+        { data: commissions, error: commissionsError },
+      ] = await Promise.all([
+        (supabase as any)
+          .from("nasara_marketplace_order_items")
+          .select("*")
+          .in("order_id", orderIds),
+
+        (supabase as any)
+          .from("nasara_marketplace_commissions")
+          .select("*")
+          .in("order_id", orderIds),
+      ]);
+
+      if (itemsError) throw new Error(itemsError.message);
+      if (commissionsError) throw new Error(commissionsError.message);
+
+      const combinedOrders = orders.map((order: any) => ({
+        ...order,
+        items: (orderItems || []).filter(
+          (item: any) => item.order_id === order.id
+        ),
+        commission:
+          (commissions || []).find(
+            (commission: any) =>
+              commission.order_id === order.id
+          ) || null,
+      }));
+
+      setMarketplaceOrders(combinedOrders);
+    } catch (error: any) {
+      console.error("MARKETPLACE ORDERS ERROR:", error);
+
+      showAlert(
+        "Marketplace Orders",
+        error?.message || "Unable to load marketplace orders."
+      );
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
+
+
+  /* ===================================================
+   FETCH BUYER MARKETPLACE ORDERS
+   Orders where the current account is the buyer.
+=================================================== */
+
+const fetchBuyerOrders = useCallback(async () => {
+  setBuyerOrdersLoading(true);
+
+  try {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      setBuyerOrders([]);
+      return;
+    }
+
+    const { data: orders, error: ordersError } =
+      await (supabase as any)
+        .from("nasara_marketplace_orders")
+        .select("*")
+        .eq("buyer_id", user.id)
+        .order("created_at", { ascending: false });
+
+    if (ordersError) {
+      throw new Error(ordersError.message);
+    }
+
+    if (!orders || orders.length === 0) {
+      setBuyerOrders([]);
+      return;
+    }
+
+    const orderIds = orders.map((order: any) => order.id);
+
+    const { data: orderItems, error: itemsError } =
+      await (supabase as any)
+        .from("nasara_marketplace_order_items")
+        .select("*")
+        .in("order_id", orderIds);
+
+    if (itemsError) {
+      throw new Error(itemsError.message);
+    }
+
+    const combinedOrders = orders.map((order: any) => ({
+      ...order,
+      items: (orderItems || []).filter(
+        (item: any) => item.order_id === order.id
+      ),
+    }));
+
+    setBuyerOrders(combinedOrders);
+  } catch (error: any) {
+    console.error("BUYER MARKETPLACE ORDERS ERROR:", error);
+
+    showAlert(
+      "My Purchases",
+      error?.message || "Unable to load your purchases."
+    );
+  } finally {
+    setBuyerOrdersLoading(false);
+  }
+}, []);
+  /* ===================================================
+     REFRESH DASHBOARD WHEN SCREEN OPENS
+  =================================================== */
+
+ useFocusEffect(
+  useCallback(() => {
+    fetchMyItems();
+    fetchMarketplaceOrders();
+    fetchBuyerOrders();
+  }, [
+    fetchMyItems,
+    fetchMarketplaceOrders,
+    fetchBuyerOrders,
+  ])
+);
+
+  /* ===================================================
+     MARKETPLACE API REQUEST HELPER
+  =================================================== */
+
+  const marketplaceRequest = async (
+    path: string,
+    body: Record<string, any>
+  ) => {
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (sessionError || !session?.access_token) {
+      throw new Error("Your session has expired. Please log in again.");
+    }
+
+    const response = await fetch(API_BASE + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok || result.success === false) {
+      throw new Error(
+        result.message ||
+          result.error ||
+          "The marketplace request could not be completed."
+      );
+    }
+
+    return result;
+  };
+
+  /* ===================================================
+   BUYER OPENS PAYMENT DECLARATION MODAL
+=================================================== */
+
+const openBuyerPaymentModal = (order: any) => {
+  setSelectedOrder(order);
+  setBuyerPaymentReference("");
+  setOrderModalType("buyer-payment");
+  setOrderModalVisible(true);
+};
+
+/* ===================================================
+   BUYER DECLARES PAYMENT
+   Existing backend endpoint.
+   Notifies seller and Nasara Admin.
+=================================================== */
+
+const declareBuyerPayment = async () => {
+  if (!selectedOrder || orderActionLoading) return;
+
+  const reference = buyerPaymentReference.trim();
+
+  if (reference.length < 4) {
+    showAlert(
+      "Transaction Reference Required",
+      "Enter the MoMo transaction reference before submitting."
+    );
+    return;
+  }
+
+  const orderId = String(selectedOrder.id);
+
+  setOrderActionLoading(orderId);
+
+  try {
+    await marketplaceRequest(
+      `/marketplace/orders/${encodeURIComponent(orderId)}/payment-declared`,
+      {
+        transaction_reference: reference,
+      }
+    );
+
+    setOrderModalVisible(false);
+    setSelectedOrder(null);
+    setBuyerPaymentReference("");
+
+    showAlert(
+      "Payment Declaration Submitted",
+      "Nasara and the seller have been notified. The seller must confirm receipt of your payment."
+    );
+
+    await fetchBuyerOrders();
+    await fetchMarketplaceOrders();
+  } catch (error: any) {
+    showAlert(
+      "Payment Declaration Failed",
+      error?.message || "Unable to submit your payment declaration."
+    );
+  } finally {
+    setOrderActionLoading(null);
+  }
+};
+
+  /* ===================================================
+     SELLER CONFIRMS BUYER PAYMENT
+  =================================================== */
+
+  const confirmBuyerPayment = async (order: any) => {
+    const orderId = String(order.id);
+
+    if (orderActionLoading) return;
+
+    const confirmMessage =
+      "Only confirm after checking your Mobile Money account and verifying that the buyer's payment has actually arrived.\n\nHave you received the payment?";
+
+    if (Platform.OS === "web") {
+      if (!window.confirm(confirmMessage)) return;
+    } else {
+      const shouldContinue = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          "Confirm Buyer Payment",
+          confirmMessage,
+          [
+            {
+              text: "Cancel",
+              style: "cancel",
+              onPress: () => resolve(false),
+            },
+            {
+              text: "Yes, Payment Received",
+              onPress: () => resolve(true),
+            },
+          ]
+        );
+      });
+
+      if (!shouldContinue) return;
+    }
+
+    setOrderActionLoading(orderId);
+
+    try {
+      await marketplaceRequest(
+        `/marketplace/orders/${encodeURIComponent(orderId)}/payment-decision`,
+        {
+          decision: "confirmed",
+        }
+      );
+
+      showAlert(
+        "Payment Confirmed",
+        "You have confirmed the buyer's payment. Your 5% Nasara commission is now available in this order."
+      );
+
+      await fetchMarketplaceOrders();
+    } catch (error: any) {
+      showAlert(
+        "Confirmation Failed",
+        error?.message || "Unable to confirm this payment."
+      );
+    } finally {
+      setOrderActionLoading(null);
+    }
+  };
+
+  /* ===================================================
+     OPEN REJECTION MODAL
+  =================================================== */
+
+  const openRejectModal = (order: any) => {
+    setSelectedOrder(order);
+    setRejectionReason("");
+    setOrderModalType("reject");
+    setOrderModalVisible(true);
+  };
+
+  /* ===================================================
+     SELLER REJECTS BUYER PAYMENT
+  =================================================== */
+
+  const rejectBuyerPayment = async () => {
+    if (!selectedOrder || orderActionLoading) return;
+
+    const reason = rejectionReason.trim();
+
+    if (!reason) {
+      showAlert(
+        "Reason Required",
+        "Please explain why you are rejecting this payment declaration."
+      );
+      return;
+    }
+
+    const orderId = String(selectedOrder.id);
+    setOrderActionLoading(orderId);
+
+    try {
+      await marketplaceRequest(
+        `/marketplace/orders/${encodeURIComponent(orderId)}/payment-decision`,
+        {
+          decision: "rejected",
+          rejection_reason: reason,
+        }
+      );
+
+      setOrderModalVisible(false);
+      setSelectedOrder(null);
+      setRejectionReason("");
+
+      showAlert(
+        "Payment Rejected",
+        "The buyer's payment declaration has been rejected. The buyer will be notified."
+      );
+
+      await fetchMarketplaceOrders();
+    } catch (error: any) {
+      showAlert(
+        "Rejection Failed",
+        error?.message || "Unable to reject this payment."
+      );
+    } finally {
+      setOrderActionLoading(null);
+    }
+  };
+
+  /* ===================================================
+     OPEN COMMISSION PAYMENT MODAL
+  =================================================== */
+
+  const openCommissionModal = (order: any) => {
+    setSelectedOrder(order);
+    setTransactionReference("");
+    setOrderModalType("commission");
+    setOrderModalVisible(true);
+  };
+
+  /* ===================================================
+     SELLER SUBMITS COMMISSION PAYMENT REFERENCE
+  =================================================== */
+
+  const submitCommissionPayment = async () => {
+    if (!selectedOrder || orderActionLoading) return;
+
+    const commission = selectedOrder.commission;
+
+    if (!commission?.id) {
+      showAlert(
+        "Commission Not Found",
+        "The commission record for this order could not be found."
+      );
+      return;
+    }
+
+    const reference = transactionReference.trim();
+
+    if (reference.length < 4) {
+      showAlert(
+        "Transaction Reference Required",
+        "Enter the MoMo transaction reference for your commission payment."
+      );
+      return;
+    }
+
+    const commissionId = String(commission.id);
+    setOrderActionLoading(commissionId);
+
+    try {
+      await marketplaceRequest(
+        `/marketplace/commissions/${encodeURIComponent(commissionId)}/payment-submit`,
+        {
+          transaction_reference: reference,
+        }
+      );
+
+      setOrderModalVisible(false);
+      setSelectedOrder(null);
+      setTransactionReference("");
+
+      showAlert(
+        "Commission Submitted",
+        "Your commission payment reference has been submitted to Nasara Admin for verification."
+      );
+
+      await fetchMarketplaceOrders();
+    } catch (error: any) {
+      showAlert(
+        "Submission Failed",
+        error?.message || "Unable to submit your commission payment."
+      );
+    } finally {
+      setOrderActionLoading(null);
+    }
+  };
 
   /* ===================================================
      SHARE / SAVE QR CODE
   =================================================== */
 
   const shareShopQr = async () => {
-    if (!shopUrl || qrSharing) {
-      return;
-    }
+    if (!shopUrl || qrSharing) return;
 
     setQrSharing(true);
 
@@ -643,7 +1102,6 @@ export default function My() {
           message: shopUrl,
           url: shopUrl,
         });
-
         return;
       }
 
@@ -664,7 +1122,6 @@ export default function My() {
           message: shopUrl,
           title: "My Nasara Shop",
         });
-
         return;
       }
 
@@ -718,8 +1175,7 @@ export default function My() {
   const displayItems = useMemo(() => {
     return items.flatMap((item: any) => {
       const images =
-        Array.isArray(item.image_urls) &&
-        item.image_urls.length > 0
+        Array.isArray(item.image_urls) && item.image_urls.length > 0
           ? item.image_urls
           : item.image_url
           ? [item.image_url]
@@ -796,8 +1252,6 @@ export default function My() {
         ? [post.image_url]
         : [];
 
-      /* VIDEO OR PRODUCT WITH NO IMAGES */
-
       if (post.video_url || images.length === 0) {
         const { error: deleteError } = await supabase
           .from("items_live")
@@ -814,8 +1268,6 @@ export default function My() {
         return;
       }
 
-      /* REMOVE ONLY THE SELECTED IMAGE */
-
       const updated = images.filter(
         (img: string, index: number) => {
           if (
@@ -828,8 +1280,6 @@ export default function My() {
           return img !== item.image_url;
         }
       );
-
-      /* IF NO IMAGES REMAIN, DELETE LISTING */
 
       if (updated.length === 0) {
         const { error: deleteError } = await supabase
@@ -860,10 +1310,7 @@ export default function My() {
 
       await fetchMyItems();
     } catch (error: any) {
-      showAlert(
-        "Error",
-        error?.message || "Delete failed."
-      );
+      showAlert("Error", error?.message || "Delete failed.");
     }
   };
 
@@ -881,24 +1328,18 @@ export default function My() {
       : "Are you sure you want to remove this image?";
 
     if (Platform.OS === "web") {
-      if (window.confirm(message)) {
-        runDelete(item);
-      }
+      if (window.confirm(message)) runDelete(item);
       return;
     }
 
-    Alert.alert(
-      "Confirm Delete",
-      message,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => runDelete(item),
-        },
-      ]
-    );
+    Alert.alert("Confirm Delete", message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => runDelete(item),
+      },
+    ]);
   };
 
   /* ===================================================
@@ -913,187 +1354,1050 @@ export default function My() {
 
   /* ===================================================
      SEND PROMOTION PAYMENT REQUEST
-
-     EXISTING MOMO INSTRUCTIONS PRESERVED
+     EXISTING FLOW PRESERVED
   =================================================== */
 
   const sendPayment = async () => {
-  if (!selectedItemId || paymentLoading) {
-    return;
-  }
+    if (!selectedItemId || paymentLoading) return;
 
-  setPaymentLoading(true);
-
-  try {
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      showAlert("Login Required", "Please login first.");
-      return;
-    }
-
-    // VERIFY PRODUCT OWNERSHIP
-    const { data: product, error: productError } =
-      await supabase
-        .from("items_live")
-        .select("id")
-        .eq("id", selectedItemId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-    if (productError || !product) {
-      showAlert(
-        "Error",
-        "This product does not belong to your account."
-      );
-      return;
-    }
-
-    const selectedDays = Number(days);
-
-    if (![3, 7, 14].includes(selectedDays)) {
-      showAlert(
-        "Invalid Selection",
-        "Please select 3, 7 or 14 days."
-      );
-      return;
-    }
-
-    const totalAmount = selectedDays * dailyRate;
-
-    const expiryDate = new Date(
-      Date.now() + selectedDays * 24 * 60 * 60 * 1000
-    ).toISOString();
-
-    const code = "PROMO-" + Date.now();
-
-    // GET LOGIN SESSION FOR ADMIN NOTIFICATION REQUEST
-    const {
-      data: { session },
-      error: sessionError,
-    } = await supabase.auth.getSession();
-
-    if (sessionError || !session?.access_token) {
-      throw new Error("Please log in again and retry.");
-    }
-
-    // CREATE PAYMENT RECORD
-    const { data: payment, error: payError } =
-      await (supabase as any)
-        .from("payments")
-        .insert({
-          user_id: user.id,
-          product_type: "promote",
-          amount: totalAmount,
-          momo_name: momoName,
-          momo_number: momoNumber,
-          network: momoNetwork,
-          code,
-          status: "pending",
-        })
-        .select("id")
-        .single();
-
-    if (payError) {
-      throw new Error(payError.message);
-    }
-
-    if (!payment?.id) {
-      throw new Error("Payment was saved but its ID is missing.");
-    }
-
-    // CREATE PROMOTION RECORD
-    const { data: promotion, error: promoError } =
-      await (supabase as any)
-        .from("promoted")
-        .insert({
-          seller_id: user.id,
-          item_id: selectedItemId,
-          amount: totalAmount,
-          status: "pending",
-          promoted_until: expiryDate,
-          payment_code: code,
-        })
-        .select("id")
-        .single();
-
-    if (promoError) {
-      // CLEAN UP PAYMENT IF PROMOTION INSERT FAILS
-      await (supabase as any)
-        .from("payments")
-        .delete()
-        .eq("id", payment.id)
-        .eq("user_id", user.id);
-
-      throw new Error(promoError.message);
-    }
-
-    // NOTIFY NASARA ADMINS
-    let notificationSent = false;
+    setPaymentLoading(true);
 
     try {
-      const response = await fetch(
-        "https://nasara-upload-server.onrender.com/notifications/admin-submit",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            type: "promotion_payment_request",
-            ref_id: payment.id,
-            related_id: promotion.id,
-          }),
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        showAlert("Login Required", "Please login first.");
+        return;
+      }
+
+      const { data: product, error: productError } =
+        await supabase
+          .from("items_live")
+          .select("id")
+          .eq("id", selectedItemId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+      if (productError || !product) {
+        showAlert(
+          "Error",
+          "This product does not belong to your account."
+        );
+        return;
+      }
+
+      const selectedDays = Number(days);
+
+      if (![3, 7, 14].includes(selectedDays)) {
+        showAlert(
+          "Invalid Selection",
+          "Please select 3, 7 or 14 days."
+        );
+        return;
+      }
+
+      const totalAmount = selectedDays * dailyRate;
+
+      const expiryDate = new Date(
+        Date.now() + selectedDays * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      const code = "PROMO-" + Date.now();
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("Please log in again and retry.");
+      }
+
+      const { data: payment, error: payError } =
+        await (supabase as any)
+          .from("payments")
+          .insert({
+            user_id: user.id,
+            product_type: "promote",
+            amount: totalAmount,
+            momo_name: momoName,
+            momo_number: momoNumber,
+            network: momoNetwork,
+            code,
+            status: "pending",
+          })
+          .select("id")
+          .single();
+
+      if (payError) throw new Error(payError.message);
+
+      if (!payment?.id) {
+        throw new Error("Payment was saved but its ID is missing.");
+      }
+
+      const { data: promotion, error: promoError } =
+        await (supabase as any)
+          .from("promoted")
+          .insert({
+            seller_id: user.id,
+            item_id: selectedItemId,
+            amount: totalAmount,
+            status: "pending",
+            promoted_until: expiryDate,
+            payment_code: code,
+          })
+          .select("id")
+          .single();
+
+      if (promoError) {
+        await (supabase as any)
+          .from("payments")
+          .delete()
+          .eq("id", payment.id)
+          .eq("user_id", user.id);
+
+        throw new Error(promoError.message);
+      }
+
+      let notificationSent = false;
+
+      try {
+        const response = await fetch(
+          API_BASE + "/notifications/admin-submit",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              type: "promotion_payment_request",
+              ref_id: payment.id,
+              related_id: promotion.id,
+            }),
+          }
+        );
+
+        const result = await response.json();
+
+        notificationSent =
+          response.ok && result.success === true;
+
+        if (!notificationSent) {
+          console.log(
+            "PROMOTION ADMIN NOTIFICATION FAILED:",
+            result
+          );
         }
-      );
-
-      const result = await response.json();
-
-      notificationSent =
-        response.ok && result.success === true;
-
-      if (!notificationSent) {
+      } catch (notificationError) {
         console.log(
-          "PROMOTION ADMIN NOTIFICATION FAILED:",
-          result
+          "PROMOTION ADMIN NOTIFICATION ERROR:",
+          notificationError
         );
       }
-    } catch (notificationError) {
-      console.log(
-        "PROMOTION ADMIN NOTIFICATION ERROR:",
-        notificationError
-      );
-    }
 
-    if (notificationSent) {
+      if (notificationSent) {
+        showAlert(
+          "Payment Submitted",
+          `Your promotion payment has been submitted for admin verification.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nPlease allow the admin team to verify receipt in their MoMo account.`
+        );
+      } else {
+        showAlert(
+          "Payment Saved",
+          `Your promotion payment record has been saved.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nHowever, the admin notification could not be confirmed. Please contact support.`
+        );
+      }
+
+      setPayVisible(false);
+      setSelectedItemId(null);
+
+      await fetchMyItems();
+    } catch (error: any) {
       showAlert(
-        "Payment Submitted",
-        `Your promotion payment has been submitted for admin verification.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nPlease allow the admin team to verify receipt in their MoMo account.`
+        "Payment Error",
+        error?.message || "Unable to submit promotion request."
       );
-    } else {
-      showAlert(
-        "Payment Saved",
-        `Your promotion payment record has been saved.\n\nAmount: GH₵${totalAmount}\nPayment Code: ${code}\n\nHowever, the admin notification could not be confirmed. Please contact support.`
-      );
+    } finally {
+      setPaymentLoading(false);
     }
+  };
+  /* ===================================================
+   BUYER PURCHASE CARD
+=================================================== */
 
-    setPayVisible(false);
-    setSelectedItemId(null);
+const renderBuyerOrder = (order: any) => {
+  const status = getOrderStatus(order);
 
-    await fetchMyItems();
-  } catch (error: any) {
-    showAlert(
-      "Payment Error",
-      error?.message || "Unable to submit promotion request."
-    );
-  } finally {
-    setPaymentLoading(false);
-  }
+  const orderId = String(order.id);
+
+  const subtotal = Number(
+    order.subtotal ??
+      order.subtotal_amount ??
+      order.total_amount ??
+      order.amount ??
+      0
+  );
+
+  const buyerDeclared = [
+    "buyer_declared",
+    "payment_declared",
+  ].includes(status);
+
+  const paymentConfirmed = [
+    "seller_confirmed",
+    "confirmed",
+    "processing",
+    "completed",
+    "delivered",
+  ].includes(status);
+
+  const paymentRejected = [
+    "rejected",
+    "payment_rejected",
+  ].includes(status);
+
+  const alreadyPaid = buyerDeclared || paymentConfirmed;
+
+  return (
+    <View
+      key={orderId}
+      style={{
+        backgroundColor: COLORS.white,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 14,
+        padding: 15,
+        marginBottom: 12,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.navy,
+            fontWeight: "900",
+            fontSize: 15,
+          }}
+        >
+          Purchase #{orderId.slice(0, 8)}
+        </Text>
+
+        <Text
+          style={{
+            backgroundColor: paymentConfirmed
+              ? "#DCFCE7"
+              : buyerDeclared
+              ? "#FEF3C7"
+              : paymentRejected
+              ? "#FEE2E2"
+              : "#E5E7EB",
+            color: paymentConfirmed
+              ? "#166534"
+              : buyerDeclared
+              ? "#92400E"
+              : paymentRejected
+              ? COLORS.red
+              : COLORS.text,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 20,
+            fontSize: 10,
+            fontWeight: "900",
+          }}
+        >
+          {status.replace(/_/g, " ").toUpperCase()}
+        </Text>
+      </View>
+
+      <Text
+        style={{
+          color: COLORS.muted,
+          fontSize: 11,
+          marginTop: 6,
+        }}
+      >
+        {order.created_at
+          ? new Date(order.created_at).toLocaleString()
+          : ""}
+      </Text>
+
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border,
+          marginTop: 12,
+          paddingTop: 10,
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.text,
+            fontWeight: "800",
+            fontSize: 12,
+            marginBottom: 7,
+          }}
+        >
+          Products Purchased
+        </Text>
+
+        {(order.items || []).map((item: any, index: number) => (
+          <View
+            key={String(item.id || index)}
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              paddingVertical: 6,
+              gap: 10,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.text,
+                flex: 1,
+                fontSize: 12,
+              }}
+            >
+              {item.product_name ||
+                item.item_name ||
+                item.title ||
+                "Product"}{" "}
+              × {Number(item.quantity || 1)}
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontWeight: "700",
+                fontSize: 12,
+              }}
+            >
+              {formatMoney(
+                Number(
+                  item.subtotal ??
+                    item.total_price ??
+                    Number(item.unit_price || item.price || 0) *
+                      Number(item.quantity || 1)
+                )
+              )}
+            </Text>
+          </View>
+        ))}
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            borderTopWidth: 1,
+            borderTopColor: COLORS.border,
+            marginTop: 8,
+            paddingTop: 10,
+          }}
+        >
+          <Text style={{ color: COLORS.text, fontWeight: "800" }}>
+            Order Total
+          </Text>
+
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontWeight: "900",
+              fontSize: 16,
+            }}
+          >
+            {formatMoney(subtotal)}
+          </Text>
+        </View>
+      </View>
+
+      {/* SELLER PAYMENT DETAILS */}
+
+      <View
+        style={{
+          backgroundColor: "#F4F6FA",
+          borderRadius: 10,
+          padding: 12,
+          marginTop: 13,
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.navy,
+            fontWeight: "900",
+            fontSize: 13,
+          }}
+        >
+          Seller Mobile Money Details
+        </Text>
+
+        <Text
+          style={{
+            color: COLORS.text,
+            fontWeight: "800",
+            marginTop: 8,
+          }}
+        >
+          {order.seller_momo_name || "Seller"}
+        </Text>
+
+        <Text
+          selectable
+          style={{
+            color: COLORS.navy,
+            fontSize: 20,
+            fontWeight: "900",
+            marginTop: 4,
+          }}
+        >
+          {order.seller_momo_number || "Not available"}
+        </Text>
+
+        <Text
+          style={{
+            color: COLORS.muted,
+            fontSize: 11,
+            marginTop: 4,
+          }}
+        >
+          Pay the seller directly using the details above.
+        </Text>
+      </View>
+
+      {buyerDeclared && (
+        <View
+          style={{
+            backgroundColor: "#FFFBEB",
+            padding: 12,
+            borderRadius: 9,
+            marginTop: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: "#92400E",
+              fontWeight: "900",
+              fontSize: 13,
+            }}
+          >
+            Payment Declaration Submitted
+          </Text>
+
+          <Text
+            style={{
+              color: "#78350F",
+              fontSize: 12,
+              lineHeight: 19,
+              marginTop: 5,
+            }}
+          >
+            Your payment declaration has been submitted. The seller
+            must verify receipt of the money before confirming your
+            order.
+          </Text>
+        </View>
+      )}
+
+      {paymentConfirmed && (
+        <View
+          style={{
+            backgroundColor: "#DCFCE7",
+            padding: 12,
+            borderRadius: 9,
+            marginTop: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: "#166534",
+              fontWeight: "900",
+              fontSize: 13,
+            }}
+          >
+            ✓ Seller Confirmed Your Payment
+          </Text>
+
+          <Text
+            style={{
+              color: "#166534",
+              fontSize: 12,
+              marginTop: 5,
+              lineHeight: 19,
+            }}
+          >
+            Your payment has been confirmed by the seller.
+          </Text>
+        </View>
+      )}
+
+      {paymentRejected && (
+        <View
+          style={{
+            backgroundColor: "#FEF2F2",
+            padding: 12,
+            borderRadius: 9,
+            marginTop: 12,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.red,
+              fontWeight: "900",
+              fontSize: 13,
+            }}
+          >
+            Payment Declaration Rejected
+          </Text>
+
+          <Text
+            style={{
+              color: COLORS.text,
+              fontSize: 12,
+              marginTop: 5,
+              lineHeight: 19,
+            }}
+          >
+            Your payment declaration was rejected. Please check the
+            payment details and contact the seller if necessary.
+          </Text>
+        </View>
+      )}
+
+      {!alreadyPaid && (
+        <TouchableOpacity
+          onPress={() => openBuyerPaymentModal(order)}
+          style={{
+            backgroundColor: COLORS.green,
+            padding: 14,
+            borderRadius: 9,
+            marginTop: 13,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.white,
+              fontWeight: "900",
+              textAlign: "center",
+            }}
+          >
+            I Have Paid
+          </Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 };
+/* ===================================================
+   MARKETPLACE ORDER CARD
+=================================================== */
+
+const renderMarketplaceOrder = (order: any) => {
+  const status = getOrderStatus(order);
+  const commission = order.commission;
+
+  const subtotal = Number(
+    order.subtotal ??
+      order.subtotal_amount ??
+      order.total_amount ??
+      order.amount ??
+      0
+  );
+
+  const commissionAmount = Number(
+    commission?.commission_amount ??
+      commission?.amount ??
+      order.commission_amount ??
+      subtotal * 0.05
+  );
+
+  const orderId = String(order.id);
+
+  const busy =
+    orderActionLoading === orderId ||
+    orderActionLoading === String(commission?.id);
+
+  const buyerDeclared =
+    status === "buyer_declared" ||
+    status === "payment_declared";
+
+  const sellerConfirmed =
+    status === "seller_confirmed" ||
+    status === "processing" ||
+    status === "completed" ||
+    status === "delivered";
+
+  const commissionStatus = String(
+    commission?.status || ""
+  ).toLowerCase();
+
+  const commissionApproved =
+    commissionStatus === "approved" ||
+    commissionStatus === "verified";
+
+  const commissionSubmitted =
+    commissionStatus === "seller_submitted";
+
+  const commissionRejected =
+    commissionStatus === "rejected";
+
+  const canSubmitCommission =
+    sellerConfirmed &&
+    !!commission &&
+    ["pending", "rejected"].includes(commissionStatus);
+
+  return (
+    <View
+      key={orderId}
+      style={{
+        backgroundColor: COLORS.white,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        borderRadius: 14,
+        padding: 15,
+        marginBottom: 12,
+      }}
+    >
+      {/* ORDER HEADER */}
+
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 8,
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.navy,
+            fontWeight: "900",
+            fontSize: 15,
+          }}
+        >
+          Order #{orderId.slice(0, 8)}
+        </Text>
+
+        <Text
+          style={{
+            backgroundColor: buyerDeclared
+              ? "#FEF3C7"
+              : sellerConfirmed
+              ? "#DCFCE7"
+              : "#E5E7EB",
+            color: buyerDeclared
+              ? "#92400E"
+              : sellerConfirmed
+              ? "#166534"
+              : COLORS.text,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 20,
+            fontSize: 10,
+            fontWeight: "900",
+          }}
+        >
+          {status.replace(/_/g, " ").toUpperCase()}
+        </Text>
+      </View>
+
+      <Text
+        style={{
+          color: COLORS.muted,
+          fontSize: 11,
+          marginTop: 6,
+        }}
+      >
+        {order.created_at
+          ? new Date(order.created_at).toLocaleString()
+          : ""}
+      </Text>
+
+      {/* ORDERED PRODUCTS */}
+
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border,
+          marginTop: 12,
+          paddingTop: 10,
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.text,
+            fontWeight: "800",
+            fontSize: 12,
+            marginBottom: 7,
+          }}
+        >
+          Ordered Products
+        </Text>
+
+        {(order.items || []).map((item: any, index: number) => (
+          <View
+            key={String(item.id || index)}
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              paddingVertical: 5,
+              gap: 10,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.text,
+                flex: 1,
+                fontSize: 12,
+              }}
+            >
+              {item.product_name ||
+                item.item_name ||
+                item.title ||
+                "Product"}{" "}
+              × {Number(item.quantity || 1)}
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontWeight: "700",
+                fontSize: 12,
+              }}
+            >
+              {formatMoney(
+                Number(
+                  item.subtotal ??
+                    item.total_price ??
+                    Number(item.unit_price || item.price || 0) *
+                      Number(item.quantity || 1)
+                )
+              )}
+            </Text>
+          </View>
+        ))}
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            borderTopWidth: 1,
+            borderTopColor: COLORS.border,
+            marginTop: 8,
+            paddingTop: 10,
+          }}
+        >
+          <Text style={{ color: COLORS.text, fontWeight: "800" }}>
+            Order Subtotal
+          </Text>
+
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontWeight: "900",
+              fontSize: 15,
+            }}
+          >
+            {formatMoney(subtotal)}
+          </Text>
+        </View>
+      </View>
+
+      {/* BUYER PAYMENT DECLARATION */}
+
+      {buyerDeclared && (
+        <View
+          style={{
+            backgroundColor: "#FFFBEB",
+            borderRadius: 10,
+            padding: 12,
+            marginTop: 13,
+          }}
+        >
+          <Text
+            style={{
+              color: "#92400E",
+              fontWeight: "900",
+              fontSize: 13,
+            }}
+          >
+            Buyer says payment has been made
+          </Text>
+
+          <Text
+            style={{
+              color: "#78350F",
+              fontSize: 12,
+              lineHeight: 19,
+              marginTop: 5,
+            }}
+          >
+            Check your own MoMo account first. Confirm only after the
+            money has arrived. Reject the declaration if payment was
+            not received.
+          </Text>
+
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 8,
+              marginTop: 12,
+            }}
+          >
+            <TouchableOpacity
+              disabled={busy}
+              onPress={() => confirmBuyerPayment(order)}
+              style={{
+                flex: 1,
+                backgroundColor: COLORS.green,
+                padding: 12,
+                borderRadius: 8,
+                opacity: busy ? 0.5 : 1,
+              }}
+            >
+              {busy ? (
+                <ActivityIndicator color="white" />
+              ) : (
+                <Text
+                  style={{
+                    color: "white",
+                    fontWeight: "900",
+                    textAlign: "center",
+                    fontSize: 12,
+                  }}
+                >
+                  Confirm Payment
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={busy}
+              onPress={() => openRejectModal(order)}
+              style={{
+                flex: 1,
+                backgroundColor: COLORS.red,
+                padding: 12,
+                borderRadius: 8,
+                opacity: busy ? 0.5 : 1,
+              }}
+            >
+              <Text
+                style={{
+                  color: "white",
+                  fontWeight: "900",
+                  textAlign: "center",
+                  fontSize: 12,
+                }}
+              >
+                Reject Payment
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* NASARA COMMISSION */}
+
+      {sellerConfirmed && (
+        <View
+          style={{
+            backgroundColor: "#EFF6FF",
+            borderRadius: 10,
+            padding: 12,
+            marginTop: 13,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontWeight: "900",
+              fontSize: 13,
+            }}
+          >
+            Nasara Commission – 5%
+          </Text>
+
+          <Text
+            style={{
+              color: COLORS.blue,
+              fontSize: 21,
+              fontWeight: "900",
+              marginTop: 5,
+            }}
+          >
+            {formatMoney(commissionAmount)}
+          </Text>
+
+          <Text
+            style={{
+              color: COLORS.muted,
+              fontSize: 11,
+              marginTop: 5,
+            }}
+          >
+            Commission calculated on the order subtotal.
+          </Text>
+
+          {commissionApproved ? (
+            <Text
+              style={{
+                color: COLORS.green,
+                fontWeight: "900",
+                marginTop: 10,
+                fontSize: 12,
+              }}
+            >
+              ✓ Commission payment verified by Nasara Admin
+            </Text>
+          ) : commissionSubmitted ? (
+            <Text
+              style={{
+                color: "#92400E",
+                fontWeight: "800",
+                marginTop: 10,
+                fontSize: 12,
+              }}
+            >
+              Commission reference submitted. Waiting for admin
+              verification.
+            </Text>
+          ) : commissionRejected ? (
+            <>
+              <Text
+                style={{
+                  color: COLORS.red,
+                  fontWeight: "800",
+                  fontSize: 12,
+                  marginTop: 10,
+                }}
+              >
+                Your commission submission was rejected. Check with
+                Nasara Admin before submitting again.
+              </Text>
+
+              <TouchableOpacity
+                disabled={busy}
+                onPress={() => openCommissionModal(order)}
+                style={{
+                  backgroundColor: COLORS.navy,
+                  padding: 13,
+                  borderRadius: 8,
+                  marginTop: 12,
+                  opacity: busy ? 0.5 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "white",
+                    textAlign: "center",
+                    fontWeight: "900",
+                  }}
+                >
+                  Resubmit Commission Reference
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : canSubmitCommission ? (
+            <>
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 12,
+                  lineHeight: 19,
+                  marginTop: 9,
+                }}
+              >
+                Pay the commission to Nasara Market using the MoMo
+                details below, then submit your transaction reference.
+              </Text>
+
+              <View
+                style={{
+                  backgroundColor: COLORS.white,
+                  padding: 10,
+                  borderRadius: 8,
+                  marginTop: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.navy,
+                    fontWeight: "900",
+                  }}
+                >
+                  {momoName}
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.navy,
+                    fontWeight: "900",
+                    fontSize: 17,
+                    marginTop: 3,
+                  }}
+                >
+                  {momoNumber}
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.muted,
+                    fontSize: 11,
+                    marginTop: 3,
+                  }}
+                >
+                  {momoNetwork} Mobile Money
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                disabled={busy}
+                onPress={() => openCommissionModal(order)}
+                style={{
+                  backgroundColor: COLORS.navy,
+                  padding: 13,
+                  borderRadius: 8,
+                  marginTop: 12,
+                  opacity: busy ? 0.5 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "white",
+                    textAlign: "center",
+                    fontWeight: "900",
+                  }}
+                >
+                  Submit Commission Payment Reference
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                marginTop: 10,
+              }}
+            >
+              Commission information is not yet available for this order.
+            </Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+};
+
   /* ===================================================
      DASHBOARD HEADER
   =================================================== */
@@ -1138,7 +2442,8 @@ export default function My() {
             lineHeight: 20,
           }}
         >
-          Manage your products, monitor performance and promote your business on Nasara.
+          Manage your products, monitor performance and promote your
+          business on Nasara.
         </Text>
 
         <View
@@ -1176,21 +2481,18 @@ export default function My() {
           icon="👁️"
           color="#2563EB"
         />
-
         <StatCard
           title="Enquiries"
           value={stats.enquiries}
           icon="💬"
           color="#16A34A"
         />
-
         <StatCard
           title="My Listings"
           value={stats.listings}
           icon="📦"
           color="#D69E2E"
         />
-
         <StatCard
           title="Favourites"
           value={stats.favourites}
@@ -1284,9 +2586,7 @@ export default function My() {
         ))}
       </View>
 
-      {/* =================================================
-          MY NASARA SHOP QR CODE
-      ================================================= */}
+      {/* MY NASARA SHOP QR CODE */}
 
       <View
         style={{
@@ -1319,7 +2619,8 @@ export default function My() {
             lineHeight: 19,
           }}
         >
-          Let customers scan this code to visit your shop and browse your products.
+          Let customers scan this code to visit your shop and browse
+          your products.
         </Text>
 
         {shopUrl ? (
@@ -1421,75 +2722,288 @@ export default function My() {
 
       {/* MY ADVERTISEMENTS AND BANNERS */}
 
-<View
-  style={{
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 22,
-  }}
->
-  <TouchableOpacity
-    onPress={() => router.push("/ads/my-ads")}
-    style={{
-      flex: 1,
-      backgroundColor: COLORS.navy,
-      padding: 15,
-      borderRadius: 12,
-      alignItems: "center",
-    }}
-  >
-    <Text style={{ fontSize: 23 }}>📢</Text>
-    <Text
-      style={{
-        color: COLORS.white,
-        fontWeight: "900",
-        marginTop: 7,
-      }}
-    >
-      My Ads
-    </Text>
-    <Text
-      style={{
-        color: "#D7DFED",
-        fontSize: 11,
-        marginTop: 4,
-      }}
-    >
-      View my advertisements
-    </Text>
-  </TouchableOpacity>
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 10,
+          marginBottom: 22,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => router.push("/ads/my-ads")}
+          style={{
+            flex: 1,
+            backgroundColor: COLORS.navy,
+            padding: 15,
+            borderRadius: 12,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 23 }}>📢</Text>
+          <Text
+            style={{
+              color: COLORS.white,
+              fontWeight: "900",
+              marginTop: 7,
+            }}
+          >
+            My Ads
+          </Text>
+          <Text
+            style={{
+              color: "#D7DFED",
+              fontSize: 11,
+              marginTop: 4,
+            }}
+          >
+            View my advertisements
+          </Text>
+        </TouchableOpacity>
 
-  <TouchableOpacity
-    onPress={() => router.push("/banner/my-banner")}
+        <TouchableOpacity
+          onPress={() => router.push("/banner/my-banner")}
+          style={{
+            flex: 1,
+            backgroundColor: COLORS.gold,
+            padding: 15,
+            borderRadius: 12,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 23 }}>🖼️</Text>
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontWeight: "900",
+              marginTop: 7,
+            }}
+          >
+            My Banners
+          </Text>
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontSize: 11,
+              marginTop: 4,
+            }}
+          >
+            View my banners
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {/* =================================================
+    MY PURCHASES
+================================================= */}
+
+<View style={{ marginBottom: 22 }}>
+  <View
     style={{
-      flex: 1,
-      backgroundColor: COLORS.gold,
-      padding: 15,
-      borderRadius: 12,
+      flexDirection: "row",
       alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
     }}
   >
-    <Text style={{ fontSize: 23 }}>🖼️</Text>
-    <Text
+    <View>
+      <Text
+        style={{
+          color: COLORS.navy,
+          fontSize: 19,
+          fontWeight: "900",
+        }}
+      >
+        My Purchases
+      </Text>
+
+      <Text
+        style={{
+          color: COLORS.muted,
+          fontSize: 11,
+          marginTop: 4,
+        }}
+      >
+        Products you have ordered from Nasara sellers
+      </Text>
+    </View>
+
+    <TouchableOpacity
+      onPress={fetchBuyerOrders}
+      disabled={buyerOrdersLoading}
       style={{
-        color: COLORS.navy,
-        fontWeight: "900",
-        marginTop: 7,
+        backgroundColor: COLORS.navy,
+        paddingHorizontal: 13,
+        paddingVertical: 9,
+        borderRadius: 8,
+        opacity: buyerOrdersLoading ? 0.5 : 1,
       }}
     >
-      My Banners
-    </Text>
-    <Text
+      {buyerOrdersLoading ? (
+        <ActivityIndicator color="white" size="small" />
+      ) : (
+        <Text
+          style={{
+            color: "white",
+            fontSize: 11,
+            fontWeight: "900",
+          }}
+        >
+          Refresh
+        </Text>
+      )}
+    </TouchableOpacity>
+  </View>
+
+  {buyerOrdersLoading && buyerOrders.length === 0 ? (
+    <ActivityIndicator
+      color={COLORS.gold}
+      style={{ marginVertical: 20 }}
+    />
+  ) : buyerOrders.length === 0 ? (
+    <View
       style={{
-        color: COLORS.navy,
-        fontSize: 11,
-        marginTop: 4,
+        backgroundColor: COLORS.white,
+        borderRadius: 13,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        padding: 20,
+        alignItems: "center",
       }}
     >
-      View my banners
-    </Text>
-  </TouchableOpacity>
+      <Text style={{ fontSize: 30 }}>🛍️</Text>
+
+      <Text
+        style={{
+          color: COLORS.navy,
+          fontWeight: "900",
+          marginTop: 8,
+        }}
+      >
+        No Purchases Yet
+      </Text>
+
+      <Text
+        style={{
+          color: COLORS.muted,
+          fontSize: 12,
+          textAlign: "center",
+          marginTop: 5,
+          lineHeight: 18,
+        }}
+      >
+        Products you order from other Nasara users will appear here.
+      </Text>
+    </View>
+  ) : (
+    buyerOrders.map(renderBuyerOrder)
+  )}
 </View>
+
+      {/* MARKETPLACE ORDERS */}
+
+      <View
+        style={{
+          marginBottom: 22,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 12,
+          }}
+        >
+          <View>
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontSize: 19,
+                fontWeight: "900",
+              }}
+            >
+              Marketplace Orders
+            </Text>
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 11,
+                marginTop: 4,
+              }}
+            >
+              Buyer payments and Nasara commission
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={fetchMarketplaceOrders}
+            disabled={ordersLoading}
+            style={{
+              backgroundColor: COLORS.navy,
+              paddingHorizontal: 13,
+              paddingVertical: 9,
+              borderRadius: 8,
+              opacity: ordersLoading ? 0.5 : 1,
+            }}
+          >
+            {ordersLoading ? (
+              <ActivityIndicator color="white" size="small" />
+            ) : (
+              <Text
+                style={{
+                  color: "white",
+                  fontSize: 11,
+                  fontWeight: "900",
+                }}
+              >
+                Refresh
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {ordersLoading && marketplaceOrders.length === 0 ? (
+          <ActivityIndicator
+            color={COLORS.gold}
+            style={{ marginVertical: 20 }}
+          />
+        ) : marketplaceOrders.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              borderRadius: 13,
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              padding: 20,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ fontSize: 30 }}>🛒</Text>
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontWeight: "900",
+                marginTop: 8,
+              }}
+            >
+              No Marketplace Orders Yet
+            </Text>
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                textAlign: "center",
+                marginTop: 5,
+                lineHeight: 18,
+              }}
+            >
+              Orders for products you sell will appear here. You can
+              confirm buyer payments and manage your Nasara commission.
+            </Text>
+          </View>
+        ) : (
+          marketplaceOrders.map(renderMarketplaceOrder)
+        )}
+      </View>
 
       {/* MY PRODUCTS */}
 
@@ -1524,7 +3038,7 @@ export default function My() {
   );
 
   /* ===================================================
-     EMPTY STATE
+     EMPTY PRODUCTS
   =================================================== */
 
   const EmptyProducts = () => (
@@ -1561,7 +3075,8 @@ export default function My() {
           lineHeight: 20,
         }}
       >
-        Products you post on Nasara will appear here. You can edit, manage and promote them from your Business Dashboard.
+        Products you post on Nasara will appear here. You can edit,
+        manage and promote them from your Business Dashboard.
       </Text>
     </View>
   );
@@ -1603,8 +3118,14 @@ export default function My() {
         }
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={fetchMyItems}
+           refreshing={
+  loading || ordersLoading || buyerOrdersLoading
+}
+onRefresh={() => {
+  fetchMyItems();
+  fetchMarketplaceOrders();
+  fetchBuyerOrders();
+}}
             tintColor={COLORS.gold}
           />
         }
@@ -1614,10 +3135,9 @@ export default function My() {
         }}
       />
 
-      {/* =================================================
-          NASARA MOMO PROMOTION PAYMENT MODAL
-          PRESERVED
-      ================================================= */}
+      =================================================
+          PROMOTION PAYMENT MODAL
+      ================================================= */
 
       <Modal
         transparent
@@ -1656,9 +3176,7 @@ export default function My() {
                 Promotion Payment
               </Text>
 
-              <Text style={{ marginTop: 12 }}>
-                Pay To:
-              </Text>
+              <Text style={{ marginTop: 12 }}>Pay To:</Text>
 
               <Text
                 style={{
@@ -1680,8 +3198,6 @@ export default function My() {
               >
                 {momoNetwork} Mobile Money
               </Text>
-
-              {/* DAYS */}
 
               <Text
                 style={{
@@ -1708,16 +3224,13 @@ export default function My() {
                       marginHorizontal: 4,
                       borderRadius: 8,
                       backgroundColor:
-                        days === d
-                          ? COLORS.blue
-                          : "#E5E7EB",
+                        days === d ? COLORS.blue : "#E5E7EB",
                     }}
                   >
                     <Text
                       style={{
                         textAlign: "center",
-                        color:
-                          days === d ? "white" : "black",
+                        color: days === d ? "white" : "black",
                         fontWeight: "700",
                       }}
                     >
@@ -1727,8 +3240,6 @@ export default function My() {
                 ))}
               </View>
 
-              {/* TOTAL */}
-
               <Text
                 style={{
                   marginTop: 17,
@@ -1737,8 +3248,7 @@ export default function My() {
                   color: COLORS.navy,
                 }}
               >
-                Total Amount: GH₵{" "}
-                {Number(days) * dailyRate}
+                Total Amount: GH₵ {Number(days) * dailyRate}
               </Text>
 
               <Text
@@ -1750,8 +3260,6 @@ export default function My() {
               >
                 GH₵30 per day
               </Text>
-
-              {/* PAYMENT BUTTON */}
 
               <TouchableOpacity
                 disabled={paymentLoading}
@@ -1774,7 +3282,7 @@ export default function My() {
                       fontWeight: "900",
                     }}
                   >
-                   I've Paid – Submit for Verification
+                    I've Paid – Submit for Verification
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1799,6 +3307,265 @@ export default function My() {
               </TouchableOpacity>
             </View>
           </ScrollView>
+        </View>
+      </Modal>
+
+      {/* =================================================
+          MARKETPLACE REJECTION / COMMISSION MODAL
+      ================================================= */}
+
+      <Modal
+        transparent
+        visible={orderModalVisible}
+        animationType="fade"
+        onRequestClose={() => {
+          if (!orderActionLoading) {
+            setOrderModalVisible(false);
+            setSelectedOrder(null);
+          }
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#0008",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              padding: 20,
+              borderRadius: 16,
+            }}
+          >
+            {orderModalType === "reject" ? (
+              <>
+                <Text
+                  style={{
+                    color: COLORS.navy,
+                    fontSize: 19,
+                    fontWeight: "900",
+                  }}
+                >
+                  Reject Buyer Payment
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.muted,
+                    fontSize: 12,
+                    lineHeight: 19,
+                    marginTop: 8,
+                  }}
+                >
+                  Explain why you did not receive or cannot verify the
+                  buyer's payment. The buyer will be notified.
+                </Text>
+
+                <TextInput
+                  value={rejectionReason}
+                  onChangeText={setRejectionReason}
+                  placeholder="Enter reason for rejecting payment"
+                  multiline
+                  textAlignVertical="top"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                    borderRadius: 9,
+                    padding: 12,
+                    minHeight: 100,
+                    marginTop: 15,
+                    color: COLORS.text,
+                  }}
+                />
+
+                <TouchableOpacity
+                  disabled={!!orderActionLoading}
+                  onPress={rejectBuyerPayment}
+                  style={{
+                    backgroundColor: COLORS.red,
+                    padding: 14,
+                    borderRadius: 9,
+                    marginTop: 15,
+                    opacity: orderActionLoading ? 0.6 : 1,
+                  }}
+                >
+                  {orderActionLoading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text
+                      style={{
+                        color: "white",
+                        fontWeight: "900",
+                        textAlign: "center",
+                      }}
+                    >
+                      Submit Rejection
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : orderModalType === "commission" ? (
+              <>
+                <Text
+                  style={{
+                    color: COLORS.navy,
+                    fontSize: 19,
+                    fontWeight: "900",
+                  }}
+                >
+                  Submit Commission Payment
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.muted,
+                    fontSize: 12,
+                    marginTop: 8,
+                    lineHeight: 19,
+                  }}
+                >
+                  Pay Nasara Market first, then enter the transaction
+                  reference from your MoMo confirmation message.
+                </Text>
+
+                <View
+                  style={{
+                    backgroundColor: "#F4F6FA",
+                    padding: 13,
+                    borderRadius: 9,
+                    marginTop: 14,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: COLORS.navy,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {momoName}
+                  </Text>
+                  <Text
+                    style={{
+                      color: COLORS.navy,
+                      fontSize: 18,
+                      fontWeight: "900",
+                      marginTop: 4,
+                    }}
+                  >
+                    {momoNumber}
+                  </Text>
+                  <Text
+                    style={{
+                      color: COLORS.muted,
+                      fontSize: 11,
+                      marginTop: 3,
+                    }}
+                  >
+                    {momoNetwork} Mobile Money
+                  </Text>
+                  <Text
+                    style={{
+                      color: COLORS.navy,
+                      fontWeight: "900",
+                      marginTop: 10,
+                    }}
+                  >
+                    Commission:{" "}
+                    {formatMoney(
+                      Number(
+                        selectedOrder?.commission?.commission_amount ??
+                          selectedOrder?.commission?.amount ??
+                          selectedOrder?.commission_amount ??
+                          Number(
+                            selectedOrder?.subtotal ??
+                              selectedOrder?.subtotal_amount ??
+                              selectedOrder?.total_amount ??
+                              selectedOrder?.amount ??
+                              0
+                          ) * 0.05
+                      )
+                    )}
+                  </Text>
+                </View>
+
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontWeight: "800",
+                    fontSize: 12,
+                    marginTop: 16,
+                  }}
+                >
+                  MoMo Transaction Reference
+                </Text>
+
+                <TextInput
+                  value={transactionReference}
+                  onChangeText={setTransactionReference}
+                  placeholder="Enter transaction reference"
+                  autoCapitalize="characters"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                    borderRadius: 9,
+                    padding: 13,
+                    marginTop: 8,
+                    color: COLORS.text,
+                  }}
+                />
+
+                <TouchableOpacity
+                  disabled={!!orderActionLoading}
+                  onPress={submitCommissionPayment}
+                  style={{
+                    backgroundColor: COLORS.green,
+                    padding: 14,
+                    borderRadius: 9,
+                    marginTop: 15,
+                    opacity: orderActionLoading ? 0.6 : 1,
+                  }}
+                >
+                  {orderActionLoading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <Text
+                      style={{
+                        color: "white",
+                        fontWeight: "900",
+                        textAlign: "center",
+                      }}
+                    >
+                      Submit for Admin Verification
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : null}
+
+            <TouchableOpacity
+              disabled={!!orderActionLoading}
+              onPress={() => {
+                setOrderModalVisible(false);
+                setSelectedOrder(null);
+                setRejectionReason("");
+                setTransactionReference("");
+              }}
+              style={{ marginTop: 15, padding: 8 }}
+            >
+              <Text
+                style={{
+                  color: COLORS.red,
+                  textAlign: "center",
+                  fontWeight: "800",
+                }}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Modal>
     </View>

@@ -638,16 +638,30 @@ const showMessage = (
       return;
     }
 
-    if (price.trim() && (
-      !Number.isFinite(Number(price)) ||
-      Number(price) < 0
-    )) {
-      showMessage(
-        "Invalid price",
-        "Please enter a valid product price."
-      );
-      return;
-    }
+   // --------------------------------------------------------
+// 💰 PRICE IS COMPULSORY
+// --------------------------------------------------------
+
+const numericPrice = Number(price.trim());
+
+if (!price.trim()) {
+  showMessage(
+    "Selling price required",
+    "Please enter the selling price of this product. Every item must have a price before publishing."
+  );
+  return;
+}
+
+if (
+  !Number.isFinite(numericPrice) ||
+  numericPrice <= 0
+) {
+  showMessage(
+    "Invalid selling price",
+    "Enter a valid price greater than GH₵0."
+  );
+  return;
+}
 
     if (isDeal) {
       if (
@@ -662,10 +676,7 @@ const showMessage = (
         return;
       }
 
-      if (
-        price.trim() &&
-        Number(dealPrice) >= Number(price)
-      ) {
+      if (Number(dealPrice) >= numericPrice) {
        showMessage(
           "Invalid Friday Deal price",
           "The Friday Deal price should be lower than the normal price."
@@ -814,9 +825,7 @@ const showMessage = (
 
           description: description.trim(),
 
-          price: price.trim()
-            ? Number(price)
-            : null,
+         price: numericPrice,
 
           is_deal: isDeal,
 
@@ -1180,8 +1189,19 @@ longitude,
         {/* 💰 PRICE */}
         {/* ------------------------------------------------ */}
 
-        <InputLabel title="Selling Price (GH₵)" />
-
+        <InputLabel title="Selling Price (GH₵)"
+        required
+         />
+        <Text
+  style={{
+    color: COLORS.muted,
+    fontSize: 10,
+    marginTop: 6,
+  }}
+>
+  Enter the price of this individual product. Every marketplace
+  product must have a price before publishing.
+</Text>
         <View style={styles.priceInputContainer}>
           <View style={styles.currencyBadge}>
             <Text style={styles.currencyText}>

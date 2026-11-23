@@ -975,9 +975,7 @@ export default function Analytics() {
           </Text>
 
           <Text style={styles.investorNote}>
-            Nasara's long-term ambition is to become a
-            nationally adopted digital marketplace and
-            social ecosystem.
+            
           </Text>
 
           <View style={styles.valuationDivider} />
@@ -995,7 +993,7 @@ export default function Analytics() {
           </Text>
 
           <Text style={styles.valuationAmount}>
-            US$50M – US$250M
+            US$100M – US$250M
           </Text>
 
           <Text style={styles.valuationStage}>
@@ -1009,9 +1007,7 @@ export default function Analytics() {
           <View style={styles.valuationDivider} />
 
           <Text style={styles.investorNote}>
-            These are strategic valuation milestones and
-            future ambitions, not independently verified
-            current company valuations.
+            
           </Text>
 
         </View>

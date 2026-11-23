@@ -21,6 +21,7 @@ import {
   Dimensions,
   FlatList,
   Linking,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -38,6 +39,7 @@ import { supabase } from "../../lib/supabase";
 // 🟡 =====================================================
 
 const CACHE_KEY = "BROWSE_ULTRA_CACHE";
+const CART_STORAGE_KEY = "NASARA_MARKETPLACE_CART";
 const MAX_FEED_ITEMS = 500;
 const PAGE_SIZE = 12;
 
@@ -81,6 +83,18 @@ type Item = {
   type?: "item" | "ad" | "banner" | "promoted" | "boosted";
 };
 
+type CartItem = {
+  id: string;
+  title: string;
+  price: number;
+  quantity: number;
+  image_url: string | null;
+  seller_id: string;
+  seller_phone: string | null;
+  category: string | null;
+  location: string | null;
+};
+
 type Promo = {
   id: string;
   item_id: string;
@@ -106,6 +120,13 @@ export default function BrowseScreen() {
   // 🔵 STATES
 
   const [items, setItems] = useState<Item[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+const [cartLoading, setCartLoading] = useState(true);
+
+const cartCount = cartItems.reduce(
+  (total, item) => total + item.quantity,
+  0
+);
   const [liveStreams, setLiveStreams] = useState<any[]>([]);
   const [ads, setAds] = useState<Item[]>([]);
   const [banners, setBanners] = useState<Item[]>([]);
@@ -184,6 +205,17 @@ export default function BrowseScreen() {
     others: "🛍️",
   };
 
+const showMessage = (title: string, message?: string) => {
+  if (Platform.OS === "web") {
+    if (typeof window !== "undefined") {
+      window.alert(message ? `${title}\n\n${message}` : title);
+    }
+    return;
+  }
+
+  Alert.alert(title, message || "");
+};
+
   // 🟡 =====================================================
   // 🟡 CACHE
   // 🟡 =====================================================
@@ -203,6 +235,30 @@ export default function BrowseScreen() {
 
     loadCache();
   }, []);
+
+  useEffect(() => {
+  const loadCart = async () => {
+    try {
+      const savedCart = await AsyncStorage.getItem(
+        CART_STORAGE_KEY
+      );
+
+      if (savedCart) {
+        const parsed = JSON.parse(savedCart);
+
+        if (Array.isArray(parsed)) {
+          setCartItems(parsed);
+        }
+      }
+    } catch (error) {
+      console.log("Cart load error:", error);
+    } finally {
+      setCartLoading(false);
+    }
+  };
+
+  loadCart();
+}, []);
 
   // 🟡 =====================================================
   // 🟡 SEARCH DEBOUNCE
@@ -819,6 +875,134 @@ const loadLiveStreams = async () => {
     }
   };
 
+  // =====================================================
+// ADD PRODUCT TO CART
+// =====================================================
+
+const addToCart = async (item: Item) => {
+  try {
+    // Only actual products can be added.
+    if (
+      !["item", "promoted", "boosted"].includes(
+        item.type || ""
+      )
+    ) {
+      return;
+    }
+
+    const {
+      data: { user: currentUser },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError) {
+        showMessage(
+        "Please try again",
+        "We could not verify your account."
+      );
+      return;
+    }
+
+    const sellerId = item.user_id;
+
+    if (!sellerId) {
+        showMessage(
+        "Seller unavailable",
+        "We could not identify the seller of this product."
+      );
+      return;
+    }
+
+    if (currentUser?.id === sellerId) {
+        showMessage(
+        "Your own product",
+        "You cannot add your own product to your shopping cart."
+      );
+      return;
+    }
+
+    // Use the deal price only while the deal is active.
+    const now = Date.now();
+
+    const dealIsActive =
+      item.is_deal === true &&
+      Number(item.deal_price) > 0 &&
+      (!item.deal_start ||
+        new Date(item.deal_start).getTime() <= now) &&
+      (!item.deal_end ||
+        new Date(item.deal_end).getTime() >= now);
+
+    const finalPrice = dealIsActive
+      ? Number(item.deal_price)
+      : Number(item.price);
+
+    if (
+      !Number.isFinite(finalPrice) ||
+      finalPrice <= 0
+    ) {
+       showMessage(
+        "Price unavailable",
+        "This product does not have a valid selling price yet."
+      );
+      return;
+    }
+
+    const productId = String(
+      item.original_id || item.id
+    );
+
+    const existingIndex = cartItems.findIndex(
+      (cartItem) => cartItem.id === productId
+    );
+
+    let updatedCart: CartItem[];
+
+    if (existingIndex >= 0) {
+      updatedCart = cartItems.map((cartItem) =>
+        cartItem.id === productId
+          ? {
+              ...cartItem,
+              quantity: cartItem.quantity + 1,
+            }
+          : cartItem
+      );
+    } else {
+      const newCartItem: CartItem = {
+        id: productId,
+        title: item.title || "Untitled Product",
+        price: finalPrice,
+        quantity: 1,
+        image_url: item.image_url || null,
+        seller_id: sellerId,
+        seller_phone: item.seller_phone || null,
+        category: item.category || null,
+        location: item.location || null,
+      };
+
+      updatedCart = [...cartItems, newCartItem];
+    }
+
+    await AsyncStorage.setItem(
+      CART_STORAGE_KEY,
+      JSON.stringify(updatedCart)
+    );
+
+    setCartItems(updatedCart);
+
+    showMessage(
+      "Added to Cart",
+      `${item.title || "Product"} has been added to your shopping cart.`
+    );
+  } catch (error: any) {
+    console.log("Add to cart error:", error);
+
+      showMessage(
+      "Cart Error",
+      error?.message ||
+        "We could not add this product to your cart. Please try again."
+    );
+  }
+};
   // 🟡 =====================================================
   // 🟡 PROMOTED ITEMS
   // 🟡 =====================================================
@@ -832,16 +1016,23 @@ const loadLiveStreams = async () => {
         id,
         promoted_until,
         created_at,
-        items_live (
-          id,
-          title,
-          price,
-          image_url,
-          image_urls,
-          video_url,
-          location,
-          category
-        )
+       items_live (
+  id,
+  title,
+  price,
+  deal_price,
+  is_deal,
+  deal_start,
+  deal_end,
+  image_url,
+  image_urls,
+  video_url,
+  location,
+  category,
+  user_id,
+  seller_phone,
+  is_negotiable
+)
       `)
       .eq("status", "approved")
       .gt("promoted_until", today)
@@ -881,6 +1072,14 @@ const loadLiveStreams = async () => {
           category: item.category,
           created_at: p.created_at,
           type: "promoted" as const,
+          deal_price: item.deal_price,
+is_deal: item.is_deal,
+deal_start: item.deal_start,
+deal_end: item.deal_end,
+user_id: item.user_id,
+seller_phone: item.seller_phone,
+negotiable: Boolean(item.is_negotiable),
+is_negotiable: Boolean(item.is_negotiable),
         };
       })
       .filter(Boolean) as Item[];
@@ -941,6 +1140,13 @@ const loadLiveStreams = async () => {
             created_at: b.created_at,
             negotiable: Boolean(b.is_negotiable),
             type: "boosted" as const,
+            deal_price: b.deal_price,
+is_deal: b.is_deal,
+deal_start: b.deal_start,
+deal_end: b.deal_end,
+user_id: b.user_id,
+seller_phone: b.seller_phone,
+is_negotiable: Boolean(b.is_negotiable),
           };
         })
       );
@@ -1603,6 +1809,25 @@ const loadLiveStreams = async () => {
     <Text style={styles.headerIcon}>⚙️</Text>
   </TouchableOpacity>
 
+  {/* 🛒 SHOPPING CART */}
+
+<TouchableOpacity
+  onPress={() => router.push("/cart")}
+  style={styles.headerIconButton}
+  activeOpacity={0.8}
+>
+  <View>
+    <Text style={styles.headerIcon}>🛒</Text>
+
+    {cartCount > 0 && (
+      <View style={styles.cartBadge}>
+        <Text style={styles.cartBadgeText}>
+          {cartCount > 99 ? "99+" : cartCount}
+        </Text>
+      </View>
+    )}
+  </View>
+</TouchableOpacity>
 </View>
             </View>
 
@@ -2084,26 +2309,37 @@ const loadLiveStreams = async () => {
               {/* 🟡 ACTIONS */}
 
               <View style={styles.productActions}>
-                <TouchableOpacity
-                  onPress={() => shareItem(item)}
-                  style={styles.shareButton}
-                >
-                  <Text style={styles.shareButtonText}>
-                    ↗️ Share
-                  </Text>
-                </TouchableOpacity>
+  {["item", "promoted", "boosted"].includes(
+    item.type || ""
+  ) && (
+    <>
+      <TouchableOpacity
+        onPress={(event) => {
+          event.stopPropagation?.();
+          shareItem(item);
+        }}
+        style={styles.shareButton}
+      >
+        <Text style={styles.shareButtonText}>
+          ↗️ Share
+        </Text>
+      </TouchableOpacity>
 
-                {item.type === "item" && item.user_id && (
-                  <TouchableOpacity
-                    onPress={() => openSellerChat(item)}
-                    style={styles.chatButton}
-                  >
-                    <Text style={styles.chatButtonText}>
-                      Chat
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+      <TouchableOpacity
+        onPress={(event) => {
+          event.stopPropagation?.();
+          addToCart(item);
+        }}
+        style={styles.addToCartButton}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.addToCartButtonText}>
+          🛒 Add to Cart
+        </Text>
+      </TouchableOpacity>
+    </>
+  )}
+</View>
 
               {/* 🟡 VIEW SELLER SHOP */}
 
@@ -3182,4 +3418,39 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "900",
   },
+  cartBadge: {
+  position: "absolute",
+  top: -10,
+  right: -12,
+  minWidth: 19,
+  height: 19,
+  borderRadius: 10,
+  backgroundColor: "#DC2626",
+  justifyContent: "center",
+  alignItems: "center",
+  paddingHorizontal: 4,
+  borderWidth: 1,
+  borderColor: WHITE,
+},
+
+cartBadgeText: {
+  color: WHITE,
+  fontSize: 9,
+  fontWeight: "900",
+},
+
+addToCartButton: {
+  flex: 1,
+  paddingVertical: 9,
+  borderRadius: 9,
+  backgroundColor: NAVY,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+addToCartButtonText: {
+  color: GOLD,
+  fontSize: 10,
+  fontWeight: "900",
+},
 });
