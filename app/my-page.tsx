@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
   Button,
-  FlatList,
   Image,
   Modal,
   Platform,
@@ -20,7 +19,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import { recordItemView } from "../lib/itemViewTracking";
@@ -98,14 +97,21 @@ const formatNumber = (value: number) =>
   Number(value || 0).toLocaleString();
 
 const formatMoney = (value: number) =>
-  "GH₵ " + Number(value || 0).toLocaleString(undefined, {
+  "GH₵ " +
+  Number(value || 0).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-const getOrderStatus = (order: any) =>
-  String(order.payment_status || order.status || "pending")
-    .toLowerCase();
+/* =====================================================
+   SEPARATE PAYMENT AND ORDER FULFILMENT STATUSES
+===================================================== */
+
+const getPaymentStatus = (order: any) =>
+  String(order.payment_status || "pending").toLowerCase();
+
+const getFulfilmentStatus = (order: any) =>
+  String(order.order_status || "pending").toLowerCase();
 
 /* =====================================================
    VIDEO PREVIEW
@@ -449,10 +455,11 @@ export default function My() {
   const [selectedItemId, setSelectedItemId] =
     useState<number | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
-  const [buyerOrders, setBuyerOrders] = useState<any[]>([]);
-const [buyerOrdersLoading, setBuyerOrdersLoading] = useState(false);
 
-const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
+  const [buyerOrders, setBuyerOrders] = useState<any[]>([]);
+  const [buyerOrdersLoading, setBuyerOrdersLoading] = useState(false);
+  const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
+
   /* ===================================================
      MARKETPLACE ORDER STATE
   =================================================== */
@@ -464,8 +471,8 @@ const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
 
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [orderModalType, setOrderModalType] = useState<
-  "reject" | "commission" | "buyer-payment" | null
->(null);
+    "reject" | "commission" | "buyer-payment" | null
+  >(null);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [transactionReference, setTransactionReference] = useState("");
@@ -631,8 +638,8 @@ const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
 
   /* ===================================================
      FETCH SELLER MARKETPLACE ORDERS
-     Uses existing Supabase tables and RLS.
-     No new backend endpoint.
+     Also fetch buyer profile details only after the
+     seller has confirmed the buyer's payment.
   =================================================== */
 
   const fetchMarketplaceOrders = useCallback(async () => {
@@ -685,17 +692,58 @@ const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
       if (itemsError) throw new Error(itemsError.message);
       if (commissionsError) throw new Error(commissionsError.message);
 
-      const combinedOrders = orders.map((order: any) => ({
-        ...order,
-        items: (orderItems || []).filter(
-          (item: any) => item.order_id === order.id
-        ),
-        commission:
-          (commissions || []).find(
-            (commission: any) =>
-              commission.order_id === order.id
-          ) || null,
-      }));
+      const confirmedBuyerIds = Array.from(
+        new Set(
+          orders
+            .filter(
+              (order: any) =>
+                getPaymentStatus(order) === "seller_confirmed"
+            )
+            .map((order: any) => order.buyer_id)
+            .filter(Boolean)
+        )
+      );
+
+      let buyerProfiles: any[] = [];
+
+      if (confirmedBuyerIds.length > 0) {
+        const { data: profiles, error: profilesError } =
+          await (supabase as any)
+            .from("profiles")
+            .select("id,full_name,username")
+            .in("id", confirmedBuyerIds);
+
+        if (profilesError) {
+          console.warn(
+            "BUYER PROFILE LOOKUP:",
+            profilesError.message
+          );
+        } else {
+          buyerProfiles = profiles || [];
+        }
+      }
+
+      const combinedOrders = orders.map((order: any) => {
+        const paymentConfirmed =
+          getPaymentStatus(order) === "seller_confirmed";
+
+        return {
+          ...order,
+          items: (orderItems || []).filter(
+            (item: any) => item.order_id === order.id
+          ),
+          commission:
+            (commissions || []).find(
+              (commission: any) =>
+                commission.order_id === order.id
+            ) || null,
+          buyer_profile: paymentConfirmed
+            ? buyerProfiles.find(
+                (profile: any) => profile.id === order.buyer_id
+              ) || null
+            : null,
+        };
+      });
 
       setMarketplaceOrders(combinedOrders);
     } catch (error: any) {
@@ -710,88 +758,87 @@ const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
     }
   }, []);
 
-
   /* ===================================================
-   FETCH BUYER MARKETPLACE ORDERS
-   Orders where the current account is the buyer.
-=================================================== */
+     FETCH BUYER MARKETPLACE ORDERS
+  =================================================== */
 
-const fetchBuyerOrders = useCallback(async () => {
-  setBuyerOrdersLoading(true);
+  const fetchBuyerOrders = useCallback(async () => {
+    setBuyerOrdersLoading(true);
 
-  try {
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      setBuyerOrders([]);
-      return;
+      if (authError || !user) {
+        setBuyerOrders([]);
+        return;
+      }
+
+      const { data: orders, error: ordersError } =
+        await (supabase as any)
+          .from("nasara_marketplace_orders")
+          .select("*")
+          .eq("buyer_id", user.id)
+          .order("created_at", { ascending: false });
+
+      if (ordersError) {
+        throw new Error(ordersError.message);
+      }
+
+      if (!orders || orders.length === 0) {
+        setBuyerOrders([]);
+        return;
+      }
+
+      const orderIds = orders.map((order: any) => order.id);
+
+      const { data: orderItems, error: itemsError } =
+        await (supabase as any)
+          .from("nasara_marketplace_order_items")
+          .select("*")
+          .in("order_id", orderIds);
+
+      if (itemsError) {
+        throw new Error(itemsError.message);
+      }
+
+      const combinedOrders = orders.map((order: any) => ({
+        ...order,
+        items: (orderItems || []).filter(
+          (item: any) => item.order_id === order.id
+        ),
+      }));
+
+      setBuyerOrders(combinedOrders);
+    } catch (error: any) {
+      console.error("BUYER MARKETPLACE ORDERS ERROR:", error);
+
+      showAlert(
+        "My Purchases",
+        error?.message || "Unable to load your purchases."
+      );
+    } finally {
+      setBuyerOrdersLoading(false);
     }
+  }, []);
 
-    const { data: orders, error: ordersError } =
-      await (supabase as any)
-        .from("nasara_marketplace_orders")
-        .select("*")
-        .eq("buyer_id", user.id)
-        .order("created_at", { ascending: false });
-
-    if (ordersError) {
-      throw new Error(ordersError.message);
-    }
-
-    if (!orders || orders.length === 0) {
-      setBuyerOrders([]);
-      return;
-    }
-
-    const orderIds = orders.map((order: any) => order.id);
-
-    const { data: orderItems, error: itemsError } =
-      await (supabase as any)
-        .from("nasara_marketplace_order_items")
-        .select("*")
-        .in("order_id", orderIds);
-
-    if (itemsError) {
-      throw new Error(itemsError.message);
-    }
-
-    const combinedOrders = orders.map((order: any) => ({
-      ...order,
-      items: (orderItems || []).filter(
-        (item: any) => item.order_id === order.id
-      ),
-    }));
-
-    setBuyerOrders(combinedOrders);
-  } catch (error: any) {
-    console.error("BUYER MARKETPLACE ORDERS ERROR:", error);
-
-    showAlert(
-      "My Purchases",
-      error?.message || "Unable to load your purchases."
-    );
-  } finally {
-    setBuyerOrdersLoading(false);
-  }
-}, []);
   /* ===================================================
      REFRESH DASHBOARD WHEN SCREEN OPENS
   =================================================== */
 
- useFocusEffect(
-  useCallback(() => {
-    fetchMyItems();
-    fetchMarketplaceOrders();
-    fetchBuyerOrders();
-  }, [
-    fetchMyItems,
-    fetchMarketplaceOrders,
-    fetchBuyerOrders,
-  ])
-);
+  useFocusEffect(
+    useCallback(() => {
+      fetchMyItems();
+      fetchMarketplaceOrders();
+      fetchBuyerOrders();
+    }, [
+      fetchMyItems,
+      fetchMarketplaceOrders,
+      fetchBuyerOrders,
+    ])
+  );
 
   /* ===================================================
      MARKETPLACE API REQUEST HELPER
@@ -807,7 +854,9 @@ const fetchBuyerOrders = useCallback(async () => {
     } = await supabase.auth.getSession();
 
     if (sessionError || !session?.access_token) {
-      throw new Error("Your session has expired. Please log in again.");
+      throw new Error(
+        "Your session has expired. Please log in again."
+      );
     }
 
     const response = await fetch(API_BASE + path, {
@@ -833,67 +882,65 @@ const fetchBuyerOrders = useCallback(async () => {
   };
 
   /* ===================================================
-   BUYER OPENS PAYMENT DECLARATION MODAL
-=================================================== */
+     BUYER OPENS PAYMENT DECLARATION MODAL
+  =================================================== */
 
-const openBuyerPaymentModal = (order: any) => {
-  setSelectedOrder(order);
-  setBuyerPaymentReference("");
-  setOrderModalType("buyer-payment");
-  setOrderModalVisible(true);
-};
-
-/* ===================================================
-   BUYER DECLARES PAYMENT
-   Existing backend endpoint.
-   Notifies seller and Nasara Admin.
-=================================================== */
-
-const declareBuyerPayment = async () => {
-  if (!selectedOrder || orderActionLoading) return;
-
-  const reference = buyerPaymentReference.trim();
-
-  if (reference.length < 4) {
-    showAlert(
-      "Transaction Reference Required",
-      "Enter the MoMo transaction reference before submitting."
-    );
-    return;
-  }
-
-  const orderId = String(selectedOrder.id);
-
-  setOrderActionLoading(orderId);
-
-  try {
-    await marketplaceRequest(
-      `/marketplace/orders/${encodeURIComponent(orderId)}/payment-declared`,
-      {
-        transaction_reference: reference,
-      }
-    );
-
-    setOrderModalVisible(false);
-    setSelectedOrder(null);
+  const openBuyerPaymentModal = (order: any) => {
+    setSelectedOrder(order);
     setBuyerPaymentReference("");
+    setOrderModalType("buyer-payment");
+    setOrderModalVisible(true);
+  };
 
-    showAlert(
-      "Payment Declaration Submitted",
-      "Nasara and the seller have been notified. The seller must confirm receipt of your payment."
-    );
+  /* ===================================================
+     BUYER DECLARES PAYMENT
+  =================================================== */
 
-    await fetchBuyerOrders();
-    await fetchMarketplaceOrders();
-  } catch (error: any) {
-    showAlert(
-      "Payment Declaration Failed",
-      error?.message || "Unable to submit your payment declaration."
-    );
-  } finally {
-    setOrderActionLoading(null);
-  }
-};
+  const declareBuyerPayment = async () => {
+    if (!selectedOrder || orderActionLoading) return;
+
+    const reference = buyerPaymentReference.trim();
+
+    if (reference.length < 4) {
+      showAlert(
+        "Transaction Reference Required",
+        "Enter the MoMo transaction reference before submitting."
+      );
+      return;
+    }
+
+    const orderId = String(selectedOrder.id);
+    setOrderActionLoading(orderId);
+
+    try {
+      await marketplaceRequest(
+        `/marketplace/orders/${encodeURIComponent(orderId)}/payment-declared`,
+        {
+          transaction_reference: reference,
+        }
+      );
+
+      setOrderModalVisible(false);
+      setSelectedOrder(null);
+      setBuyerPaymentReference("");
+
+      showAlert(
+        "Payment Declaration Submitted",
+        "The seller and Nasara Admin have been notified. The seller must verify receipt of your payment."
+      );
+
+      await fetchBuyerOrders();
+      await fetchMarketplaceOrders();
+    } catch (error: any) {
+      showAlert(
+        "Payment Declaration Failed",
+        error?.message ||
+          "Unable to submit your payment declaration."
+      );
+    } finally {
+      setOrderActionLoading(null);
+    }
+  };
 
   /* ===================================================
      SELLER CONFIRMS BUYER PAYMENT
@@ -943,10 +990,11 @@ const declareBuyerPayment = async () => {
 
       showAlert(
         "Payment Confirmed",
-        "You have confirmed the buyer's payment. Your 5% Nasara commission is now available in this order."
+        "You have confirmed the buyer's payment. The buyer's details and your 5% Nasara commission are now available."
       );
 
       await fetchMarketplaceOrders();
+      await fetchBuyerOrders();
     } catch (error: any) {
       showAlert(
         "Confirmation Failed",
@@ -1007,6 +1055,7 @@ const declareBuyerPayment = async () => {
       );
 
       await fetchMarketplaceOrders();
+      await fetchBuyerOrders();
     } catch (error: any) {
       showAlert(
         "Rejection Failed",
@@ -1080,6 +1129,129 @@ const declareBuyerPayment = async () => {
       showAlert(
         "Submission Failed",
         error?.message || "Unable to submit your commission payment."
+      );
+    } finally {
+      setOrderActionLoading(null);
+    }
+  };
+
+  /* ===================================================
+     SELLER UPDATES ORDER FULFILMENT STATUS
+  =================================================== */
+
+  const updateSellerOrderStatus = async (
+    order: any,
+    nextStatus: "ready_for_dispatch" | "dispatched"
+  ) => {
+    const orderId = String(order.id);
+
+    if (orderActionLoading) return;
+
+    const message =
+      nextStatus === "ready_for_dispatch"
+        ? "Confirm that you have prepared this order and it is ready to be dispatched."
+        : "Confirm that this order has actually been handed to the delivery rider or dispatched to the buyer.";
+
+    if (Platform.OS === "web") {
+      if (!window.confirm(message)) return;
+    } else {
+      const shouldContinue = await new Promise<boolean>((resolve) => {
+        Alert.alert("Update Order", message, [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => resolve(false),
+          },
+          {
+            text: "Continue",
+            onPress: () => resolve(true),
+          },
+        ]);
+      });
+
+      if (!shouldContinue) return;
+    }
+
+    setOrderActionLoading(orderId);
+
+    try {
+      await marketplaceRequest(
+        `/marketplace/orders/${encodeURIComponent(orderId)}/status`,
+        {
+          status: nextStatus,
+        }
+      );
+
+      showAlert(
+        "Order Updated",
+        nextStatus === "ready_for_dispatch"
+          ? "The order is now marked as ready for dispatch."
+          : "The order has been marked as dispatched. The buyer can now confirm receipt."
+      );
+
+      await fetchMarketplaceOrders();
+      await fetchBuyerOrders();
+    } catch (error: any) {
+      showAlert(
+        "Order Update Failed",
+        error?.message || "Unable to update this order."
+      );
+    } finally {
+      setOrderActionLoading(null);
+    }
+  };
+
+  /* ===================================================
+     BUYER CONFIRMS RECEIPT
+  =================================================== */
+
+  const confirmOrderReceived = async (order: any) => {
+    const orderId = String(order.id);
+
+    if (orderActionLoading) return;
+
+    const message =
+      "Confirm that you have received the products and that the order has been delivered to you.";
+
+    if (Platform.OS === "web") {
+      if (!window.confirm(message)) return;
+    } else {
+      const shouldContinue = await new Promise<boolean>((resolve) => {
+        Alert.alert("Confirm Receipt", message, [
+          {
+            text: "Not Yet",
+            style: "cancel",
+            onPress: () => resolve(false),
+          },
+          {
+            text: "Yes, I Received It",
+            onPress: () => resolve(true),
+          },
+        ]);
+      });
+
+      if (!shouldContinue) return;
+    }
+
+    setOrderActionLoading(orderId);
+
+    try {
+      await marketplaceRequest(
+        `/marketplace/orders/${encodeURIComponent(orderId)}/confirm-received`,
+        {}
+      );
+
+      showAlert(
+        "Receipt Confirmed",
+        "Thank you. Your order has been marked as completed."
+      );
+
+      await fetchBuyerOrders();
+      await fetchMarketplaceOrders();
+    } catch (error: any) {
+      showAlert(
+        "Confirmation Failed",
+        error?.message || "Unable to confirm receipt."
       );
     } finally {
       setOrderActionLoading(null);
@@ -1354,7 +1526,6 @@ const declareBuyerPayment = async () => {
 
   /* ===================================================
      SEND PROMOTION PAYMENT REQUEST
-     EXISTING FLOW PRESERVED
   =================================================== */
 
   const sendPayment = async () => {
@@ -1524,168 +1695,156 @@ const declareBuyerPayment = async () => {
       setPaymentLoading(false);
     }
   };
-  /* ===================================================
-   BUYER PURCHASE CARD
-=================================================== */
+/* =====================================================
+     BUYER PURCHASE CARD
+  ===================================================== */
 
-const renderBuyerOrder = (order: any) => {
-  const status = getOrderStatus(order);
+  const renderBuyerOrder = (order: any) => {
+    const orderId = String(order.id);
+    const paymentStatus = getPaymentStatus(order);
+    const fulfilmentStatus = getFulfilmentStatus(order);
 
-  const orderId = String(order.id);
+    const buyerDeclared = [
+      "buyer_declared",
+      "payment_declared",
+    ].includes(paymentStatus);
 
-  const subtotal = Number(
-    order.subtotal ??
-      order.subtotal_amount ??
-      order.total_amount ??
-      order.amount ??
-      0
-  );
+    const sellerConfirmed =
+      paymentStatus === "seller_confirmed";
 
-  const buyerDeclared = [
-    "buyer_declared",
-    "payment_declared",
-  ].includes(status);
+    const paymentRejected = paymentStatus === "rejected";
 
-  const paymentConfirmed = [
-    "seller_confirmed",
-    "confirmed",
-    "processing",
-    "completed",
-    "delivered",
-  ].includes(status);
+    const dispatched = fulfilmentStatus === "dispatched";
 
-  const paymentRejected = [
-    "rejected",
-    "payment_rejected",
-  ].includes(status);
+    const completed = fulfilmentStatus === "completed";
 
-  const alreadyPaid = buyerDeclared || paymentConfirmed;
+    const busy = orderActionLoading === orderId;
 
-  return (
-    <View
-      key={orderId}
-      style={{
-        backgroundColor: COLORS.white,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        borderRadius: 14,
-        padding: 15,
-        marginBottom: 12,
-      }}
-    >
+    const items = Array.isArray(order.items) ? order.items : [];
+
+    const sellerName =
+      order.seller_business_name ||
+      order.seller_name ||
+      "Nasara Seller";
+
+    const sellerMomoName =
+      order.seller_momo_name ||
+      order.momo_name ||
+      "Seller Mobile Money Account";
+
+    const sellerMomoNumber =
+      order.seller_momo_number ||
+      order.momo_number ||
+      "";
+
+    const sellerNetwork =
+      order.seller_network ||
+      order.network ||
+      "Mobile Money";
+
+    return (
       <View
+        key={orderId}
         style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 8,
+          backgroundColor: COLORS.white,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          borderRadius: 15,
+          padding: 15,
+          marginBottom: 13,
         }}
       >
-        <Text
+        <View
           style={{
-            color: COLORS.navy,
-            fontWeight: "900",
-            fontSize: 15,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 8,
           }}
         >
-          Purchase #{orderId.slice(0, 8)}
-        </Text>
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontSize: 15,
+              fontWeight: "900",
+            }}
+          >
+            Purchase #{orderId.slice(0, 8)}
+          </Text>
+
+          <Text
+            style={{
+              color: completed
+                ? COLORS.green
+                : dispatched
+                ? COLORS.blue
+                : paymentRejected
+                ? COLORS.red
+                : COLORS.gold,
+              fontSize: 11,
+              fontWeight: "900",
+            }}
+          >
+            {completed
+              ? "COMPLETED"
+              : dispatched
+              ? "DISPATCHED"
+              : paymentRejected
+              ? "PAYMENT REJECTED"
+              : sellerConfirmed
+              ? "PAYMENT CONFIRMED"
+              : buyerDeclared
+              ? "PAYMENT UNDER REVIEW"
+              : "AWAITING PAYMENT"}
+          </Text>
+        </View>
 
         <Text
           style={{
-            backgroundColor: paymentConfirmed
-              ? "#DCFCE7"
-              : buyerDeclared
-              ? "#FEF3C7"
-              : paymentRejected
-              ? "#FEE2E2"
-              : "#E5E7EB",
-            color: paymentConfirmed
-              ? "#166534"
-              : buyerDeclared
-              ? "#92400E"
-              : paymentRejected
-              ? COLORS.red
-              : COLORS.text,
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            borderRadius: 20,
-            fontSize: 10,
-            fontWeight: "900",
-          }}
-        >
-          {status.replace(/_/g, " ").toUpperCase()}
-        </Text>
-      </View>
-
-      <Text
-        style={{
-          color: COLORS.muted,
-          fontSize: 11,
-          marginTop: 6,
-        }}
-      >
-        {order.created_at
-          ? new Date(order.created_at).toLocaleString()
-          : ""}
-      </Text>
-
-      <View
-        style={{
-          borderTopWidth: 1,
-          borderTopColor: COLORS.border,
-          marginTop: 12,
-          paddingTop: 10,
-        }}
-      >
-        <Text
-          style={{
-            color: COLORS.text,
-            fontWeight: "800",
+            color: COLORS.muted,
             fontSize: 12,
-            marginBottom: 7,
+            marginTop: 6,
           }}
         >
-          Products Purchased
+          Seller: {sellerName}
         </Text>
 
-        {(order.items || []).map((item: any, index: number) => (
+        {items.map((item: any, index: number) => (
           <View
             key={String(item.id || index)}
             style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              paddingVertical: 6,
-              gap: 10,
+              paddingVertical: 9,
+              borderBottomWidth: 1,
+              borderBottomColor: COLORS.border,
             }}
           >
             <Text
               style={{
                 color: COLORS.text,
-                flex: 1,
-                fontSize: 12,
+                fontSize: 13,
+                fontWeight: "700",
               }}
             >
-              {item.product_name ||
-                item.item_name ||
+              {item.product_title ||
+                item.item_title ||
                 item.title ||
-                "Product"}{" "}
-              × {Number(item.quantity || 1)}
+                "Product"}
             </Text>
 
             <Text
               style={{
-                color: COLORS.navy,
-                fontWeight: "700",
+                color: COLORS.muted,
                 fontSize: 12,
+                marginTop: 3,
               }}
             >
+              Quantity: {Number(item.quantity || 1)}{" "}
+              ·{" "}
               {formatMoney(
                 Number(
                   item.subtotal ??
-                    item.total_price ??
-                    Number(item.unit_price || item.price || 0) *
+                    Number(item.price || 0) *
                       Number(item.quantity || 1)
                 )
               )}
@@ -1697,387 +1856,524 @@ const renderBuyerOrder = (order: any) => {
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
-            borderTopWidth: 1,
-            borderTopColor: COLORS.border,
-            marginTop: 8,
-            paddingTop: 10,
+            marginTop: 12,
           }}
         >
-          <Text style={{ color: COLORS.text, fontWeight: "800" }}>
+          <Text
+            style={{
+              color: COLORS.muted,
+              fontSize: 12,
+              fontWeight: "700",
+            }}
+          >
             Order Total
           </Text>
 
           <Text
             style={{
               color: COLORS.navy,
-              fontWeight: "900",
               fontSize: 16,
+              fontWeight: "900",
             }}
           >
-            {formatMoney(subtotal)}
+            {formatMoney(
+              Number(
+                order.subtotal ??
+                  order.subtotal_amount ??
+                  order.total_amount ??
+                  order.amount ??
+                  0
+              )
+            )}
           </Text>
         </View>
+
+        {!sellerConfirmed &&
+          !buyerDeclared &&
+          !paymentRejected && (
+            <View
+              style={{
+                backgroundColor: "#FFF8E7",
+                borderRadius: 10,
+                padding: 12,
+                marginTop: 13,
+              }}
+            >
+              <Text
+                style={{
+                  color: COLORS.navy,
+                  fontWeight: "900",
+                  fontSize: 13,
+                }}
+              >
+                Pay the seller directly
+              </Text>
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 12,
+                  marginTop: 7,
+                }}
+              >
+                Account name: {sellerMomoName}
+              </Text>
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 12,
+                  marginTop: 4,
+                }}
+              >
+                Network: {sellerNetwork}
+              </Text>
+
+              <Text
+                style={{
+                  color: COLORS.navy,
+                  fontSize: 17,
+                  fontWeight: "900",
+                  marginTop: 4,
+                }}
+              >
+                {sellerMomoNumber || "Seller payment number unavailable"}
+              </Text>
+
+              <Text
+                style={{
+                  color: COLORS.muted,
+                  fontSize: 11,
+                  marginTop: 7,
+                  lineHeight: 17,
+                }}
+              >
+                Send the exact order amount to the seller. After
+                completing the transfer, submit your transaction
+                reference so the seller can verify your payment.
+              </Text>
+
+              <TouchableOpacity
+                disabled={!sellerMomoNumber}
+                onPress={() => openBuyerPaymentModal(order)}
+                style={{
+                  backgroundColor: COLORS.navy,
+                  padding: 13,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  marginTop: 12,
+                  opacity: sellerMomoNumber ? 1 : 0.5,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.white,
+                    fontWeight: "900",
+                    fontSize: 13,
+                  }}
+                >
+                  I HAVE PAID
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+        {buyerDeclared && (
+          <View
+            style={{
+              backgroundColor: "#EFF6FF",
+              padding: 12,
+              borderRadius: 10,
+              marginTop: 13,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.blue,
+                fontWeight: "900",
+                fontSize: 13,
+              }}
+            >
+              Payment submitted for verification
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.text,
+                fontSize: 12,
+                marginTop: 5,
+                lineHeight: 18,
+              }}
+            >
+              Your payment declaration has been submitted.
+              The seller must verify that the money has arrived
+              in their Mobile Money account.
+            </Text>
+          </View>
+        )}
+
+        {paymentRejected && (
+          <View
+            style={{
+              backgroundColor: "#FEF2F2",
+              padding: 12,
+              borderRadius: 10,
+              marginTop: 13,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.red,
+                fontWeight: "900",
+                fontSize: 13,
+              }}
+            >
+              Payment declaration rejected
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.text,
+                fontSize: 12,
+                marginTop: 5,
+                lineHeight: 18,
+              }}
+            >
+              {order.payment_rejection_reason ||
+                order.rejection_reason ||
+                "The seller could not verify this payment. Please contact the seller or check your transaction details."}
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => openBuyerPaymentModal(order)}
+              style={{
+                backgroundColor: COLORS.navy,
+                padding: 12,
+                borderRadius: 9,
+                alignItems: "center",
+                marginTop: 10,
+              }}
+            >
+              <Text
+                style={{
+                  color: COLORS.white,
+                  fontWeight: "900",
+                }}
+              >
+                SUBMIT PAYMENT AGAIN
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {sellerConfirmed && (
+          <View
+            style={{
+              backgroundColor: "#F0FDF4",
+              padding: 12,
+              borderRadius: 10,
+              marginTop: 13,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.green,
+                fontWeight: "900",
+                fontSize: 13,
+              }}
+            >
+              Seller has confirmed your payment
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.text,
+                fontSize: 12,
+                marginTop: 5,
+                lineHeight: 18,
+              }}
+            >
+              Your payment has been verified. You will be able
+              to confirm receipt after the seller dispatches
+              your order.
+            </Text>
+          </View>
+        )}
+
+        {dispatched && (
+          <View
+            style={{
+              backgroundColor: "#EFF6FF",
+              padding: 12,
+              borderRadius: 10,
+              marginTop: 13,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.blue,
+                fontWeight: "900",
+                fontSize: 13,
+              }}
+            >
+              Your order has been dispatched
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.text,
+                fontSize: 12,
+                marginTop: 5,
+                lineHeight: 18,
+              }}
+            >
+              Once you have received the products, confirm
+              receipt below to complete the order.
+            </Text>
+
+            <TouchableOpacity
+              disabled={busy}
+              onPress={() => confirmOrderReceived(order)}
+              style={{
+                backgroundColor: COLORS.green,
+                padding: 13,
+                borderRadius: 10,
+                alignItems: "center",
+                marginTop: 11,
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              {busy ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text
+                  style={{
+                    color: COLORS.white,
+                    fontWeight: "900",
+                  }}
+                >
+                  CONFIRM I RECEIVED MY ORDER
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {completed && (
+          <View
+            style={{
+              backgroundColor: "#F0FDF4",
+              padding: 12,
+              borderRadius: 10,
+              marginTop: 13,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.green,
+                fontWeight: "900",
+              }}
+            >
+              Order completed
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.text,
+                fontSize: 12,
+                marginTop: 5,
+              }}
+            >
+              You confirmed receipt of this order. Thank you
+              for using Nasara.
+            </Text>
+          </View>
+        )}
       </View>
+    );
+  };
 
-      {/* SELLER PAYMENT DETAILS */}
+  /* =====================================================
+     SELLER MARKETPLACE ORDER CARD
+  ===================================================== */
 
+  const renderMarketplaceOrder = (order: any) => {
+    const paymentStatus = getPaymentStatus(order);
+    const fulfilmentStatus = getFulfilmentStatus(order);
+    const commission = order.commission;
+
+    const subtotal = Number(
+      order.subtotal ??
+        order.subtotal_amount ??
+        order.total_amount ??
+        order.amount ??
+        0
+    );
+
+    const commissionAmount = Number(
+      commission?.commission_amount ??
+        commission?.amount ??
+        order.commission_amount ??
+        subtotal * 0.05
+    );
+
+    const orderId = String(order.id);
+
+    const busy =
+      orderActionLoading === orderId ||
+      orderActionLoading === String(commission?.id);
+
+    const buyerDeclared = [
+      "buyer_declared",
+      "payment_declared",
+    ].includes(paymentStatus);
+
+    const sellerConfirmed =
+      paymentStatus === "seller_confirmed";
+
+    const commissionStatus = String(
+      commission?.payment_status || ""
+    ).toLowerCase();
+
+    const commissionApproved =
+      commissionStatus === "admin_approved";
+
+    const commissionSubmitted =
+      commissionStatus === "seller_submitted";
+
+    const commissionRejected =
+      commissionStatus === "rejected";
+
+    const canSubmitCommission =
+      sellerConfirmed &&
+      !!commission &&
+      ["pending", "rejected"].includes(commissionStatus);
+
+    const canPrepareDispatch =
+      sellerConfirmed &&
+      commissionApproved &&
+      fulfilmentStatus === "processing";
+
+    const canDispatch =
+      sellerConfirmed &&
+      commissionApproved &&
+      fulfilmentStatus === "ready_for_dispatch";
+
+    const buyerName =
+      order.buyer_profile?.full_name ||
+      order.buyer_profile?.username ||
+      "Nasara Buyer";
+
+    const buyerPhone =
+      order.buyer_phone ||
+      order.delivery_phone ||
+      order.phone ||
+      "";
+
+    const buyerAddress =
+      order.delivery_address ||
+      order.delivery_location ||
+      order.address ||
+      "";
+
+    const items = Array.isArray(order.items) ? order.items : [];
+
+    return (
       <View
+        key={orderId}
         style={{
-          backgroundColor: "#F4F6FA",
-          borderRadius: 10,
-          padding: 12,
-          marginTop: 13,
+          backgroundColor: COLORS.white,
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          borderRadius: 15,
+          padding: 15,
+          marginBottom: 13,
         }}
       >
-        <Text
+        <View
           style={{
-            color: COLORS.navy,
-            fontWeight: "900",
-            fontSize: 13,
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 8,
           }}
         >
-          Seller Mobile Money Details
-        </Text>
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontSize: 15,
+              fontWeight: "900",
+            }}
+          >
+            Order #{orderId.slice(0, 8)}
+          </Text>
 
-        <Text
-          style={{
-            color: COLORS.text,
-            fontWeight: "800",
-            marginTop: 8,
-          }}
-        >
-          {order.seller_momo_name || "Seller"}
-        </Text>
-
-        <Text
-          selectable
-          style={{
-            color: COLORS.navy,
-            fontSize: 20,
-            fontWeight: "900",
-            marginTop: 4,
-          }}
-        >
-          {order.seller_momo_number || "Not available"}
-        </Text>
+          <Text
+            style={{
+              color:
+                fulfilmentStatus === "completed"
+                  ? COLORS.green
+                  : fulfilmentStatus === "dispatched"
+                  ? COLORS.blue
+                  : paymentStatus === "rejected"
+                  ? COLORS.red
+                  : sellerConfirmed
+                  ? COLORS.green
+                  : COLORS.gold,
+              fontSize: 11,
+              fontWeight: "900",
+            }}
+          >
+            {fulfilmentStatus.replace(/_/g, " ").toUpperCase()}
+          </Text>
+        </View>
 
         <Text
           style={{
             color: COLORS.muted,
             fontSize: 11,
-            marginTop: 4,
+            marginTop: 5,
           }}
         >
-          Pay the seller directly using the details above.
-        </Text>
-      </View>
-
-      {buyerDeclared && (
-        <View
-          style={{
-            backgroundColor: "#FFFBEB",
-            padding: 12,
-            borderRadius: 9,
-            marginTop: 12,
-          }}
-        >
-          <Text
-            style={{
-              color: "#92400E",
-              fontWeight: "900",
-              fontSize: 13,
-            }}
-          >
-            Payment Declaration Submitted
-          </Text>
-
-          <Text
-            style={{
-              color: "#78350F",
-              fontSize: 12,
-              lineHeight: 19,
-              marginTop: 5,
-            }}
-          >
-            Your payment declaration has been submitted. The seller
-            must verify receipt of the money before confirming your
-            order.
-          </Text>
-        </View>
-      )}
-
-      {paymentConfirmed && (
-        <View
-          style={{
-            backgroundColor: "#DCFCE7",
-            padding: 12,
-            borderRadius: 9,
-            marginTop: 12,
-          }}
-        >
-          <Text
-            style={{
-              color: "#166534",
-              fontWeight: "900",
-              fontSize: 13,
-            }}
-          >
-            ✓ Seller Confirmed Your Payment
-          </Text>
-
-          <Text
-            style={{
-              color: "#166534",
-              fontSize: 12,
-              marginTop: 5,
-              lineHeight: 19,
-            }}
-          >
-            Your payment has been confirmed by the seller.
-          </Text>
-        </View>
-      )}
-
-      {paymentRejected && (
-        <View
-          style={{
-            backgroundColor: "#FEF2F2",
-            padding: 12,
-            borderRadius: 9,
-            marginTop: 12,
-          }}
-        >
-          <Text
-            style={{
-              color: COLORS.red,
-              fontWeight: "900",
-              fontSize: 13,
-            }}
-          >
-            Payment Declaration Rejected
-          </Text>
-
-          <Text
-            style={{
-              color: COLORS.text,
-              fontSize: 12,
-              marginTop: 5,
-              lineHeight: 19,
-            }}
-          >
-            Your payment declaration was rejected. Please check the
-            payment details and contact the seller if necessary.
-          </Text>
-        </View>
-      )}
-
-      {!alreadyPaid && (
-        <TouchableOpacity
-          onPress={() => openBuyerPaymentModal(order)}
-          style={{
-            backgroundColor: COLORS.green,
-            padding: 14,
-            borderRadius: 9,
-            marginTop: 13,
-          }}
-        >
-          <Text
-            style={{
-              color: COLORS.white,
-              fontWeight: "900",
-              textAlign: "center",
-            }}
-          >
-            I Have Paid
-          </Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-};
-/* ===================================================
-   MARKETPLACE ORDER CARD
-=================================================== */
-
-const renderMarketplaceOrder = (order: any) => {
-  const status = getOrderStatus(order);
-  const commission = order.commission;
-
-  const subtotal = Number(
-    order.subtotal ??
-      order.subtotal_amount ??
-      order.total_amount ??
-      order.amount ??
-      0
-  );
-
-  const commissionAmount = Number(
-    commission?.commission_amount ??
-      commission?.amount ??
-      order.commission_amount ??
-      subtotal * 0.05
-  );
-
-  const orderId = String(order.id);
-
-  const busy =
-    orderActionLoading === orderId ||
-    orderActionLoading === String(commission?.id);
-
-  const buyerDeclared =
-    status === "buyer_declared" ||
-    status === "payment_declared";
-
-  const sellerConfirmed =
-    status === "seller_confirmed" ||
-    status === "processing" ||
-    status === "completed" ||
-    status === "delivered";
-
-  const commissionStatus = String(
-    commission?.status || ""
-  ).toLowerCase();
-
-  const commissionApproved =
-    commissionStatus === "approved" ||
-    commissionStatus === "verified";
-
-  const commissionSubmitted =
-    commissionStatus === "seller_submitted";
-
-  const commissionRejected =
-    commissionStatus === "rejected";
-
-  const canSubmitCommission =
-    sellerConfirmed &&
-    !!commission &&
-    ["pending", "rejected"].includes(commissionStatus);
-
-  return (
-    <View
-      key={orderId}
-      style={{
-        backgroundColor: COLORS.white,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        borderRadius: 14,
-        padding: 15,
-        marginBottom: 12,
-      }}
-    >
-      {/* ORDER HEADER */}
-
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 8,
-        }}
-      >
-        <Text
-          style={{
-            color: COLORS.navy,
-            fontWeight: "900",
-            fontSize: 15,
-          }}
-        >
-          Order #{orderId.slice(0, 8)}
+          Payment: {paymentStatus.replace(/_/g, " ")}
         </Text>
 
-        <Text
-          style={{
-            backgroundColor: buyerDeclared
-              ? "#FEF3C7"
-              : sellerConfirmed
-              ? "#DCFCE7"
-              : "#E5E7EB",
-            color: buyerDeclared
-              ? "#92400E"
-              : sellerConfirmed
-              ? "#166534"
-              : COLORS.text,
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            borderRadius: 20,
-            fontSize: 10,
-            fontWeight: "900",
-          }}
-        >
-          {status.replace(/_/g, " ").toUpperCase()}
-        </Text>
-      </View>
-
-      <Text
-        style={{
-          color: COLORS.muted,
-          fontSize: 11,
-          marginTop: 6,
-        }}
-      >
-        {order.created_at
-          ? new Date(order.created_at).toLocaleString()
-          : ""}
-      </Text>
-
-      {/* ORDERED PRODUCTS */}
-
-      <View
-        style={{
-          borderTopWidth: 1,
-          borderTopColor: COLORS.border,
-          marginTop: 12,
-          paddingTop: 10,
-        }}
-      >
-        <Text
-          style={{
-            color: COLORS.text,
-            fontWeight: "800",
-            fontSize: 12,
-            marginBottom: 7,
-          }}
-        >
-          Ordered Products
-        </Text>
-
-        {(order.items || []).map((item: any, index: number) => (
+        {items.map((item: any, index: number) => (
           <View
             key={String(item.id || index)}
             style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              paddingVertical: 5,
-              gap: 10,
+              paddingVertical: 10,
+              borderBottomWidth: 1,
+              borderBottomColor: COLORS.border,
             }}
           >
             <Text
               style={{
                 color: COLORS.text,
-                flex: 1,
-                fontSize: 12,
+                fontWeight: "800",
+                fontSize: 13,
               }}
             >
-              {item.product_name ||
-                item.item_name ||
+              {item.product_title ||
+                item.item_title ||
                 item.title ||
-                "Product"}{" "}
-              × {Number(item.quantity || 1)}
+                "Product"}
             </Text>
 
             <Text
               style={{
-                color: COLORS.navy,
-                fontWeight: "700",
+                color: COLORS.muted,
                 fontSize: 12,
+                marginTop: 4,
               }}
             >
+              Quantity: {Number(item.quantity || 1)}
+              {"  "}·{"  "}
               {formatMoney(
                 Number(
                   item.subtotal ??
-                    item.total_price ??
-                    Number(item.unit_price || item.price || 0) *
+                    Number(item.price || 0) *
                       Number(item.quantity || 1)
                 )
               )}
@@ -2089,240 +2385,290 @@ const renderMarketplaceOrder = (order: any) => {
           style={{
             flexDirection: "row",
             justifyContent: "space-between",
-            borderTopWidth: 1,
-            borderTopColor: COLORS.border,
-            marginTop: 8,
-            paddingTop: 10,
+            marginTop: 12,
           }}
         >
-          <Text style={{ color: COLORS.text, fontWeight: "800" }}>
+          <Text
+            style={{
+              color: COLORS.muted,
+              fontWeight: "700",
+              fontSize: 12,
+            }}
+          >
             Order Subtotal
           </Text>
 
           <Text
             style={{
               color: COLORS.navy,
+              fontSize: 16,
               fontWeight: "900",
-              fontSize: 15,
             }}
           >
             {formatMoney(subtotal)}
           </Text>
         </View>
-      </View>
 
-      {/* BUYER PAYMENT DECLARATION */}
-
-      {buyerDeclared && (
-        <View
-          style={{
-            backgroundColor: "#FFFBEB",
-            borderRadius: 10,
-            padding: 12,
-            marginTop: 13,
-          }}
-        >
-          <Text
-            style={{
-              color: "#92400E",
-              fontWeight: "900",
-              fontSize: 13,
-            }}
-          >
-            Buyer says payment has been made
-          </Text>
-
-          <Text
-            style={{
-              color: "#78350F",
-              fontSize: 12,
-              lineHeight: 19,
-              marginTop: 5,
-            }}
-          >
-            Check your own MoMo account first. Confirm only after the
-            money has arrived. Reject the declaration if payment was
-            not received.
-          </Text>
-
+        {buyerDeclared && (
           <View
             style={{
-              flexDirection: "row",
-              gap: 8,
-              marginTop: 12,
+              backgroundColor: "#FFF8E7",
+              padding: 12,
+              borderRadius: 10,
+              marginTop: 13,
             }}
           >
-            <TouchableOpacity
-              disabled={busy}
-              onPress={() => confirmBuyerPayment(order)}
+            <Text
               style={{
-                flex: 1,
-                backgroundColor: COLORS.green,
-                padding: 12,
-                borderRadius: 8,
-                opacity: busy ? 0.5 : 1,
+                color: COLORS.navy,
+                fontWeight: "900",
+                fontSize: 13,
               }}
             >
-              {busy ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text
-                  style={{
-                    color: "white",
-                    fontWeight: "900",
-                    textAlign: "center",
-                    fontSize: 12,
-                  }}
-                >
-                  Confirm Payment
-                </Text>
-              )}
-            </TouchableOpacity>
+              Buyer has declared payment
+            </Text>
 
-            <TouchableOpacity
-              disabled={busy}
-              onPress={() => openRejectModal(order)}
+            <Text
               style={{
-                flex: 1,
-                backgroundColor: COLORS.red,
-                padding: 12,
-                borderRadius: 8,
-                opacity: busy ? 0.5 : 1,
+                color: COLORS.text,
+                fontSize: 12,
+                marginTop: 5,
+                lineHeight: 18,
               }}
             >
-              <Text
+              Check your Mobile Money account and verify
+              that the buyer's payment has actually arrived.
+              Only confirm after receiving the money.
+            </Text>
+
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 8,
+                marginTop: 12,
+              }}
+            >
+              <TouchableOpacity
+                disabled={busy}
+                onPress={() => confirmBuyerPayment(order)}
                 style={{
-                  color: "white",
-                  fontWeight: "900",
-                  textAlign: "center",
-                  fontSize: 12,
+                  flex: 1,
+                  backgroundColor: COLORS.green,
+                  padding: 12,
+                  borderRadius: 9,
+                  alignItems: "center",
+                  opacity: busy ? 0.6 : 1,
                 }}
               >
-                Reject Payment
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={{
+                    color: COLORS.white,
+                    fontWeight: "900",
+                    fontSize: 11,
+                  }}
+                >
+                  CONFIRM PAYMENT
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                disabled={busy}
+                onPress={() => openRejectModal(order)}
+                style={{
+                  flex: 1,
+                  backgroundColor: COLORS.red,
+                  padding: 12,
+                  borderRadius: 9,
+                  alignItems: "center",
+                  opacity: busy ? 0.6 : 1,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.white,
+                    fontWeight: "900",
+                    fontSize: 11,
+                  }}
+                >
+                  REJECT
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
-      {/* NASARA COMMISSION */}
-
-      {sellerConfirmed && (
-        <View
-          style={{
-            backgroundColor: "#EFF6FF",
-            borderRadius: 10,
-            padding: 12,
-            marginTop: 13,
-          }}
-        >
-          <Text
+        {sellerConfirmed && (
+          <View
             style={{
-              color: COLORS.navy,
-              fontWeight: "900",
-              fontSize: 13,
+              backgroundColor: "#F0FDF4",
+              borderRadius: 10,
+              padding: 12,
+              marginTop: 13,
             }}
           >
-            Nasara Commission – 5%
-          </Text>
-
-          <Text
-            style={{
-              color: COLORS.blue,
-              fontSize: 21,
-              fontWeight: "900",
-              marginTop: 5,
-            }}
-          >
-            {formatMoney(commissionAmount)}
-          </Text>
-
-          <Text
-            style={{
-              color: COLORS.muted,
-              fontSize: 11,
-              marginTop: 5,
-            }}
-          >
-            Commission calculated on the order subtotal.
-          </Text>
-
-          {commissionApproved ? (
             <Text
               style={{
                 color: COLORS.green,
                 fontWeight: "900",
-                marginTop: 10,
-                fontSize: 12,
+                fontSize: 14,
               }}
             >
-              ✓ Commission payment verified by Nasara Admin
+              Buyer payment confirmed
             </Text>
-          ) : commissionSubmitted ? (
+
             <Text
               style={{
-                color: "#92400E",
-                fontWeight: "800",
-                marginTop: 10,
+                color: COLORS.text,
                 fontSize: 12,
+                marginTop: 5,
+                lineHeight: 18,
               }}
             >
-              Commission reference submitted. Waiting for admin
-              verification.
+              The buyer's payment has been confirmed.
+              Buyer and delivery details are now available below.
             </Text>
-          ) : commissionRejected ? (
-            <>
+
+            <View
+              style={{
+                borderTopWidth: 1,
+                borderTopColor: "#BBF7D0",
+                marginTop: 12,
+                paddingTop: 12,
+              }}
+            >
               <Text
                 style={{
-                  color: COLORS.red,
-                  fontWeight: "800",
-                  fontSize: 12,
-                  marginTop: 10,
+                  color: COLORS.navy,
+                  fontWeight: "900",
+                  fontSize: 13,
                 }}
               >
-                Your commission submission was rejected. Check with
-                Nasara Admin before submitting again.
+                Buyer Details
               </Text>
 
-              <TouchableOpacity
-                disabled={busy}
-                onPress={() => openCommissionModal(order)}
-                style={{
-                  backgroundColor: COLORS.navy,
-                  padding: 13,
-                  borderRadius: 8,
-                  marginTop: 12,
-                  opacity: busy ? 0.5 : 1,
-                }}
-              >
-                <Text
-                  style={{
-                    color: "white",
-                    textAlign: "center",
-                    fontWeight: "900",
-                  }}
-                >
-                  Resubmit Commission Reference
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : canSubmitCommission ? (
-            <>
               <Text
                 style={{
                   color: COLORS.text,
                   fontSize: 12,
-                  lineHeight: 19,
-                  marginTop: 9,
+                  marginTop: 8,
                 }}
               >
-                Pay the commission to Nasara Market using the MoMo
-                details below, then submit your transaction reference.
+                Name: {buyerName}
               </Text>
 
+              {buyerPhone ? (
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 12,
+                    marginTop: 5,
+                  }}
+                >
+                  Phone: {buyerPhone}
+                </Text>
+              ) : null}
+
+              {buyerAddress ? (
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 12,
+                    marginTop: 5,
+                    lineHeight: 18,
+                  }}
+                >
+                  Delivery address: {buyerAddress}
+                </Text>
+              ) : null}
+
+              {order.delivery_instructions ? (
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 12,
+                    marginTop: 5,
+                    lineHeight: 18,
+                  }}
+                >
+                  Instructions: {order.delivery_instructions}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        )}
+
+        {sellerConfirmed && (
+          <View
+            style={{
+              backgroundColor: "#F8FAFC",
+              borderWidth: 1,
+              borderColor: COLORS.border,
+              borderRadius: 10,
+              padding: 12,
+              marginTop: 13,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontWeight: "900",
+                fontSize: 14,
+              }}
+            >
+              Nasara 5% Commission
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 11,
+                marginTop: 5,
+              }}
+            >
+              Commission payable on this order
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontWeight: "900",
+                fontSize: 21,
+                marginTop: 4,
+              }}
+            >
+              {formatMoney(commissionAmount)}
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.text,
+                fontSize: 11,
+                marginTop: 7,
+              }}
+            >
+              Commission status:{" "}
+              {commissionStatus
+                ? commissionStatus.replace(/_/g, " ").toUpperCase()
+                : "PENDING"}
+            </Text>
+
+            {commissionRejected && (
+              <Text
+                style={{
+                  color: COLORS.red,
+                  fontSize: 12,
+                  marginTop: 7,
+                }}
+              >
+                Your previous commission payment was rejected.
+                Please verify your transaction and submit again.
+              </Text>
+            )}
+
+            {commissionSubmitted && (
               <View
                 style={{
-                  backgroundColor: COLORS.white,
+                  backgroundColor: "#EFF6FF",
                   padding: 10,
                   borderRadius: 8,
                   marginTop: 10,
@@ -2330,19 +2676,104 @@ const renderMarketplaceOrder = (order: any) => {
               >
                 <Text
                   style={{
-                    color: COLORS.navy,
-                    fontWeight: "900",
+                    color: COLORS.blue,
+                    fontWeight: "800",
+                    fontSize: 12,
                   }}
                 >
-                  {momoName}
+                  Submitted to Nasara Admin
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 11,
+                    marginTop: 4,
+                  }}
+                >
+                  Your commission payment is waiting for admin
+                  verification. You cannot dispatch this order
+                  until it is approved.
+                </Text>
+              </View>
+            )}
+
+            {commissionApproved && (
+              <View
+                style={{
+                  backgroundColor: "#F0FDF4",
+                  padding: 10,
+                  borderRadius: 8,
+                  marginTop: 10,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.green,
+                    fontWeight: "900",
+                    fontSize: 12,
+                  }}
+                >
+                  Nasara Admin approved your commission
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 11,
+                    marginTop: 4,
+                  }}
+                >
+                  You can now prepare and dispatch this order.
+                </Text>
+              </View>
+            )}
+
+            {canSubmitCommission && (
+              <View
+                style={{
+                  backgroundColor: "#FFF8E7",
+                  borderRadius: 9,
+                  padding: 11,
+                  marginTop: 12,
+                }}
+              >
+                <Text
+                  style={{
+                    color: COLORS.navy,
+                    fontWeight: "900",
+                    fontSize: 12,
+                  }}
+                >
+                  Pay Nasara Market
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 12,
+                    marginTop: 7,
+                  }}
+                >
+                  Account name: {momoName}
+                </Text>
+
+                <Text
+                  style={{
+                    color: COLORS.text,
+                    fontSize: 12,
+                    marginTop: 4,
+                  }}
+                >
+                  Network: {momoNetwork}
                 </Text>
 
                 <Text
                   style={{
                     color: COLORS.navy,
                     fontWeight: "900",
-                    fontSize: 17,
-                    marginTop: 3,
+                    fontSize: 18,
+                    marginTop: 4,
                   }}
                 >
                   {momoNumber}
@@ -2352,738 +2783,187 @@ const renderMarketplaceOrder = (order: any) => {
                   style={{
                     color: COLORS.muted,
                     fontSize: 11,
-                    marginTop: 3,
+                    marginTop: 6,
+                    lineHeight: 17,
                   }}
                 >
-                  {momoNetwork} Mobile Money
+                  Pay the commission to Nasara using the
+                  account details above. Submit your transaction
+                  reference for admin verification.
                 </Text>
-              </View>
 
-              <TouchableOpacity
-                disabled={busy}
-                onPress={() => openCommissionModal(order)}
-                style={{
-                  backgroundColor: COLORS.navy,
-                  padding: 13,
-                  borderRadius: 8,
-                  marginTop: 12,
-                  opacity: busy ? 0.5 : 1,
-                }}
-              >
-                <Text
+                <TouchableOpacity
+                  disabled={busy}
+                  onPress={() => openCommissionModal(order)}
                   style={{
-                    color: "white",
-                    textAlign: "center",
-                    fontWeight: "900",
+                    backgroundColor: COLORS.navy,
+                    padding: 12,
+                    borderRadius: 9,
+                    alignItems: "center",
+                    marginTop: 11,
+                    opacity: busy ? 0.6 : 1,
                   }}
                 >
-                  Submit Commission Payment Reference
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <Text
-              style={{
-                color: COLORS.muted,
-                fontSize: 12,
-                marginTop: 10,
-              }}
-            >
-              Commission information is not yet available for this order.
-            </Text>
-          )}
-        </View>
-      )}
-    </View>
-  );
-};
+                  <Text
+                    style={{
+                      color: COLORS.white,
+                      fontWeight: "900",
+                    }}
+                  >
+                    SUBMIT COMMISSION PAYMENT
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
 
-  /* ===================================================
-     DASHBOARD HEADER
-  =================================================== */
-
-  const DashboardHeader = () => (
-    <View style={{ paddingHorizontal: 15, paddingTop: 15 }}>
-      <View
-        style={{
-          backgroundColor: COLORS.navy,
-          borderRadius: 18,
-          padding: 20,
-          marginBottom: 18,
-        }}
-      >
-        <Text
-          style={{
-            color: COLORS.gold,
-            fontSize: 12,
-            fontWeight: "800",
-            letterSpacing: 1.5,
-          }}
-        >
-          NASARA SELLER CENTRE
-        </Text>
-
-        <Text
-          style={{
-            color: COLORS.white,
-            fontSize: 25,
-            fontWeight: "900",
-            marginTop: 8,
-          }}
-        >
-          Business Dashboard
-        </Text>
-
-        <Text
-          style={{
-            color: "#D7DFED",
-            fontSize: 13,
-            marginTop: 7,
-            lineHeight: 20,
-          }}
-        >
-          Manage your products, monitor performance and promote your
-          business on Nasara.
-        </Text>
-
-        <View
-          style={{
-            height: 3,
-            width: 55,
-            backgroundColor: COLORS.gold,
-            marginTop: 15,
-            borderRadius: 5,
-          }}
-        />
-      </View>
-
-      <Text
-        style={{
-          color: COLORS.navy,
-          fontSize: 18,
-          fontWeight: "900",
-          marginBottom: 12,
-        }}
-      >
-        Business Overview
-      </Text>
-
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          justifyContent: "space-between",
-        }}
-      >
-        <StatCard
-          title="Product Views"
-          value={stats.views}
-          icon="👁️"
-          color="#2563EB"
-        />
-        <StatCard
-          title="Enquiries"
-          value={stats.enquiries}
-          icon="💬"
-          color="#16A34A"
-        />
-        <StatCard
-          title="My Listings"
-          value={stats.listings}
-          icon="📦"
-          color="#D69E2E"
-        />
-        <StatCard
-          title="Favourites"
-          value={stats.favourites}
-          icon="❤️"
-          color="#DB2777"
-        />
-      </View>
-
-      <View
-        style={{
-          backgroundColor: COLORS.white,
-          borderRadius: 14,
-          borderWidth: 1,
-          borderColor: COLORS.border,
-          padding: 15,
-          marginBottom: 20,
-        }}
-      >
-        <Text
-          style={{
-            fontWeight: "900",
-            fontSize: 16,
-            color: COLORS.navy,
-          }}
-        >
-          Your Business Activity
-        </Text>
-
-        <Text
-          style={{
-            color: COLORS.muted,
-            fontSize: 12,
-            marginTop: 5,
-            marginBottom: 13,
-          }}
-        >
-          Performance totals across your listings.
-        </Text>
-
-        {[
-          {
-            label: "Total Product Views",
-            value: stats.views,
-            icon: "👁️",
-          },
-          {
-            label: "Total Enquiries",
-            value: stats.enquiries,
-            icon: "💬",
-          },
-          {
-            label: "Total Favourites",
-            value: stats.favourites,
-            icon: "❤️",
-          },
-        ].map((stat) => (
-          <View
-            key={stat.label}
+        {canPrepareDispatch && (
+          <TouchableOpacity
+            disabled={busy}
+            onPress={() =>
+              updateSellerOrderStatus(
+                order,
+                "ready_for_dispatch"
+              )
+            }
             style={{
-              flexDirection: "row",
+              backgroundColor: COLORS.blue,
+              padding: 13,
+              borderRadius: 10,
               alignItems: "center",
-              paddingVertical: 9,
-              borderTopWidth: 1,
-              borderTopColor: "#F1F3F5",
+              marginTop: 13,
+              opacity: busy ? 0.6 : 1,
             }}
           >
-            <Text style={{ fontSize: 17 }}>{stat.icon}</Text>
-
-            <Text
-              style={{
-                flex: 1,
-                marginLeft: 10,
-                color: COLORS.text,
-                fontSize: 13,
-                fontWeight: "600",
-              }}
-            >
-              {stat.label}
-            </Text>
-
-            <Text
-              style={{
-                color: COLORS.navy,
-                fontWeight: "900",
-                fontSize: 15,
-              }}
-            >
-              {formatNumber(stat.value)}
-            </Text>
-          </View>
-        ))}
-      </View>
-
-      {/* MY NASARA SHOP QR CODE */}
-
-      <View
-        style={{
-          backgroundColor: COLORS.white,
-          borderRadius: 16,
-          borderWidth: 1,
-          borderColor: COLORS.border,
-          padding: 18,
-          marginBottom: 22,
-          alignItems: "center",
-        }}
-      >
-        <Text
-          style={{
-            color: COLORS.navy,
-            fontSize: 19,
-            fontWeight: "900",
-          }}
-        >
-          My Nasara Shop QR Code
-        </Text>
-
-        <Text
-          style={{
-            color: COLORS.muted,
-            fontSize: 12,
-            textAlign: "center",
-            marginTop: 7,
-            marginBottom: 15,
-            lineHeight: 19,
-          }}
-        >
-          Let customers scan this code to visit your shop and browse
-          your products.
-        </Text>
-
-        {shopUrl ? (
-          <>
-            <View
-              ref={qrRef}
-              collapsable={false}
-              style={{
-                backgroundColor: COLORS.white,
-                padding: 18,
-                borderRadius: 12,
-                alignItems: "center",
-              }}
-            >
-              <QRCode
-                value={shopUrl}
-                size={220}
-                color={COLORS.navy}
-                backgroundColor="#FFFFFF"
-              />
-
+            {busy ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
               <Text
                 style={{
-                  color: COLORS.navy,
-                  fontSize: 14,
+                  color: COLORS.white,
                   fontWeight: "900",
-                  marginTop: 12,
                 }}
               >
-                NASARA MARKETPLACE
+                MARK ORDER READY FOR DISPATCH
               </Text>
-            </View>
+            )}
+          </TouchableOpacity>
+        )}
 
+        {canDispatch && (
+          <TouchableOpacity
+            disabled={busy}
+            onPress={() =>
+              updateSellerOrderStatus(order, "dispatched")
+            }
+            style={{
+              backgroundColor: COLORS.green,
+              padding: 13,
+              borderRadius: 10,
+              alignItems: "center",
+              marginTop: 13,
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            {busy ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text
+                style={{
+                  color: COLORS.white,
+                  fontWeight: "900",
+                }}
+              >
+                CONFIRM ORDER DISPATCHED
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {fulfilmentStatus === "ready_for_dispatch" &&
+          !commissionApproved && (
             <Text
               style={{
                 color: COLORS.muted,
                 fontSize: 11,
-                textAlign: "center",
                 marginTop: 12,
+                lineHeight: 17,
               }}
             >
-              Your unique shop address
+              Dispatch is locked until Nasara Admin approves
+              the 5% commission payment.
             </Text>
+          )}
 
+        {fulfilmentStatus === "dispatched" && (
+          <View
+            style={{
+              backgroundColor: "#EFF6FF",
+              padding: 11,
+              borderRadius: 9,
+              marginTop: 13,
+            }}
+          >
             <Text
-              selectable
               style={{
                 color: COLORS.blue,
-                fontSize: 11,
-                textAlign: "center",
-                marginTop: 5,
-              }}
-            >
-              {shopUrl}
-            </Text>
-
-            <TouchableOpacity
-              onPress={shareShopQr}
-              disabled={qrSharing}
-              style={{
-                backgroundColor: COLORS.navy,
-                padding: 15,
-                borderRadius: 10,
-                width: "100%",
-                marginTop: 18,
-                opacity: qrSharing ? 0.6 : 1,
-              }}
-            >
-              {qrSharing ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <Text
-                  style={{
-                    color: "white",
-                    textAlign: "center",
-                    fontWeight: "900",
-                  }}
-                >
-                  Share / Save My QR Code
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <Text
-              style={{
-                color: COLORS.muted,
-                fontSize: 11,
-                marginTop: 10,
-                textAlign: "center",
-              }}
-            >
-              Share your QR code with customers or save it for printing.
-            </Text>
-          </>
-        ) : (
-          <ActivityIndicator color={COLORS.gold} />
-        )}
-      </View>
-
-      {/* MY ADVERTISEMENTS AND BANNERS */}
-
-      <View
-        style={{
-          flexDirection: "row",
-          gap: 10,
-          marginBottom: 22,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => router.push("/ads/my-ads")}
-          style={{
-            flex: 1,
-            backgroundColor: COLORS.navy,
-            padding: 15,
-            borderRadius: 12,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontSize: 23 }}>📢</Text>
-          <Text
-            style={{
-              color: COLORS.white,
-              fontWeight: "900",
-              marginTop: 7,
-            }}
-          >
-            My Ads
-          </Text>
-          <Text
-            style={{
-              color: "#D7DFED",
-              fontSize: 11,
-              marginTop: 4,
-            }}
-          >
-            View my advertisements
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push("/banner/my-banner")}
-          style={{
-            flex: 1,
-            backgroundColor: COLORS.gold,
-            padding: 15,
-            borderRadius: 12,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontSize: 23 }}>🖼️</Text>
-          <Text
-            style={{
-              color: COLORS.navy,
-              fontWeight: "900",
-              marginTop: 7,
-            }}
-          >
-            My Banners
-          </Text>
-          <Text
-            style={{
-              color: COLORS.navy,
-              fontSize: 11,
-              marginTop: 4,
-            }}
-          >
-            View my banners
-          </Text>
-        </TouchableOpacity>
-      </View>
-      {/* =================================================
-    MY PURCHASES
-================================================= */}
-
-<View style={{ marginBottom: 22 }}>
-  <View
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 12,
-    }}
-  >
-    <View>
-      <Text
-        style={{
-          color: COLORS.navy,
-          fontSize: 19,
-          fontWeight: "900",
-        }}
-      >
-        My Purchases
-      </Text>
-
-      <Text
-        style={{
-          color: COLORS.muted,
-          fontSize: 11,
-          marginTop: 4,
-        }}
-      >
-        Products you have ordered from Nasara sellers
-      </Text>
-    </View>
-
-    <TouchableOpacity
-      onPress={fetchBuyerOrders}
-      disabled={buyerOrdersLoading}
-      style={{
-        backgroundColor: COLORS.navy,
-        paddingHorizontal: 13,
-        paddingVertical: 9,
-        borderRadius: 8,
-        opacity: buyerOrdersLoading ? 0.5 : 1,
-      }}
-    >
-      {buyerOrdersLoading ? (
-        <ActivityIndicator color="white" size="small" />
-      ) : (
-        <Text
-          style={{
-            color: "white",
-            fontSize: 11,
-            fontWeight: "900",
-          }}
-        >
-          Refresh
-        </Text>
-      )}
-    </TouchableOpacity>
-  </View>
-
-  {buyerOrdersLoading && buyerOrders.length === 0 ? (
-    <ActivityIndicator
-      color={COLORS.gold}
-      style={{ marginVertical: 20 }}
-    />
-  ) : buyerOrders.length === 0 ? (
-    <View
-      style={{
-        backgroundColor: COLORS.white,
-        borderRadius: 13,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        padding: 20,
-        alignItems: "center",
-      }}
-    >
-      <Text style={{ fontSize: 30 }}>🛍️</Text>
-
-      <Text
-        style={{
-          color: COLORS.navy,
-          fontWeight: "900",
-          marginTop: 8,
-        }}
-      >
-        No Purchases Yet
-      </Text>
-
-      <Text
-        style={{
-          color: COLORS.muted,
-          fontSize: 12,
-          textAlign: "center",
-          marginTop: 5,
-          lineHeight: 18,
-        }}
-      >
-        Products you order from other Nasara users will appear here.
-      </Text>
-    </View>
-  ) : (
-    buyerOrders.map(renderBuyerOrder)
-  )}
-</View>
-
-      {/* MARKETPLACE ORDERS */}
-
-      <View
-        style={{
-          marginBottom: 22,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 12,
-          }}
-        >
-          <View>
-            <Text
-              style={{
-                color: COLORS.navy,
-                fontSize: 19,
                 fontWeight: "900",
+                fontSize: 12,
               }}
             >
-              Marketplace Orders
+              Order dispatched
             </Text>
+
             <Text
               style={{
-                color: COLORS.muted,
+                color: COLORS.text,
                 fontSize: 11,
                 marginTop: 4,
               }}
             >
-              Buyer payments and Nasara commission
+              Waiting for the buyer to confirm receipt.
             </Text>
           </View>
+        )}
 
-          <TouchableOpacity
-            onPress={fetchMarketplaceOrders}
-            disabled={ordersLoading}
-            style={{
-              backgroundColor: COLORS.navy,
-              paddingHorizontal: 13,
-              paddingVertical: 9,
-              borderRadius: 8,
-              opacity: ordersLoading ? 0.5 : 1,
-            }}
-          >
-            {ordersLoading ? (
-              <ActivityIndicator color="white" size="small" />
-            ) : (
-              <Text
-                style={{
-                  color: "white",
-                  fontSize: 11,
-                  fontWeight: "900",
-                }}
-              >
-                Refresh
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {ordersLoading && marketplaceOrders.length === 0 ? (
-          <ActivityIndicator
-            color={COLORS.gold}
-            style={{ marginVertical: 20 }}
-          />
-        ) : marketplaceOrders.length === 0 ? (
+        {fulfilmentStatus === "completed" && (
           <View
             style={{
-              backgroundColor: COLORS.white,
-              borderRadius: 13,
-              borderWidth: 1,
-              borderColor: COLORS.border,
-              padding: 20,
-              alignItems: "center",
+              backgroundColor: "#F0FDF4",
+              padding: 11,
+              borderRadius: 9,
+              marginTop: 13,
             }}
           >
-            <Text style={{ fontSize: 30 }}>🛒</Text>
             <Text
               style={{
-                color: COLORS.navy,
+                color: COLORS.green,
                 fontWeight: "900",
-                marginTop: 8,
+                fontSize: 12,
               }}
             >
-              No Marketplace Orders Yet
+              Order completed
             </Text>
+
             <Text
               style={{
-                color: COLORS.muted,
-                fontSize: 12,
-                textAlign: "center",
-                marginTop: 5,
-                lineHeight: 18,
+                color: COLORS.text,
+                fontSize: 11,
+                marginTop: 4,
               }}
             >
-              Orders for products you sell will appear here. You can
-              confirm buyer payments and manage your Nasara commission.
+              The buyer has confirmed receipt of the order.
             </Text>
           </View>
-        ) : (
-          marketplaceOrders.map(renderMarketplaceOrder)
         )}
       </View>
+    );
+  };
 
-      {/* MY PRODUCTS */}
-
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 12,
-        }}
-      >
-        <Text
-          style={{
-            color: COLORS.navy,
-            fontSize: 19,
-            fontWeight: "900",
-          }}
-        >
-          My Products
-        </Text>
-
-        <Text
-          style={{
-            color: COLORS.muted,
-            fontSize: 12,
-          }}
-        >
-          {formatNumber(listingCount)} listings
-        </Text>
-      </View>
-    </View>
-  );
-
-  /* ===================================================
-     EMPTY PRODUCTS
-  =================================================== */
-
-  const EmptyProducts = () => (
-    <View
-      style={{
-        alignItems: "center",
-        padding: 35,
-        backgroundColor: COLORS.white,
-        marginHorizontal: 15,
-        borderRadius: 15,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-      }}
-    >
-      <Text style={{ fontSize: 42 }}>🛍️</Text>
-
-      <Text
-        style={{
-          color: COLORS.navy,
-          fontSize: 17,
-          fontWeight: "900",
-          marginTop: 12,
-        }}
-      >
-        No Products Yet
-      </Text>
-
-      <Text
-        style={{
-          color: COLORS.muted,
-          fontSize: 13,
-          textAlign: "center",
-          marginTop: 7,
-          lineHeight: 20,
-        }}
-      >
-        Products you post on Nasara will appear here. You can edit,
-        manage and promote them from your Business Dashboard.
-      </Text>
-    </View>
-  );
-
-  /* ===================================================
-     MAIN UI
-  =================================================== */
+  /* =====================================================
+     MAIN DASHBOARD UI
+  ===================================================== */
 
   return (
     <View
@@ -3092,68 +2972,677 @@ const renderMarketplaceOrder = (order: any) => {
         backgroundColor: COLORS.background,
       }}
     >
-      <FlatList
-        data={displayItems}
-        keyExtractor={(item) => String(item.card_id)}
-        renderItem={({ item }) => (
-          <View style={{ paddingHorizontal: 15 }}>
-            <MyItemCard
-              item={item}
-              onDelete={deleteItem}
-              onPromote={promoteItem}
-            />
-          </View>
-        )}
-        ListHeaderComponent={<DashboardHeader />}
-        ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator
-              size="large"
-              color={COLORS.gold}
-              style={{ marginTop: 30 }}
-            />
-          ) : (
-            <EmptyProducts />
-          )
-        }
+      <ScrollView
+        contentContainerStyle={{
+          padding: 15,
+          paddingBottom: 45,
+        }}
         refreshControl={
           <RefreshControl
-           refreshing={
-  loading || ordersLoading || buyerOrdersLoading
-}
-onRefresh={() => {
-  fetchMyItems();
-  fetchMarketplaceOrders();
-  fetchBuyerOrders();
-}}
-            tintColor={COLORS.gold}
+            refreshing={loading || ordersLoading || buyerOrdersLoading}
+            onRefresh={() => {
+              fetchMyItems();
+              fetchMarketplaceOrders();
+              fetchBuyerOrders();
+            }}
           />
         }
-        contentContainerStyle={{
-          paddingBottom: 35,
-          flexGrow: 1,
-        }}
-      />
+      >
+        {/* DASHBOARD HEADER */}
 
-      =================================================
-          PROMOTION PAYMENT MODAL
-      ================================================= */
+        <View
+          style={{
+            backgroundColor: COLORS.navy,
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 16,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.gold,
+              fontSize: 12,
+              fontWeight: "900",
+              letterSpacing: 1,
+            }}
+          >
+            NASARA MARKETPLACE
+          </Text>
+
+          <Text
+            style={{
+              color: COLORS.white,
+              fontSize: 23,
+              fontWeight: "900",
+              marginTop: 6,
+            }}
+          >
+            My Business Dashboard
+          </Text>
+
+          <Text
+            style={{
+              color: "#DCE3EF",
+              fontSize: 12,
+              marginTop: 6,
+              lineHeight: 18,
+            }}
+          >
+            Manage your products, sales, purchases and
+            marketplace activities.
+          </Text>
+        </View>
+
+        {/* STATISTICS */}
+
+        <Text
+          style={{
+            color: COLORS.navy,
+            fontSize: 17,
+            fontWeight: "900",
+            marginBottom: 11,
+          }}
+        >
+          Business Overview
+        </Text>
+
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+            gap: 9,
+          }}
+        >
+          <StatCard
+            title="My Listings"
+            value={stats.listings}
+            icon="📦"
+            color={COLORS.blue}
+          />
+
+          <StatCard
+            title="Product Views"
+            value={stats.views}
+            icon="👁️"
+            color={COLORS.green}
+          />
+
+          <StatCard
+            title="Enquiries"
+            value={stats.enquiries}
+            icon="💬"
+            color={COLORS.gold}
+          />
+
+          <StatCard
+            title="Favourites"
+            value={stats.favourites}
+            icon="❤️"
+            color={COLORS.red}
+          />
+        </View>
+
+        {/* SHOP QR CODE */}
+
+        <View
+          style={{
+            backgroundColor: COLORS.white,
+            borderRadius: 15,
+            borderWidth: 1,
+            borderColor: COLORS.border,
+            padding: 16,
+            marginTop: 10,
+            marginBottom: 20,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontWeight: "900",
+              fontSize: 16,
+            }}
+          >
+            My Nasara Shop QR Code
+          </Text>
+
+          <Text
+            style={{
+              color: COLORS.muted,
+              fontSize: 11,
+              textAlign: "center",
+              marginTop: 5,
+            }}
+          >
+            Share your shop link or QR code with customers.
+          </Text>
+
+          {shopUrl ? (
+            <>
+              <View
+                ref={qrRef}
+                collapsable={false}
+                style={{
+                  backgroundColor: COLORS.white,
+                  padding: 14,
+                  marginTop: 13,
+                  alignItems: "center",
+                  borderRadius: 10,
+                }}
+              >
+                <QRCode
+                  value={shopUrl}
+                  size={175}
+                  backgroundColor="white"
+                  color={COLORS.navy}
+                />
+
+                <Text
+                  style={{
+                    color: COLORS.navy,
+                    fontWeight: "900",
+                    marginTop: 9,
+                    fontSize: 13,
+                  }}
+                >
+                  NASARA MARKET
+                </Text>
+              </View>
+
+              <Text
+                selectable
+                style={{
+                  color: COLORS.blue,
+                  fontSize: 11,
+                  textAlign: "center",
+                  marginTop: 9,
+                }}
+              >
+                {shopUrl}
+              </Text>
+
+              <TouchableOpacity
+                disabled={qrSharing}
+                onPress={shareShopQr}
+                style={{
+                  backgroundColor: COLORS.navy,
+                  paddingHorizontal: 22,
+                  paddingVertical: 12,
+                  borderRadius: 10,
+                  marginTop: 13,
+                  opacity: qrSharing ? 0.6 : 1,
+                }}
+              >
+                {qrSharing ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <Text
+                    style={{
+                      color: COLORS.white,
+                      fontWeight: "900",
+                    }}
+                  >
+                    SHARE MY SHOP QR
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                marginTop: 12,
+              }}
+            >
+              Your shop QR code will appear after your account loads.
+            </Text>
+          )}
+        </View>
+
+        {/* SELLER MARKETPLACE ORDERS */}
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 11,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontSize: 17,
+              fontWeight: "900",
+            }}
+          >
+            Orders for My Products
+          </Text>
+
+          <TouchableOpacity
+            onPress={fetchMarketplaceOrders}
+          >
+            <Text
+              style={{
+                color: COLORS.blue,
+                fontSize: 12,
+                fontWeight: "800",
+              }}
+            >
+              Refresh
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {ordersLoading && marketplaceOrders.length === 0 ? (
+          <ActivityIndicator
+            color={COLORS.navy}
+            style={{ marginVertical: 20 }}
+          />
+        ) : marketplaceOrders.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              borderRadius: 12,
+              padding: 18,
+              marginBottom: 20,
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              You do not have any marketplace orders yet.
+              New customer orders will appear here.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ marginBottom: 20 }}>
+            {marketplaceOrders.map(renderMarketplaceOrder)}
+          </View>
+        )}
+
+        {/* MY PURCHASES */}
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 11,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontSize: 17,
+              fontWeight: "900",
+            }}
+          >
+            My Purchases
+          </Text>
+
+          <TouchableOpacity onPress={fetchBuyerOrders}>
+            <Text
+              style={{
+                color: COLORS.blue,
+                fontSize: 12,
+                fontWeight: "800",
+              }}
+            >
+              Refresh
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {buyerOrdersLoading && buyerOrders.length === 0 ? (
+          <ActivityIndicator
+            color={COLORS.navy}
+            style={{ marginVertical: 20 }}
+          />
+        ) : buyerOrders.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              borderRadius: 12,
+              padding: 18,
+              marginBottom: 20,
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              You have not placed any marketplace orders yet.
+              Your purchases will appear here.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ marginBottom: 20 }}>
+            {buyerOrders.map(renderBuyerOrder)}
+          </View>
+        )}
+
+        {/* MY PRODUCT LISTINGS */}
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 11,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.navy,
+              fontSize: 17,
+              fontWeight: "900",
+            }}
+          >
+            My Product Listings
+          </Text>
+
+          <TouchableOpacity onPress={fetchMyItems}>
+            <Text
+              style={{
+                color: COLORS.blue,
+                fontSize: 12,
+                fontWeight: "800",
+              }}
+            >
+              Refresh
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {loading && items.length === 0 ? (
+          <ActivityIndicator
+            color={COLORS.navy}
+            style={{ marginVertical: 25 }}
+          />
+        ) : displayItems.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              borderRadius: 12,
+              padding: 18,
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                textAlign: "center",
+              }}
+            >
+              You have not listed any products yet.
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => router.push("/sell")}
+              style={{
+                backgroundColor: COLORS.navy,
+                borderRadius: 9,
+                paddingHorizontal: 20,
+                paddingVertical: 11,
+                marginTop: 13,
+              }}
+            >
+              <Text
+                style={{
+                  color: COLORS.white,
+                  fontWeight: "900",
+                }}
+              >
+                LIST A PRODUCT
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View>
+            {displayItems.map((item: any) => (
+              <MyItemCard
+                key={item.card_id}
+                item={item}
+                onDelete={deleteItem}
+                onPromote={promoteItem}
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* =================================================
+         PROMOTION PAYMENT MODAL
+      ================================================= */}
 
       <Modal
-        transparent
         visible={payVisible}
-        animationType="fade"
-        onRequestClose={() => setPayVisible(false)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!paymentLoading) {
+            setPayVisible(false);
+            setSelectedItemId(null);
+          }
+        }}
       >
         <View
           style={{
             flex: 1,
-            backgroundColor: "#0007",
+            backgroundColor: "#00000088",
             justifyContent: "center",
-            padding: 20,
+            padding: 18,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              borderRadius: 16,
+              padding: 19,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontSize: 19,
+                fontWeight: "900",
+              }}
+            >
+              Promote Your Product
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                marginTop: 7,
+                lineHeight: 18,
+              }}
+            >
+              Choose how long you want your product to be promoted.
+              The rate is GH₵30 per day.
+            </Text>
+
+            {["3", "7", "14"].map((option) => {
+              const selected = days === option;
+
+              return (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() => setDays(option)}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: selected
+                      ? COLORS.gold
+                      : COLORS.border,
+                    backgroundColor: selected
+                      ? "#FFF8E7"
+                      : COLORS.white,
+                    padding: 13,
+                    borderRadius: 10,
+                    marginTop: 10,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: COLORS.navy,
+                      fontWeight: "800",
+                    }}
+                  >
+                    {option} days —{" "}
+                    {formatMoney(Number(option) * dailyRate)}
+                    {selected ? "  ✓" : ""}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            <View
+              style={{
+                backgroundColor: "#FFF8E7",
+                padding: 12,
+                borderRadius: 10,
+                marginTop: 13,
+              }}
+            >
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 12,
+                }}
+              >
+                Pay to: {momoName}
+              </Text>
+
+              <Text
+                style={{
+                  color: COLORS.text,
+                  fontSize: 12,
+                  marginTop: 4,
+                }}
+              >
+                Network: {momoNetwork}
+              </Text>
+
+              <Text
+                style={{
+                  color: COLORS.navy,
+                  fontWeight: "900",
+                  fontSize: 17,
+                  marginTop: 4,
+                }}
+              >
+                {momoNumber}
+              </Text>
+
+              <Text
+                style={{
+                  color: COLORS.navy,
+                  fontWeight: "900",
+                  fontSize: 16,
+                  marginTop: 9,
+                }}
+              >
+                Total: {formatMoney(Number(days) * dailyRate)}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              disabled={paymentLoading}
+              onPress={sendPayment}
+              style={{
+                backgroundColor: COLORS.navy,
+                padding: 14,
+                borderRadius: 10,
+                alignItems: "center",
+                marginTop: 15,
+                opacity: paymentLoading ? 0.6 : 1,
+              }}
+            >
+              {paymentLoading ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text
+                  style={{
+                    color: COLORS.white,
+                    fontWeight: "900",
+                  }}
+                >
+                  SUBMIT PROMOTION REQUEST
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              disabled={paymentLoading}
+              onPress={() => {
+                setPayVisible(false);
+                setSelectedItemId(null);
+              }}
+              style={{
+                padding: 12,
+                alignItems: "center",
+                marginTop: 5,
+              }}
+            >
+              <Text
+                style={{
+                  color: COLORS.muted,
+                  fontWeight: "800",
+                }}
+              >
+                CANCEL
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* =================================================
+         MARKETPLACE ORDER MODALS
+      ================================================= */}
+
+      <Modal
+        visible={orderModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!orderActionLoading) {
+            setOrderModalVisible(false);
+            setSelectedOrder(null);
+            setOrderModalType(null);
+          }
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#00000088",
+            justifyContent: "center",
+            padding: 18,
           }}
         >
           <ScrollView
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               flexGrow: 1,
               justifyContent: "center",
@@ -3161,411 +3650,386 @@ onRefresh={() => {
           >
             <View
               style={{
-                backgroundColor: "white",
-                padding: 20,
+                backgroundColor: COLORS.white,
                 borderRadius: 16,
+                padding: 19,
               }}
             >
-              <Text
-                style={{
-                  fontSize: 19,
-                  fontWeight: "900",
-                  color: COLORS.navy,
-                }}
-              >
-                Promotion Payment
-              </Text>
+              {/* BUYER PAYMENT DECLARATION */}
 
-              <Text style={{ marginTop: 12 }}>Pay To:</Text>
-
-              <Text
-                style={{
-                  fontWeight: "900",
-                  fontSize: 16,
-                  marginTop: 5,
-                  color: COLORS.navy,
-                }}
-              >
-                {momoName} - {momoNumber}
-              </Text>
-
-              <Text
-                style={{
-                  color: COLORS.muted,
-                  fontSize: 12,
-                  marginTop: 4,
-                }}
-              >
-                {momoNetwork} Mobile Money
-              </Text>
-
-              <Text
-                style={{
-                  marginTop: 18,
-                  fontWeight: "700",
-                }}
-              >
-                Select Days
-              </Text>
-
-              <View
-                style={{
-                  flexDirection: "row",
-                  marginTop: 8,
-                }}
-              >
-                {["3", "7", "14"].map((d) => (
-                  <TouchableOpacity
-                    key={d}
-                    onPress={() => setDays(d)}
+              {orderModalType === "buyer-payment" ? (
+                <>
+                  <Text
                     style={{
-                      flex: 1,
+                      color: COLORS.navy,
+                      fontSize: 19,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Declare Buyer Payment
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: COLORS.muted,
+                      fontSize: 12,
+                      lineHeight: 19,
+                      marginTop: 8,
+                    }}
+                  >
+                    Enter the transaction reference from the
+                    Mobile Money payment you made to the seller.
+                    The seller and Nasara Admin will be notified.
+                  </Text>
+
+                  <View
+                    style={{
+                      backgroundColor: "#FFF8E7",
+                      borderRadius: 10,
                       padding: 12,
-                      marginHorizontal: 4,
-                      borderRadius: 8,
-                      backgroundColor:
-                        days === d ? COLORS.blue : "#E5E7EB",
+                      marginTop: 13,
                     }}
                   >
                     <Text
                       style={{
-                        textAlign: "center",
-                        color: days === d ? "white" : "black",
-                        fontWeight: "700",
+                        color: COLORS.navy,
+                        fontWeight: "900",
+                        fontSize: 13,
                       }}
                     >
-                      {d} Days
+                      Seller Payment Details
                     </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
 
-              <Text
-                style={{
-                  marginTop: 17,
-                  fontWeight: "900",
-                  fontSize: 16,
-                  color: COLORS.navy,
-                }}
-              >
-                Total Amount: GH₵ {Number(days) * dailyRate}
-              </Text>
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontSize: 12,
+                        marginTop: 7,
+                      }}
+                    >
+                      {selectedOrder?.seller_momo_name ||
+                        selectedOrder?.momo_name ||
+                        "Seller"}
+                    </Text>
 
-              <Text
-                style={{
-                  color: COLORS.muted,
-                  fontSize: 12,
-                  marginTop: 5,
-                }}
-              >
-                GH₵30 per day
-              </Text>
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontSize: 12,
+                        marginTop: 4,
+                      }}
+                    >
+                      {selectedOrder?.seller_network ||
+                        selectedOrder?.network ||
+                        "Mobile Money"}
+                    </Text>
 
-              <TouchableOpacity
-                disabled={paymentLoading}
-                onPress={sendPayment}
-                style={{
-                  backgroundColor: COLORS.blue,
-                  padding: 15,
-                  marginTop: 20,
-                  borderRadius: 9,
-                  opacity: paymentLoading ? 0.6 : 1,
-                }}
-              >
-                {paymentLoading ? (
-                  <ActivityIndicator color="white" />
-                ) : (
+                    <Text
+                      style={{
+                        color: COLORS.navy,
+                        fontWeight: "900",
+                        fontSize: 17,
+                        marginTop: 4,
+                      }}
+                    >
+                      {selectedOrder?.seller_momo_number ||
+                        selectedOrder?.momo_number ||
+                        "Seller number unavailable"}
+                    </Text>
+                  </View>
+
                   <Text
                     style={{
-                      color: "white",
-                      textAlign: "center",
+                      color: COLORS.text,
+                      fontSize: 12,
+                      fontWeight: "800",
+                      marginTop: 15,
+                      marginBottom: 7,
+                    }}
+                  >
+                    Mobile Money Transaction Reference
+                  </Text>
+
+                  <TextInput
+                    value={buyerPaymentReference}
+                    onChangeText={setBuyerPaymentReference}
+                    placeholder="Enter transaction reference"
+                    autoCapitalize="characters"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: COLORS.border,
+                      borderRadius: 10,
+                      padding: 13,
+                      color: COLORS.text,
+                      fontSize: 14,
+                    }}
+                  />
+
+                  <TouchableOpacity
+                    disabled={!!orderActionLoading}
+                    onPress={declareBuyerPayment}
+                    style={{
+                      backgroundColor: COLORS.navy,
+                      padding: 14,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      marginTop: 15,
+                      opacity: orderActionLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {orderActionLoading ? (
+                      <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                      <Text
+                        style={{
+                          color: COLORS.white,
+                          fontWeight: "900",
+                        }}
+                      >
+                        SUBMIT PAYMENT DECLARATION
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : orderModalType === "reject" ? (
+                <>
+                  <Text
+                    style={{
+                      color: COLORS.navy,
+                      fontSize: 19,
                       fontWeight: "900",
                     }}
                   >
-                    I've Paid – Submit for Verification
+                    Reject Buyer Payment
                   </Text>
-                )}
-              </TouchableOpacity>
+
+                  <Text
+                    style={{
+                      color: COLORS.muted,
+                      fontSize: 12,
+                      lineHeight: 18,
+                      marginTop: 8,
+                    }}
+                  >
+                    Explain why you cannot verify the buyer's
+                    payment. The buyer will be notified.
+                  </Text>
+
+                  <TextInput
+                    value={rejectionReason}
+                    onChangeText={setRejectionReason}
+                    placeholder="Enter reason for rejection"
+                    multiline
+                    textAlignVertical="top"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: COLORS.border,
+                      borderRadius: 10,
+                      padding: 12,
+                      minHeight: 100,
+                      marginTop: 14,
+                      color: COLORS.text,
+                    }}
+                  />
+
+                  <TouchableOpacity
+                    disabled={!!orderActionLoading}
+                    onPress={rejectBuyerPayment}
+                    style={{
+                      backgroundColor: COLORS.red,
+                      padding: 14,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      marginTop: 14,
+                      opacity: orderActionLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {orderActionLoading ? (
+                      <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                      <Text
+                        style={{
+                          color: COLORS.white,
+                          fontWeight: "900",
+                        }}
+                      >
+                        CONFIRM REJECTION
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : orderModalType === "commission" ? (
+                <>
+                  <Text
+                    style={{
+                      color: COLORS.navy,
+                      fontSize: 19,
+                      fontWeight: "900",
+                    }}
+                  >
+                    Submit Nasara Commission
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: COLORS.muted,
+                      fontSize: 12,
+                      lineHeight: 18,
+                      marginTop: 8,
+                    }}
+                  >
+                    After paying the 5% commission to Nasara,
+                    enter your Mobile Money transaction reference.
+                    Admin will verify the payment.
+                  </Text>
+
+                  <View
+                    style={{
+                      backgroundColor: "#FFF8E7",
+                      borderRadius: 10,
+                      padding: 12,
+                      marginTop: 13,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontSize: 12,
+                      }}
+                    >
+                      Account name: {momoName}
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: COLORS.text,
+                        fontSize: 12,
+                        marginTop: 5,
+                      }}
+                    >
+                      Network: {momoNetwork}
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: COLORS.navy,
+                        fontWeight: "900",
+                        fontSize: 18,
+                        marginTop: 4,
+                      }}
+                    >
+                      {momoNumber}
+                    </Text>
+
+                    <Text
+                      style={{
+                        color: COLORS.navy,
+                        fontSize: 15,
+                        fontWeight: "900",
+                        marginTop: 10,
+                      }}
+                    >
+                      Amount:{" "}
+                      {formatMoney(
+                        Number(
+                          selectedOrder?.commission
+                            ?.commission_amount ??
+                            selectedOrder?.commission?.amount ??
+                            selectedOrder?.commission_amount ??
+                            Number(
+                              selectedOrder?.subtotal ??
+                                selectedOrder?.subtotal_amount ??
+                                selectedOrder?.total_amount ??
+                                selectedOrder?.amount ??
+                                0
+                            ) * 0.05
+                        )
+                      )}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={{
+                      color: COLORS.text,
+                      fontSize: 12,
+                      fontWeight: "800",
+                      marginTop: 15,
+                      marginBottom: 7,
+                    }}
+                  >
+                    Commission Transaction Reference
+                  </Text>
+
+                  <TextInput
+                    value={transactionReference}
+                    onChangeText={setTransactionReference}
+                    placeholder="Enter MoMo transaction reference"
+                    autoCapitalize="characters"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: COLORS.border,
+                      borderRadius: 10,
+                      padding: 13,
+                      color: COLORS.text,
+                      fontSize: 14,
+                    }}
+                  />
+
+                  <TouchableOpacity
+                    disabled={!!orderActionLoading}
+                    onPress={submitCommissionPayment}
+                    style={{
+                      backgroundColor: COLORS.navy,
+                      padding: 14,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      marginTop: 15,
+                      opacity: orderActionLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {orderActionLoading ? (
+                      <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                      <Text
+                        style={{
+                          color: COLORS.white,
+                          fontWeight: "900",
+                        }}
+                      >
+                        SUBMIT TO NASARA ADMIN
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : null}
 
               <TouchableOpacity
-                disabled={paymentLoading}
+                disabled={!!orderActionLoading}
                 onPress={() => {
-                  setPayVisible(false);
-                  setSelectedItemId(null);
+                  setOrderModalVisible(false);
+                  setSelectedOrder(null);
+                  setOrderModalType(null);
+                  setBuyerPaymentReference("");
+                  setRejectionReason("");
+                  setTransactionReference("");
+                }}
+                style={{
+                  padding: 12,
+                  alignItems: "center",
+                  marginTop: 5,
                 }}
               >
                 <Text
                   style={{
-                    textAlign: "center",
-                    marginTop: 15,
-                    color: "red",
-                    fontWeight: "700",
+                    color: COLORS.muted,
+                    fontWeight: "800",
                   }}
                 >
-                  Cancel
+                  CANCEL
                 </Text>
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </View>
-      </Modal>
-
-      {/* =================================================
-          MARKETPLACE REJECTION / COMMISSION MODAL
-      ================================================= */}
-
-      <Modal
-        transparent
-        visible={orderModalVisible}
-        animationType="fade"
-        onRequestClose={() => {
-          if (!orderActionLoading) {
-            setOrderModalVisible(false);
-            setSelectedOrder(null);
-          }
-        }}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "#0008",
-            justifyContent: "center",
-            padding: 20,
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: COLORS.white,
-              padding: 20,
-              borderRadius: 16,
-            }}
-          >
-            {orderModalType === "reject" ? (
-              <>
-                <Text
-                  style={{
-                    color: COLORS.navy,
-                    fontSize: 19,
-                    fontWeight: "900",
-                  }}
-                >
-                  Reject Buyer Payment
-                </Text>
-
-                <Text
-                  style={{
-                    color: COLORS.muted,
-                    fontSize: 12,
-                    lineHeight: 19,
-                    marginTop: 8,
-                  }}
-                >
-                  Explain why you did not receive or cannot verify the
-                  buyer's payment. The buyer will be notified.
-                </Text>
-
-                <TextInput
-                  value={rejectionReason}
-                  onChangeText={setRejectionReason}
-                  placeholder="Enter reason for rejecting payment"
-                  multiline
-                  textAlignVertical="top"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: COLORS.border,
-                    borderRadius: 9,
-                    padding: 12,
-                    minHeight: 100,
-                    marginTop: 15,
-                    color: COLORS.text,
-                  }}
-                />
-
-                <TouchableOpacity
-                  disabled={!!orderActionLoading}
-                  onPress={rejectBuyerPayment}
-                  style={{
-                    backgroundColor: COLORS.red,
-                    padding: 14,
-                    borderRadius: 9,
-                    marginTop: 15,
-                    opacity: orderActionLoading ? 0.6 : 1,
-                  }}
-                >
-                  {orderActionLoading ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text
-                      style={{
-                        color: "white",
-                        fontWeight: "900",
-                        textAlign: "center",
-                      }}
-                    >
-                      Submit Rejection
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            ) : orderModalType === "commission" ? (
-              <>
-                <Text
-                  style={{
-                    color: COLORS.navy,
-                    fontSize: 19,
-                    fontWeight: "900",
-                  }}
-                >
-                  Submit Commission Payment
-                </Text>
-
-                <Text
-                  style={{
-                    color: COLORS.muted,
-                    fontSize: 12,
-                    marginTop: 8,
-                    lineHeight: 19,
-                  }}
-                >
-                  Pay Nasara Market first, then enter the transaction
-                  reference from your MoMo confirmation message.
-                </Text>
-
-                <View
-                  style={{
-                    backgroundColor: "#F4F6FA",
-                    padding: 13,
-                    borderRadius: 9,
-                    marginTop: 14,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: COLORS.navy,
-                      fontWeight: "900",
-                    }}
-                  >
-                    {momoName}
-                  </Text>
-                  <Text
-                    style={{
-                      color: COLORS.navy,
-                      fontSize: 18,
-                      fontWeight: "900",
-                      marginTop: 4,
-                    }}
-                  >
-                    {momoNumber}
-                  </Text>
-                  <Text
-                    style={{
-                      color: COLORS.muted,
-                      fontSize: 11,
-                      marginTop: 3,
-                    }}
-                  >
-                    {momoNetwork} Mobile Money
-                  </Text>
-                  <Text
-                    style={{
-                      color: COLORS.navy,
-                      fontWeight: "900",
-                      marginTop: 10,
-                    }}
-                  >
-                    Commission:{" "}
-                    {formatMoney(
-                      Number(
-                        selectedOrder?.commission?.commission_amount ??
-                          selectedOrder?.commission?.amount ??
-                          selectedOrder?.commission_amount ??
-                          Number(
-                            selectedOrder?.subtotal ??
-                              selectedOrder?.subtotal_amount ??
-                              selectedOrder?.total_amount ??
-                              selectedOrder?.amount ??
-                              0
-                          ) * 0.05
-                      )
-                    )}
-                  </Text>
-                </View>
-
-                <Text
-                  style={{
-                    color: COLORS.text,
-                    fontWeight: "800",
-                    fontSize: 12,
-                    marginTop: 16,
-                  }}
-                >
-                  MoMo Transaction Reference
-                </Text>
-
-                <TextInput
-                  value={transactionReference}
-                  onChangeText={setTransactionReference}
-                  placeholder="Enter transaction reference"
-                  autoCapitalize="characters"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: COLORS.border,
-                    borderRadius: 9,
-                    padding: 13,
-                    marginTop: 8,
-                    color: COLORS.text,
-                  }}
-                />
-
-                <TouchableOpacity
-                  disabled={!!orderActionLoading}
-                  onPress={submitCommissionPayment}
-                  style={{
-                    backgroundColor: COLORS.green,
-                    padding: 14,
-                    borderRadius: 9,
-                    marginTop: 15,
-                    opacity: orderActionLoading ? 0.6 : 1,
-                  }}
-                >
-                  {orderActionLoading ? (
-                    <ActivityIndicator color="white" />
-                  ) : (
-                    <Text
-                      style={{
-                        color: "white",
-                        fontWeight: "900",
-                        textAlign: "center",
-                      }}
-                    >
-                      Submit for Admin Verification
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </>
-            ) : null}
-
-            <TouchableOpacity
-              disabled={!!orderActionLoading}
-              onPress={() => {
-                setOrderModalVisible(false);
-                setSelectedOrder(null);
-                setRejectionReason("");
-                setTransactionReference("");
-              }}
-              style={{ marginTop: 15, padding: 8 }}
-            >
-              <Text
-                style={{
-                  color: COLORS.red,
-                  textAlign: "center",
-                  fontWeight: "800",
-                }}
-              >
-                Cancel
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </Modal>
     </View>

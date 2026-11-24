@@ -242,6 +242,12 @@ const sections: AdminSection[] = [
         route: "/(admin)/revenue",
         icon: "📈",
       },
+      {
+  label: "Marketplace Commission Approvals",
+  route: "/(admin)/marketplace-commissions",
+  icon: "🧾",
+  description: "Verify seller 5% commission payments",
+},
     ],
   },
   {
