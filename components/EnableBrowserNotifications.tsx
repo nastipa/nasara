@@ -540,56 +540,6 @@ export default function EnableBrowserNotifications({
         </Text>
       )}
 
-      {/* =============================================
-          DIAGNOSTIC PANEL
-      ============================================= */}
-
-      <View style={styles.diagnosticContainer}>
-        <Text style={styles.diagnosticTitle}>
-          Nasara Push Diagnostics
-        </Text>
-
-        {diagnostics.map((item, index) => (
-          <View
-            key={`${item.label}-${index}`}
-            style={styles.diagnosticRow}
-          >
-            <Text style={styles.diagnosticLabel}>
-              {item.label}
-            </Text>
-
-            <Text
-              style={[
-                styles.diagnosticValue,
-                item.good === true &&
-                  styles.diagnosticGood,
-                item.good === false &&
-                  styles.diagnosticBad,
-              ]}
-            >
-              {item.value}
-            </Text>
-          </View>
-        ))}
-
-        <Pressable
-          disabled={checking || loading}
-          onPress={() => {
-            void checkNotificationStatus();
-          }}
-          style={[
-            styles.refreshButton,
-            (checking || loading) &&
-              styles.buttonDisabled,
-          ]}
-        >
-          <Text style={styles.refreshButtonText}>
-            {checking
-              ? "Checking..."
-              : "Refresh Diagnostics"}
-          </Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
