@@ -12,8 +12,37 @@ import { supabase } from "./supabase";
 const VAPID_PUBLIC_KEY =
   process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY || "";
 
+const PUSH_SETUP_TIMEOUT = 30000;
+
 // =====================================================
-// 2. CONVERT VAPID KEY TO UINT8ARRAY
+// 2. TIMEOUT HELPER
+// =====================================================
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+
+    promise.then(
+      (result) => {
+        window.clearTimeout(timeout);
+        resolve(result);
+      },
+      (error) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
+}
+
+// =====================================================
+// 3. CONVERT VAPID KEY TO UINT8ARRAY
 // =====================================================
 
 function urlBase64ToUint8Array(
@@ -41,7 +70,7 @@ function urlBase64ToUint8Array(
 }
 
 // =====================================================
-// 3. CHECK IPHONE HOME SCREEN INSTALLATION
+// 4. CHECK IPHONE HOME SCREEN INSTALLATION
 // =====================================================
 
 function isIOSDevice(): boolean {
@@ -65,7 +94,7 @@ function isRunningAsInstalledApp(): boolean {
 }
 
 // =====================================================
-// 4. REGISTER THE SERVICE WORKER
+// 5. REGISTER OR REUSE THE SERVICE WORKER
 // =====================================================
 
 export async function registerBrowserPush(): Promise<ServiceWorkerRegistration | null> {
@@ -74,7 +103,7 @@ export async function registerBrowserPush(): Promise<ServiceWorkerRegistration |
   }
 
   if (!window.isSecureContext) {
-    console.error("Browser push requires HTTPS.");
+    console.error("Nasara push requires HTTPS.");
     return null;
   }
 
@@ -94,22 +123,74 @@ export async function registerBrowserPush(): Promise<ServiceWorkerRegistration |
   }
 
   try {
-    const registration =
-      await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-      });
+    console.log("Nasara: Checking service worker registration.");
 
-    await navigator.serviceWorker.ready;
+    // First check whether a registration already exists.
+    let registration =
+      await navigator.serviceWorker.getRegistration("/");
+
+    // Register only if no existing registration is found.
+    if (!registration) {
+      console.log("Nasara: Registering /sw.js.");
+
+      registration =
+        await navigator.serviceWorker.register("/sw.js", {
+          scope: "/",
+          updateViaCache: "none",
+        });
+    } else {
+      console.log(
+        "Nasara: Existing service worker found:",
+        registration.scope
+      );
+
+      // Check for an updated service worker.
+      await registration.update().catch((error) => {
+        console.warn(
+          "Nasara: Service worker update check failed:",
+          error
+        );
+      });
+    }
+
+    // Make sure the registration belongs to this website.
+    const registrationOrigin =
+      new URL(registration.scope).origin;
+
+    if (registrationOrigin !== window.location.origin) {
+      throw new Error(
+        "Service worker belongs to a different website origin."
+      );
+    }
+
+    // Wait for an active service worker.
+    const readyRegistration =
+      await withTimeout(
+        navigator.serviceWorker.ready,
+        PUSH_SETUP_TIMEOUT,
+        "Service worker activation timed out. Close and reopen Nasara."
+      );
+
+    if (!readyRegistration.active) {
+      throw new Error(
+        "Nasara service worker is not active."
+      );
+    }
 
     console.log(
-      "Nasara service worker registered:",
-      registration.scope
+      "Nasara: Service worker is ready:",
+      readyRegistration.scope
     );
 
-    return registration;
+    console.log(
+      "Nasara: Active service worker:",
+      readyRegistration.active.state
+    );
+
+    return readyRegistration;
   } catch (error) {
     console.error(
-      "Service worker registration failed:",
+      "Nasara service worker registration failed:",
       error
     );
 
@@ -118,8 +199,8 @@ export async function registerBrowserPush(): Promise<ServiceWorkerRegistration |
 }
 
 // =====================================================
-// 5. REQUEST NOTIFICATION PERMISSION
-// Call this after the user taps the Enable button.
+// 6. REQUEST NOTIFICATION PERMISSION
+// Call this after the user taps Enable Notifications.
 // =====================================================
 
 export async function requestBrowserNotificationPermission(): Promise<boolean> {
@@ -133,12 +214,16 @@ export async function requestBrowserNotificationPermission(): Promise<boolean> {
   }
 
   if (Notification.permission === "granted") {
+    console.log(
+      "Nasara: Notification permission already granted."
+    );
+
     return true;
   }
 
   if (Notification.permission === "denied") {
     console.error(
-      "Notification permission is blocked. Change the permission in device or website settings."
+      "Nasara: Notification permission is blocked."
     );
 
     return false;
@@ -156,7 +241,7 @@ export async function requestBrowserNotificationPermission(): Promise<boolean> {
     return permission === "granted";
   } catch (error) {
     console.error(
-      "Notification permission request failed:",
+      "Nasara notification permission request failed:",
       error
     );
 
@@ -165,54 +250,123 @@ export async function requestBrowserNotificationPermission(): Promise<boolean> {
 }
 
 // =====================================================
-// 6. CREATE OR REUSE A BROWSER PUSH SUBSCRIPTION
+// 7. CREATE OR REUSE A BROWSER PUSH SUBSCRIPTION
 // =====================================================
 
 export async function createBrowserPushSubscription(): Promise<PushSubscription | null> {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
   if (!VAPID_PUBLIC_KEY) {
     console.error(
-      "Missing EXPO_PUBLIC_VAPID_PUBLIC_KEY. Check the Vercel environment variables and redeploy."
+      "Nasara: Missing EXPO_PUBLIC_VAPID_PUBLIC_KEY."
     );
 
     return null;
   }
 
-  const registration = await registerBrowserPush();
+  if (!("PushManager" in window)) {
+    console.error(
+      "Nasara: PushManager is unavailable."
+    );
+
+    return null;
+  }
+
+  const registration =
+    await registerBrowserPush();
 
   if (!registration) {
+    console.error(
+      "Nasara: Could not obtain an active service worker registration."
+    );
+
     return null;
   }
 
   try {
-    const existingSubscription =
-      await registration.pushManager.getSubscription();
+    console.log(
+      "Nasara: Checking for an existing push subscription."
+    );
 
-    if (existingSubscription) {
-      console.log(
-        "Existing browser push subscription found."
+    // STEP 1: Check for an existing subscription.
+    let subscription =
+      await withTimeout(
+        registration.pushManager.getSubscription(),
+        PUSH_SETUP_TIMEOUT,
+        "Checking the existing push subscription timed out."
       );
 
-      return existingSubscription;
+    if (subscription) {
+      console.log(
+        "Nasara: Existing push subscription found."
+      );
+
+      return subscription;
     }
 
+    console.log(
+      "Nasara: No existing subscription. Creating a new one."
+    );
+
+    // STEP 2: Convert the VAPID public key.
     const applicationServerKey =
       urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
 
-    const subscription =
-      await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
+    if (applicationServerKey.length !== 65) {
+      throw new Error(
+        "The VAPID public key is invalid. Expected a 65-byte public key."
+      );
+    }
+
+    // STEP 3: Confirm service worker is active.
+    if (!registration.active) {
+      throw new Error(
+        "The Nasara service worker is not active."
+      );
+    }
+
+    // STEP 4: Create a fresh push subscription.
+    subscription =
+      await withTimeout(
+        registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        }),
+        PUSH_SETUP_TIMEOUT,
+        "Creating the push subscription timed out. Please close and reopen Nasara."
+      );
+
+    if (!subscription) {
+      throw new Error(
+        "The browser did not return a push subscription."
+      );
+    }
 
     console.log(
-      "Browser push subscription created."
+      "Nasara: New push subscription created successfully."
+    );
+
+    console.log(
+      "Nasara push endpoint:",
+      subscription.endpoint
     );
 
     return subscription;
-  } catch (error) {
+  } catch (error: any) {
     console.error(
-      "Creating browser push subscription failed:",
-      error
+      "Nasara: Creating browser push subscription failed."
+    );
+
+    console.error(
+      "Error name:",
+      error?.name || "UnknownError"
+    );
+
+    console.error(
+      "Error message:",
+      error?.message || error
     );
 
     return null;
@@ -220,103 +374,115 @@ export async function createBrowserPushSubscription(): Promise<PushSubscription 
 }
 
 // =====================================================
-// 7. SAVE / TRANSFER THE BROWSER PUSH SUBSCRIPTION
+// 8. SAVE / TRANSFER THE BROWSER PUSH SUBSCRIPTION
 // =====================================================
 
 export async function saveBrowserPushSubscription(
   userId: string,
   subscription: PushSubscription
 ): Promise<boolean> {
-try {
-// 🛡️ STEP 1: Validate the supplied information.
-if (!userId || !subscription) {
-console.error(
-"Saving browser push subscription failed:",
-"Missing user ID or subscription."
-);
+  try {
+    // STEP 1: Validate the supplied information.
+    if (!userId || !subscription) {
+      console.error(
+        "Saving browser push subscription failed:",
+        "Missing user ID or subscription."
+      );
 
-  return false;
-}
-const subscriptionData = subscription.toJSON();
-if (
-  !subscription.endpoint ||
-  !subscription.endpoint.startsWith("https://") ||
-  !subscriptionData.keys?.p256dh ||
-  !subscriptionData.keys?.auth
-) {
-  console.error(
-    "Saving browser push subscription failed:",
-    "The browser subscription is incomplete."
-  );
-  return false;
-}
-// 🔐 STEP 2: Get the current Supabase login session.
-const {
-  data: { session },
-  error: sessionError,
-} = await supabase.auth.getSession();
-if (
-  sessionError ||
-  !session?.access_token ||
-  !session.user?.id
-) {
-  console.error(
-    "Saving browser push subscription failed:",
-    sessionError || "No authenticated session was found."
-  );
-  return false;
-}
-// 🔐 STEP 3: Ensure this is the currently logged-in account.
-if (session.user.id !== userId) {
-  console.error(
-    "Saving browser push subscription failed:",
-    "The supplied user ID does not match the active login."
-  );
-  return false;
-}
-// 🌐 STEP 4: Send the subscription to the trusted backend.
-const response = await fetch(
-  "https://nasara-upload-server.onrender.com/browser-push/register-subscription",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({
-      subscription: subscriptionData,
-    }),
+      return false;
+    }
+
+    const subscriptionData = subscription.toJSON();
+
+    if (
+      !subscription.endpoint ||
+      !subscription.endpoint.startsWith("https://") ||
+      !subscriptionData.keys?.p256dh ||
+      !subscriptionData.keys?.auth
+    ) {
+      console.error(
+        "Saving browser push subscription failed:",
+        "The browser subscription is incomplete."
+      );
+
+      return false;
+    }
+
+    // STEP 2: Get the current Supabase login session.
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    if (
+      sessionError ||
+      !session?.access_token ||
+      !session.user?.id
+    ) {
+      console.error(
+        "Saving browser push subscription failed:",
+        sessionError || "No authenticated session was found."
+      );
+
+      return false;
+    }
+
+    // STEP 3: Ensure this is the currently logged-in account.
+    if (session.user.id !== userId) {
+      console.error(
+        "Saving browser push subscription failed:",
+        "The supplied user ID does not match the active login."
+      );
+
+      return false;
+    }
+
+    // STEP 4: Send the subscription to the trusted backend.
+    const response = await fetch(
+      "https://nasara-upload-server.onrender.com/browser-push/register-subscription",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          subscription: subscriptionData,
+        }),
+      }
+    );
+
+    // STEP 5: Read the backend response.
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.success) {
+      console.error(
+        "Saving browser push subscription failed:",
+        result?.error ||
+          `Backend returned HTTP ${response.status}.`
+      );
+
+      return false;
+    }
+
+    // STEP 6: Registration succeeded.
+    console.log(
+      "Browser push subscription registered successfully."
+    );
+
+    return true;
+  } catch (error) {
+    console.error(
+      "Saving browser push subscription failed:",
+      error
+    );
+
+    return false;
   }
-);
-// 📦 STEP 5: Read the backend response.
-const result = await response.json().catch(() => null);
-if (!response.ok || !result?.success) {
-  console.error(
-    "Saving browser push subscription failed:",
-    result?.error ||
-      `Backend returned HTTP ${response.status}.`
-  );
-  return false;
-}
-// ✅ STEP 6: Registration succeeded.
-console.log(
-  "Browser push subscription registered successfully."
-);
-return true;
-
-} catch (error) {
-console.error(
-"Saving browser push subscription failed:",
-error
-);
-
-return false;
-
-}
 }
 
 // =====================================================
-// 8. ENABLE BROWSER NOTIFICATIONS FOR A USER
+// 9. ENABLE BROWSER NOTIFICATIONS FOR A USER
 // =====================================================
 
 export async function enableBrowserNotifications(
@@ -363,6 +529,14 @@ export async function enableBrowserNotifications(
     };
   }
 
+  if (!("PushManager" in window)) {
+    return {
+      success: false,
+      message:
+        "Push notifications are unavailable in this browser.",
+    };
+  }
+
   if (isIOSDevice() && !isRunningAsInstalledApp()) {
     return {
       success: false,
@@ -379,12 +553,12 @@ export async function enableBrowserNotifications(
     };
   }
 
+  // STEP 1: Request or confirm notification permission.
   const allowed =
     await requestBrowserNotificationPermission();
 
   if (!allowed) {
-    const permission =
-      Notification.permission;
+    const permission = Notification.permission;
 
     return {
       success: false,
@@ -395,6 +569,7 @@ export async function enableBrowserNotifications(
     };
   }
 
+  // STEP 2: Create or reuse the browser push subscription.
   const subscription =
     await createBrowserPushSubscription();
 
@@ -402,10 +577,11 @@ export async function enableBrowserNotifications(
     return {
       success: false,
       message:
-        "Permission was granted, but the browser push subscription failed. Check the browser console for details.",
+        "Notification permission was granted, but this iPhone could not create a push subscription. Check the browser console for the exact error.",
     };
   }
 
+  // STEP 3: Save the subscription to the Nasara backend.
   const saved = await saveBrowserPushSubscription(
     userId,
     subscription
@@ -415,10 +591,11 @@ export async function enableBrowserNotifications(
     return {
       success: false,
       message:
-        "The browser subscription was created but could not be saved. Check the Supabase table permissions and login session.",
+        "The browser subscription was created but could not be saved to Nasara. Check the login session and backend response.",
     };
   }
 
+  // STEP 4: Confirm success.
   return {
     success: true,
     message:
