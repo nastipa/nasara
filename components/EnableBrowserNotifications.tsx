@@ -1,10 +1,15 @@
 // =====================================================
 // NASARA BROWSER NOTIFICATIONS BUTTON
 // File: components/EnableBrowserNotifications.tsx
-// iPHONE PUSH DIAGNOSTICS
+// DIRECT iPHONE PUSH SUBSCRIPTION FIX
 // =====================================================
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
   Platform,
@@ -15,7 +20,8 @@ import {
 } from "react-native";
 
 import {
-  enableBrowserNotifications,
+  registerBrowserPush,
+  saveBrowserPushSubscription,
 } from "../lib/registerBrowserPush";
 
 // =====================================================
@@ -25,11 +31,6 @@ import {
 type EnableBrowserNotificationsProps = {
   userId: string;
 };
-
-type NotificationStatus =
-  | "checking"
-  | "enabled"
-  | "disabled";
 
 type DiagnosticItem = {
   label: string;
@@ -41,34 +42,35 @@ type DiagnosticItem = {
 // CONFIGURATION
 // =====================================================
 
-const ENABLE_TIMEOUT_MS = 70000;
-const DIAGNOSTIC_TIMEOUT_MS = 10000;
+const VAPID_PUBLIC_KEY =
+  process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY || "";
 
 // =====================================================
-// TIMEOUT HELPER
+// CONVERT VAPID KEY
 // =====================================================
 
-function withTimeout<T>(
-  promise: Promise<T>,
-  milliseconds: number,
-  step: string
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new Error(`${step} timed out.`));
-    }, milliseconds);
+function urlBase64ToUint8Array(
+  base64String: string
+): Uint8Array<ArrayBuffer> {
+  const padding = "=".repeat(
+    (4 - (base64String.length % 4)) % 4
+  );
 
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
+  const base64 = (base64String + padding)
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+
+  const rawData = window.atob(base64);
+
+  const outputArray = new Uint8Array(
+    new ArrayBuffer(rawData.length)
+  );
+
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+
+  return outputArray;
 }
 
 // =====================================================
@@ -79,344 +81,266 @@ export default function EnableBrowserNotifications({
   userId,
 }: EnableBrowserNotificationsProps) {
   const [loading, setLoading] = useState(false);
-
   const [checking, setChecking] = useState(true);
-
-  const [status, setStatus] =
-    useState<NotificationStatus>("checking");
-
-  const [message, setMessage] = useState("");
-
   const [success, setSuccess] = useState(false);
+  const [message, setMessage] = useState("");
 
   const [diagnostics, setDiagnostics] =
     useState<DiagnosticItem[]>([]);
+
+  const registrationRef =
+    useRef<ServiceWorkerRegistration | null>(null);
+
+  const subscriptionRef =
+    useRef<PushSubscription | null>(null);
 
   const mountedRef = useRef(true);
   const busyRef = useRef(false);
 
   // ===================================================
-  // CHECK IPHONE / BROWSER PUSH ENVIRONMENT
+  // DIAGNOSTICS
   // ===================================================
 
-  const checkNotificationStatus = useCallback(async () => {
-    if (
-      Platform.OS !== "web" ||
-      typeof window === "undefined"
-    ) {
-      return;
-    }
-
-    setChecking(true);
-    setStatus("checking");
-    setDiagnostics([]);
-
-    const results: DiagnosticItem[] = [];
-
-    const addResult = (
-      label: string,
-      value: string,
-      good?: boolean
+  const checkNotificationStatus = useCallback(
+    async (
+      registration?: ServiceWorkerRegistration
     ) => {
-      results.push({
-        label,
-        value,
-        good,
-      });
-
-      if (mountedRef.current) {
-        setDiagnostics([...results]);
-      }
-    };
-
-    try {
-      // 1. HTTPS CHECK
-
-      addResult(
-        "Secure HTTPS connection",
-        window.isSecureContext ? "Available" : "Unavailable",
-        window.isSecureContext
-      );
-
-      // 2. DEVICE CHECK
-
-      const isIOS =
-        /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-        (navigator.platform === "MacIntel" &&
-          navigator.maxTouchPoints > 1);
-
-      const standalone =
-        window.matchMedia?.(
-          "(display-mode: standalone)"
-        ).matches ||
-        (navigator as Navigator & {
-          standalone?: boolean;
-        }).standalone === true;
-
-      addResult(
-        "Device",
-        isIOS ? "Apple iPhone / iPad" : "Other device"
-      );
-
-      addResult(
-        "Home Screen app",
-        standalone ? "Installed mode detected" : "Browser mode detected",
-        standalone
-      );
-
-      // 3. NOTIFICATION PERMISSION
-
-      const permission =
-        "Notification" in window
-          ? Notification.permission
-          : "Unsupported";
-
-      addResult(
-        "Notification permission",
-        permission,
-        permission === "granted"
-      );
-
-      // 4. PUSH MANAGER
-
-      const pushSupported =
-        "PushManager" in window;
-
-      addResult(
-        "PushManager API",
-        pushSupported ? "Available" : "Unavailable",
-        pushSupported
-      );
-
-      // 5. SERVICE WORKER SUPPORT
-
-      const serviceWorkerSupported =
-        "serviceWorker" in navigator;
-
-      addResult(
-        "Service Worker API",
-        serviceWorkerSupported ? "Available" : "Unavailable",
-        serviceWorkerSupported
-      );
-
-      // 6. VAPID KEY
-
-      const vapidKey =
-        process.env.EXPO_PUBLIC_VAPID_PUBLIC_KEY?.trim() || "";
-
-      addResult(
-        "VAPID public key",
-        vapidKey ? "Loaded" : "Missing",
-        Boolean(vapidKey)
-      );
-
-      if (!serviceWorkerSupported) {
-        addResult(
-          "Service worker registration",
-          "Not supported"
-        );
-
-        setStatus("disabled");
-        setMessage("This browser does not support service workers.");
+      if (
+        Platform.OS !== "web" ||
+        typeof window === "undefined"
+      ) {
         return;
       }
 
-      // 7. GET EXISTING REGISTRATION
-      // IMPORTANT: This only inspects. It does not register,
-      // unregister, delete, or modify the service worker.
+      const results: DiagnosticItem[] = [];
 
-      addResult(
-        "Service worker",
-        "Checking existing registration..."
-      );
+      const addResult = (
+        label: string,
+        value: string,
+        good?: boolean
+      ) => {
+        results.push({ label, value, good });
 
-      const registration =
-        await withTimeout(
-          navigator.serviceWorker.getRegistration("/"),
-          DIAGNOSTIC_TIMEOUT_MS,
-          "Checking service worker registration"
-        );
+        if (mountedRef.current) {
+          setDiagnostics([...results]);
+        }
+      };
 
-      if (!registration) {
+      try {
         addResult(
-          "Service worker registration",
-          "No registration found",
-          false
+          "Current page origin",
+          window.location.origin
         );
 
         addResult(
-          "Active service worker",
-          "Not available",
-          false
+          "HTTPS",
+          window.isSecureContext
+            ? "Available"
+            : "Unavailable",
+          window.isSecureContext
+        );
+
+        const isIOS =
+          /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === "MacIntel" &&
+            navigator.maxTouchPoints > 1);
+
+        addResult(
+          "Device",
+          isIOS ? "Apple iPhone / iPad" : "Other device"
+        );
+
+        const standalone =
+          window.matchMedia?.(
+            "(display-mode: standalone)"
+          ).matches ||
+          (navigator as Navigator & {
+            standalone?: boolean;
+          }).standalone === true;
+
+        addResult(
+          "Home Screen app",
+          standalone ? "Installed" : "Not installed",
+          standalone
         );
 
         addResult(
-          "Existing push subscription",
-          "Cannot check without registration",
-          false
+          "Notification permission",
+          "Notification" in window
+            ? Notification.permission
+            : "Unsupported",
+          "Notification" in window &&
+            Notification.permission === "granted"
         );
 
-        setStatus("disabled");
-        setMessage(
-          "Nasara has no existing service-worker registration on this device."
-        );
-
-        return;
-      }
-
-      addResult(
-        "Service worker registration",
-        "Found: " + registration.scope,
-        true
-      );
-
-      // 8. ACTIVE WORKER
-
-      const activeWorker =
-        registration.active;
-
-      addResult(
-        "Active service worker",
-        activeWorker
-          ? activeWorker.state
-          : "No active worker",
-        Boolean(activeWorker)
-      );
-
-      addResult(
-        "Waiting service worker",
-        registration.waiting
-          ? registration.waiting.state
-          : "None"
-      );
-
-      addResult(
-        "Installing service worker",
-        registration.installing
-          ? registration.installing.state
-          : "None"
-      );
-
-      // 9. PAGE CONTROLLER
-
-      addResult(
-        "Current page controller",
-        navigator.serviceWorker.controller
-          ? navigator.serviceWorker.controller.state
-          : "No controller"
-      );
-
-      // 10. EXISTING PUSH SUBSCRIPTION
-
-      if (!pushSupported) {
         addResult(
-          "Existing push subscription",
-          "PushManager unavailable",
-          false
+          "PushManager",
+          "PushManager" in window
+            ? "Available"
+            : "Unavailable",
+          "PushManager" in window
         );
 
-        setStatus("disabled");
-        setMessage("PushManager is unavailable on this device.");
-        return;
-      }
-
-      addResult(
-        "Push subscription",
-        "Checking..."
-      );
-
-      const subscription =
-        await withTimeout(
-          registration.pushManager.getSubscription(),
-          DIAGNOSTIC_TIMEOUT_MS,
-          "Checking existing push subscription"
-        );
-
-      if (subscription) {
         addResult(
-          "Existing push subscription",
-          "FOUND",
+          "VAPID public key",
+          VAPID_PUBLIC_KEY
+            ? "Loaded"
+            : "Missing",
+          Boolean(VAPID_PUBLIC_KEY)
+        );
+
+        const activeRegistration =
+          registration ||
+          registrationRef.current;
+
+        if (!activeRegistration) {
+          addResult(
+            "Service worker",
+            "Registration not available",
+            false
+          );
+
+          addResult(
+            "Existing push subscription",
+            "Cannot check",
+            false
+          );
+
+          return;
+        }
+
+        addResult(
+          "Service worker scope",
+          activeRegistration.scope,
           true
         );
 
         addResult(
-          "Push endpoint",
-          subscription.endpoint.substring(0, 55) + "..."
+          "Active service worker",
+          activeRegistration.active?.state ||
+            "Not active",
+          Boolean(activeRegistration.active)
         );
 
-        setStatus("enabled");
-        setSuccess(true);
-
-        setMessage(
-          "A browser push subscription exists. Tap Enable Notifications to verify its registration with your Nasara account."
+        addResult(
+          "Page controller",
+          navigator.serviceWorker.controller?.state ||
+            "None"
         );
 
-      } else {
+        const existingSubscription =
+          await activeRegistration.pushManager.getSubscription();
+
+        subscriptionRef.current =
+          existingSubscription;
+
         addResult(
           "Existing push subscription",
-          "NOT FOUND",
+          existingSubscription ? "FOUND" : "NOT FOUND",
+          Boolean(existingSubscription)
+        );
+
+        if (existingSubscription) {
+          addResult(
+            "Push endpoint",
+            existingSubscription.endpoint.substring(
+              0,
+              55
+            ) + "..."
+          );
+        }
+      } catch (error: any) {
+        addResult(
+          "Diagnostic error",
+          error?.message || String(error),
           false
         );
-
-        setStatus("disabled");
-        setSuccess(false);
-
-        setMessage(
-          "Notifications are permitted, but this iPhone has no existing push subscription."
-        );
       }
-
-    } catch (error) {
-      console.error(
-        "NASARA PUSH DIAGNOSTIC ERROR:",
-        error
-      );
-
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : String(error);
-
-      addResult(
-        "Diagnostic error",
-        errorMessage,
-        false
-      );
-
-      setStatus("disabled");
-      setSuccess(false);
-      setMessage(errorMessage);
-
-    } finally {
-      if (mountedRef.current) {
-        setChecking(false);
-      }
-    }
-  }, []);
+    },
+    []
+  );
 
   // ===================================================
-  // INITIAL CHECK
+  // PREPARE SERVICE WORKER BEFORE BUTTON TAP
   // ===================================================
 
   useEffect(() => {
     mountedRef.current = true;
 
-    void checkNotificationStatus();
+    if (Platform.OS !== "web") {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function preparePush() {
+      setChecking(true);
+
+      try {
+        const registration =
+          await registerBrowserPush();
+
+        if (cancelled || !mountedRef.current) {
+          return;
+        }
+
+        if (!registration) {
+          setMessage(
+            "Nasara could not prepare the service worker."
+          );
+
+          setSuccess(false);
+          return;
+        }
+
+        registrationRef.current = registration;
+
+        const subscription =
+          await registration.pushManager.getSubscription();
+
+        if (cancelled || !mountedRef.current) {
+          return;
+        }
+
+        subscriptionRef.current = subscription;
+
+        await checkNotificationStatus(registration);
+
+      } catch (error: any) {
+        console.error(
+          "NASARA PUSH PREPARATION ERROR:",
+          error
+        );
+
+        if (mountedRef.current) {
+          setMessage(
+            error?.message ||
+              "Could not prepare browser notifications."
+          );
+        }
+      } finally {
+        if (!cancelled && mountedRef.current) {
+          setChecking(false);
+        }
+      }
+    }
+
+    void preparePush();
 
     return () => {
+      cancelled = true;
       mountedRef.current = false;
     };
   }, [checkNotificationStatus]);
 
   // ===================================================
   // ENABLE NOTIFICATIONS
+  // IMPORTANT:
+  // SUBSCRIBE IS CALLED DIRECTLY FROM THE BUTTON TAP.
   // ===================================================
 
   async function handleEnableNotifications() {
-    if (
-      busyRef.current ||
-      !mountedRef.current
-    ) {
+    if (busyRef.current || !mountedRef.current) {
       return;
     }
 
@@ -428,39 +352,149 @@ export default function EnableBrowserNotifications({
       return;
     }
 
-    busyRef.current = true;
+    if (!registrationRef.current) {
+      setSuccess(false);
+      setMessage(
+        "Nasara service worker is not ready. Close and reopen Nasara, then try again."
+      );
+      return;
+    }
 
+    if (!VAPID_PUBLIC_KEY) {
+      setSuccess(false);
+      setMessage(
+        "VAPID public key is missing. Check your Vercel environment variables."
+      );
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      setSuccess(false);
+      setMessage(
+        "This browser does not support notifications."
+      );
+      return;
+    }
+
+    if (Notification.permission === "denied") {
+      setSuccess(false);
+      setMessage(
+        "Notifications are blocked. Allow them in your iPhone settings."
+      );
+      return;
+    }
+
+    // If permission has not yet been granted,
+    // request it and ask the user to tap again.
+    if (Notification.permission !== "granted") {
+      try {
+        const permission =
+          await Notification.requestPermission();
+
+        if (permission !== "granted") {
+          setSuccess(false);
+          setMessage(
+            "Notification permission was not granted."
+          );
+          return;
+        }
+
+        setSuccess(false);
+        setMessage(
+          "Permission granted. Tap Enable Notifications again to create your subscription."
+        );
+
+        return;
+      } catch (error: any) {
+        setSuccess(false);
+        setMessage(
+          error?.message ||
+            "Could not request notification permission."
+        );
+        return;
+      }
+    }
+
+    busyRef.current = true;
     setLoading(true);
-    setMessage("");
     setSuccess(false);
+    setMessage("");
 
     try {
-      const result =
-        await withTimeout(
-          enableBrowserNotifications(userId),
-          ENABLE_TIMEOUT_MS,
-          "Notification setup"
+      const registration =
+        registrationRef.current;
+
+      let subscription =
+        subscriptionRef.current;
+
+      // IMPORTANT:
+      // If no subscription exists, invoke subscribe()
+      // immediately in this button interaction.
+      // Do not await another operation first.
+
+      if (!subscription) {
+        const applicationServerKey =
+          urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+
+        if (applicationServerKey.length !== 65) {
+          throw new Error(
+            "Invalid VAPID public key. Expected 65 bytes."
+          );
+        }
+
+        console.log(
+          "NASARA: Starting direct push subscription."
         );
+
+        const subscriptionPromise =
+          registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey,
+          });
+
+        subscription = await subscriptionPromise;
+
+        if (!subscription) {
+          throw new Error(
+            "The browser did not return a push subscription."
+          );
+        }
+
+        subscriptionRef.current = subscription;
+
+        console.log(
+          "NASARA: Push subscription created."
+        );
+      }
+
+      // Save or register the subscription.
+      const saved =
+        await saveBrowserPushSubscription(
+          userId,
+          subscription
+        );
+
+      if (!saved) {
+        throw new Error(
+          "The push subscription exists, but Nasara could not save it to the server."
+        );
+      }
 
       if (!mountedRef.current) {
         return;
       }
 
-      setSuccess(result.success);
-      setMessage(result.message);
+      setSuccess(true);
 
-      setStatus(
-        result.success ? "enabled" : "disabled"
+      setMessage(
+        "Nasara browser notifications have been enabled successfully."
       );
 
-      // Refresh diagnostic information after the attempt.
-      if (result.success) {
-        void checkNotificationStatus();
-      }
+      await checkNotificationStatus(registration);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(
-        "NASARA ENABLE NOTIFICATIONS ERROR:",
+        "NASARA PUSH SUBSCRIPTION ERROR:",
         error
       );
 
@@ -469,13 +503,30 @@ export default function EnableBrowserNotifications({
       }
 
       setSuccess(false);
-      setStatus("disabled");
 
       setMessage(
-        error instanceof Error
-          ? error.message
-          : "Notification setup failed."
+        `Push subscription failed: ${
+          error?.name || "Error"
+        }: ${
+          error?.message || String(error)
+        }`
       );
+
+      // Show the actual error in diagnostics too.
+      setDiagnostics((previous) => [
+        ...previous,
+        {
+          label: "Subscription error name",
+          value: error?.name || "UnknownError",
+          good: false,
+        },
+        {
+          label: "Subscription error message",
+          value:
+            error?.message || String(error),
+          good: false,
+        },
+      ]);
 
     } finally {
       busyRef.current = false;
@@ -502,14 +553,11 @@ export default function EnableBrowserNotifications({
     <View style={styles.container}>
       <Pressable
         accessibilityRole="button"
-        disabled={
-          loading ||
-          checking
-        }
+        disabled={loading || checking}
         onPress={handleEnableNotifications}
         style={({ pressed }) => [
           styles.button,
-          status === "enabled" && styles.buttonEnabled,
+          success && styles.buttonEnabled,
           pressed && styles.buttonPressed,
           (loading || checking) &&
             styles.buttonDisabled,
@@ -519,8 +567,8 @@ export default function EnableBrowserNotifications({
           {loading
             ? "Enabling notifications..."
             : checking
-              ? "Checking Notifications..."
-              : status === "enabled"
+              ? "Preparing Notifications..."
+              : success
                 ? "Notifications Enabled"
                 : "Enable Notifications"}
         </Text>
@@ -540,6 +588,52 @@ export default function EnableBrowserNotifications({
         </Text>
       )}
 
+      {/* PUSH DIAGNOSTICS */}
+
+      <View style={styles.diagnosticContainer}>
+        <Text style={styles.diagnosticTitle}>
+          Nasara Push Diagnostics
+        </Text>
+
+        {diagnostics.map((item, index) => (
+          <View
+            key={`${item.label}-${index}`}
+            style={styles.diagnosticRow}
+          >
+            <Text style={styles.diagnosticLabel}>
+              {item.label}
+            </Text>
+
+            <Text
+              selectable
+              style={[
+                styles.diagnosticValue,
+                item.good === true &&
+                  styles.diagnosticGood,
+                item.good === false &&
+                  styles.diagnosticBad,
+              ]}
+            >
+              {item.value}
+            </Text>
+          </View>
+        ))}
+
+        <Pressable
+          accessibilityRole="button"
+          disabled={checking || loading}
+          onPress={() => {
+            void checkNotificationStatus();
+          }}
+          style={styles.refreshButton}
+        >
+          <Text style={styles.refreshButtonText}>
+            {checking
+              ? "Checking..."
+              : "Refresh Diagnostics"}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
