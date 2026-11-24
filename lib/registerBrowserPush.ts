@@ -368,6 +368,23 @@ export async function createBrowserPushSubscription(): Promise<PushSubscription 
       "Error message:",
       error?.message || error
     );
+    console.error(
+  "Full push error:",
+  JSON.stringify(
+    {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack,
+      origin: window.location.origin,
+      permission: Notification.permission,
+      standalone: isRunningAsInstalledApp(),
+      serviceWorkerController:
+        navigator.serviceWorker.controller?.state || "none",
+    },
+    null,
+    2
+  )
+);
 
     return null;
   }
