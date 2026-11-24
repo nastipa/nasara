@@ -3,7 +3,7 @@
 // File: components/EnableBrowserNotifications.tsx
 // =====================================================
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   Platform,
@@ -19,10 +19,6 @@ import {
   saveBrowserPushSubscription,
 } from "../lib/registerBrowserPush";
 
-// =====================================================
-// 1. COMPONENT PROPERTIES
-// =====================================================
-
 type EnableBrowserNotificationsProps = {
   userId: string;
 };
@@ -32,9 +28,33 @@ type NotificationStatus =
   | "enabled"
   | "disabled";
 
-// =====================================================
-// 2. ENABLE NOTIFICATIONS BUTTON
-// =====================================================
+const ENABLE_TIMEOUT_MS = 70000;
+
+function withComponentTimeout<T>(
+  promise: Promise<T>,
+  milliseconds: number
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new Error(
+          "Notification setup is taking too long. Close and reopen Nasara before trying again."
+        )
+      );
+    }, milliseconds);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 export default function EnableBrowserNotifications({
   userId,
@@ -48,10 +68,8 @@ export default function EnableBrowserNotifications({
 
   const [success, setSuccess] = useState(false);
 
-  // ===================================================
-  // 3. CHECK EXISTING NOTIFICATION STATUS
-  // Runs when the component loads or the user changes.
-  // ===================================================
+  const mountedRef = useRef(true);
+  const busyRef = useRef(false);
 
   const checkNotificationStatus = useCallback(async () => {
     if (
@@ -75,34 +93,37 @@ export default function EnableBrowserNotifications({
         return;
       }
 
-      // Register or reuse the existing service worker.
-
-      const registration = await registerBrowserPush();
+      const registration = await withComponentTimeout(
+        registerBrowserPush(),
+        25000
+      );
 
       if (!registration) {
         setStatus("disabled");
+        setSuccess(false);
+        setMessage(
+          "Nasara could not access its notification service worker."
+        );
         return;
       }
 
-      // Retrieve the existing browser subscription.
-
-      const subscription =
-        await registration.pushManager.getSubscription();
+      const subscription = await withComponentTimeout(
+        registration.pushManager.getSubscription(),
+        15000
+      );
 
       if (!subscription) {
         setStatus("disabled");
         setSuccess(false);
         setMessage(
-          "Notifications are permitted, but no push subscription was found. Please enable notifications again."
+          "Notifications are permitted, but no push subscription was found. Tap Enable Notifications to try again."
         );
         return;
       }
 
-      // Save or update the subscription for this user.
-
-      const saved = await saveBrowserPushSubscription(
-        userId,
-        subscription
+      const saved = await withComponentTimeout(
+        saveBrowserPushSubscription(userId, subscription),
+        25000
       );
 
       if (saved) {
@@ -127,34 +148,29 @@ export default function EnableBrowserNotifications({
       setStatus("disabled");
       setSuccess(false);
       setMessage(
-        "Could not check notification status. Please try again."
+        error instanceof Error
+          ? error.message
+          : "Could not check notification status. Please try again."
       );
     }
   }, [userId]);
 
-  // ===================================================
-  // 4. CHECK STATUS WHEN THE COMPONENT LOADS
-  // This prevents the button resetting after a refresh.
-  // ===================================================
-
   useEffect(() => {
-    void checkNotificationStatus();
-  }, [checkNotificationStatus]);
+    mountedRef.current = true;
 
-  // ===================================================
-  // 5. HIDE BUTTON ON NATIVE MOBILE PLATFORMS
-  // ===================================================
+    void checkNotificationStatus();
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [checkNotificationStatus]);
 
   if (Platform.OS !== "web") {
     return null;
   }
 
-  // ===================================================
-  // 6. HANDLE ENABLE NOTIFICATIONS BUTTON PRESS
-  // ===================================================
-
   async function handleEnableNotifications() {
-    if (loading) {
+    if (busyRef.current || !mountedRef.current) {
       return;
     }
 
@@ -166,41 +182,53 @@ export default function EnableBrowserNotifications({
       return;
     }
 
+    busyRef.current = true;
     setLoading(true);
     setMessage("");
+    setSuccess(false);
 
     try {
-      const result =
-        await enableBrowserNotifications(userId);
+      const result = await withComponentTimeout(
+        enableBrowserNotifications(userId),
+        ENABLE_TIMEOUT_MS
+      );
+
+      if (!mountedRef.current) {
+        return;
+      }
 
       setSuccess(result.success);
       setMessage(result.message);
 
-      if (result.success) {
-        setStatus("enabled");
-      } else {
-        setStatus("disabled");
-      }
+      setStatus(
+        result.success ? "enabled" : "disabled"
+      );
     } catch (error) {
       console.error(
         "Could not enable browser notifications:",
         error
       );
 
+      if (!mountedRef.current) {
+        return;
+      }
+
       setSuccess(false);
       setStatus("disabled");
 
       setMessage(
-        "Something went wrong. Please try again."
+        error instanceof Error
+          ? error.message
+          : "Notification setup failed. Please close and reopen Nasara."
       );
     } finally {
-      setLoading(false);
+      busyRef.current = false;
+
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }
-
-  // ===================================================
-  // 7. DISPLAY THE NOTIFICATIONS BUTTON
-  // ===================================================
 
   return (
     <View style={styles.container}>
@@ -211,18 +239,12 @@ export default function EnableBrowserNotifications({
             ? "Browser notifications enabled"
             : "Enable browser notifications"
         }
-        disabled={
-          loading || status === "checking"
-        }
+        disabled={loading || status === "checking"}
         onPress={handleEnableNotifications}
         style={({ pressed }) => [
           styles.button,
-
-          status === "enabled" &&
-            styles.buttonEnabled,
-
+          status === "enabled" && styles.buttonEnabled,
           pressed && styles.buttonPressed,
-
           (loading || status === "checking") &&
             styles.buttonDisabled,
         ]}
@@ -231,10 +253,10 @@ export default function EnableBrowserNotifications({
           {loading
             ? "Enabling notifications..."
             : status === "checking"
-              ? "⏳ Checking Notifications..."
+              ? "Checking Notifications..."
               : status === "enabled"
-                ? "✅ Notifications Enabled"
-                : "🔔 Enable Notifications"}
+                ? "Notifications Enabled"
+                : "Enable Notifications"}
         </Text>
       </Pressable>
 
@@ -243,7 +265,6 @@ export default function EnableBrowserNotifications({
           accessibilityLiveRegion="polite"
           style={[
             styles.message,
-
             success
               ? styles.successMessage
               : styles.errorMessage,
@@ -255,10 +276,6 @@ export default function EnableBrowserNotifications({
     </View>
   );
 }
-
-// =====================================================
-// 8. STYLES
-// =====================================================
 
 const styles = StyleSheet.create({
   container: {
