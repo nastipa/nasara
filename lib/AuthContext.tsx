@@ -1,45 +1,71 @@
-import { createContext, useContext, useEffect, useState } from "react"
-import { supabase } from "./supabase"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+
+import { supabase } from "./supabase";
 
 type AuthContextType = {
-  user: any
-}
+  user: any;
+};
 
 const AuthContext = createContext<AuthContextType>({
-  user: null
-})
+  user: null,
+});
 
 export function AuthProvider({ children }: any) {
+  const [user, setUser] = useState<any>(null);
 
-  const [user,setUser] = useState<any>(null)
+  useEffect(() => {
+    let mounted = true;
 
-  useEffect(()=>{
+    // Load the locally available session without
+    // making another getUser() network request.
+    const loadUser = async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
-    async function loadUser(){
+        if (error) {
+          console.log("AuthContext session error:", error.message);
+          return;
+        }
 
-      const { data } = await supabase.auth.getUser()
-      setUser(data.user)
+        if (mounted) {
+          setUser(session?.user ?? null);
+        }
+      } catch (error) {
+        console.log("AuthContext load error:", error);
+      }
+    };
 
-    }
+    loadUser();
 
-    loadUser()
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) {
+        setUser(session?.user ?? null);
+      }
+    });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event,session)=>{
-      setUser(session?.user ?? null)
-    })
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
-    return ()=> listener.subscription.unsubscribe()
-
-  },[])
-
-  return(
+  return (
     <AuthContext.Provider value={{ user }}>
       {children}
     </AuthContext.Provider>
-  )
-
+  );
 }
 
-export function useAuth(){
-  return useContext(AuthContext)
+export function useAuth() {
+  return useContext(AuthContext);
 }

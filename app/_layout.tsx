@@ -846,7 +846,7 @@ useEffect(() => {
 
   /* ================= LOADING ================= */
 
-  if (!ready) {
+ if (!ready && Platform.OS !== "web") {
     return (
       <View
         style={{
