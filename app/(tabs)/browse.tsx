@@ -333,190 +333,144 @@ const showMessage = (title: string, message?: string) => {
   const logoutUser = async () => {
     await supabase.auth.signOut();
 
-    Alert.alert("Logged Out", "You are now signed out.");
+   showMessage("Logged Out", "You are now signed out.");
 
     router.replace("/browse");
   };
 
-  // 🟡 =====================================================
-  // 🟡 ADMIN DELETE PRODUCT OR IMAGE
-  // 🟡 =====================================================
+ // 🟡 =====================================================
+// 🟡 ADMIN DELETE PRODUCT OR IMAGE
+// 🟡 =====================================================
 
-  const deleteItem = async (item: Item) => {
-    Alert.alert(
-      "Delete",
-      "Remove the main image or the entire post?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete Image",
-          onPress: async () => {
-            try {
-              const postId = item.original_id || item.id;
+const deleteItem = async (item: Item) => {
+  const confirmed = confirm(
+    "Remove the main image or the entire post?\n\nOK = Delete image\nCancel = Cancel"
+  );
 
-              const { data: post, error: fetchErr } = await (
-                supabase as any
-              )
-                .from("items_live")
-                .select("id,image_urls,image_url")
-                .eq("id", postId)
-                .single();
+  if (!confirmed) return;
 
-              if (fetchErr || !post) {
-                Alert.alert("Post not found");
-                return;
-              }
+  try {
+    const postId = item.original_id || item.id;
 
-              const images = Array.isArray(post.image_urls)
-                ? [...post.image_urls]
-                : post.image_url
-                ? [post.image_url]
-                : [];
+    const { data: post, error: fetchErr } = await (supabase as any)
+      .from("items_live")
+      .select("id,image_urls,image_url")
+      .eq("id", postId)
+      .single();
 
-              const imageToRemove = item.image_url || images[0];
+    if (fetchErr || !post) {
+      showMessage("Post not found", "The post could not be found.");
+      return;
+    }
 
-              const updated = images.filter(
-                (img: string) => img !== imageToRemove
-              );
+    const images = Array.isArray(post.image_urls)
+      ? [...post.image_urls]
+      : post.image_url
+      ? [post.image_url]
+      : [];
 
-              if (updated.length === 0) {
-                const { error } = await supabase
-                  .from("items_live")
-                  .delete()
-                  .eq("id", postId);
+    const imageToRemove = item.image_url || images[0];
 
-                if (error) throw error;
-              } else {
-                const { error } = await (supabase as any)
-                  .from("items_live")
-                  .update({
-                    image_urls: updated,
-                    image_url: updated[0],
-                  })
-                  .eq("id", postId);
-
-                if (error) throw error;
-              }
-
-              await refreshAll();
-            } catch (error: any) {
-              console.log("Delete image error:", error);
-
-              Alert.alert(
-                "Delete failed",
-                error.message || "Try again"
-              );
-            }
-          },
-        },
-        {
-          text: "Delete Post",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const postId = item.original_id || item.id;
-
-              const { error } = await supabase
-                .from("items_live")
-                .delete()
-                .eq("id", postId);
-
-              if (error) throw error;
-
-              await refreshAll();
-            } catch (error: any) {
-              console.log("Delete post error:", error);
-
-              Alert.alert(
-                "Delete failed",
-                error.message || "Try again"
-              );
-            }
-          },
-        },
-      ]
+    const updated = images.filter(
+      (img: string) => img !== imageToRemove
     );
-  };
 
-  // 🟡 =====================================================
-  // 🟡 ADMIN DELETE SPECIAL ITEMS
-  // 🟡 =====================================================
+    if (updated.length === 0) {
+      const { error } = await supabase
+        .from("items_live")
+        .delete()
+        .eq("id", postId);
 
-  const deleteSpecialItem = async (item: Item) => {
-    if (!isAdmin) return;
+      if (error) throw error;
+    } else {
+      const { error } = await (supabase as any)
+        .from("items_live")
+        .update({
+          image_urls: updated,
+          image_url: updated[0],
+        })
+        .eq("id", postId);
 
-    Alert.alert(
-      "Delete?",
-      "Remove this item permanently?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              let query: any;
+      if (error) throw error;
+    }
 
-              if (item.type === "ad") {
-                const realId = item.id.replace("ad-", "");
+    await refreshAll();
 
-                query = supabase
-                  .from("ads")
-                  .delete()
-                  .eq("id", realId);
-              } else if (item.type === "banner") {
-                const realId = item.id.replace("banner-", "");
+    showMessage("Success", "Image removed successfully.");
+  } catch (error: any) {
+    console.log("Delete image error:", error);
 
-                query = supabase
-                  .from("banner")
-                  .delete()
-                  .eq("id", realId);
-              } else if (item.type === "promoted") {
-                query = supabase
-                  .from("promoted")
-                  .delete()
-                  .eq("id", item.id);
-              } else if (item.type === "boosted") {
-                query = (supabase as any)
-                  .from("items_live")
-                  .update({
-                    is_boosted: false,
-                    boosted_until: null,
-                  })
-                  .eq("id", item.id);
-              } else {
-                query = supabase
-                  .from("items_live")
-                  .delete()
-                  .eq("id", item.id);
-              }
-
-              const { error } = await query;
-
-              if (error) {
-                Alert.alert("Delete Failed", error.message);
-                return;
-              }
-
-              Alert.alert("Success", "Item removed");
-
-              refreshAll();
-            } catch (error) {
-              console.log(error);
-
-              Alert.alert("Error", "Something went wrong");
-            }
-          },
-        },
-      ]
+    showMessage(
+      "Delete failed",
+      error?.message || "Try again"
     );
-  };
+  }
+};
+
+// 🟡 =====================================================
+// 🟡 ADMIN DELETE SPECIAL ITEMS
+// 🟡 =====================================================
+
+const deleteSpecialItem = async (item: Item) => {
+  if (!isAdmin) return;
+
+  const confirmed = confirm("Remove this item permanently?");
+
+  if (!confirmed) return;
+
+  try {
+    let query: any;
+
+    if (item.type === "ad") {
+      const realId = item.id.replace("ad-", "");
+
+      query = supabase
+        .from("ads")
+        .delete()
+        .eq("id", realId);
+    } else if (item.type === "banner") {
+      const realId = item.id.replace("banner-", "");
+
+      query = supabase
+        .from("banner")
+        .delete()
+        .eq("id", realId);
+    } else if (item.type === "promoted") {
+      query = supabase
+        .from("promoted")
+        .delete()
+        .eq("id", item.id);
+    } else if (item.type === "boosted") {
+      query = (supabase as any)
+        .from("items_live")
+        .update({
+          is_boosted: false,
+          boosted_until: null,
+        })
+        .eq("id", item.id);
+    } else {
+      query = supabase
+        .from("items_live")
+        .delete()
+        .eq("id", item.id);
+    }
+
+    const { error } = await query;
+
+    if (error) {
+      showMessage("Delete Failed", error.message);
+      return;
+    }
+
+    await refreshAll();
+
+    showMessage("Success", "Item removed");
+  } catch (error: any) {
+    console.log(error);
+
+    showMessage("Error", error?.message || "Something went wrong");
+  }
+};
 
  // 🟡 LOAD LIVE STREAMS
 
@@ -1861,7 +1815,7 @@ is_negotiable: Boolean(b.is_negotiable),
             <TouchableOpacity
               onPress={() =>
                 Linking.openURL(
-                  "https://expo.dev/artifacts/eas/nTUng9ahfU5G5-GbVvvKgVGWwTJrXq0oVMd6zdb1mrU.apk"
+                  "https://expo.dev/artifacts/eas/vp6CCR7rZ7-QN4UGZFoqxn-nWVI6ja2i3n4-gFe9Asw.apk"
                 )
               }
               style={styles.downloadButton}
