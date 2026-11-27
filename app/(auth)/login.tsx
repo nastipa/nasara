@@ -10,6 +10,8 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -51,7 +53,6 @@ export default function LoginScreen() {
       ? params.returnTo[0]
       : params.returnTo;
 
-    // Only allow internal app routes.
     if (
       destination &&
       destination.startsWith("/") &&
@@ -69,7 +70,6 @@ export default function LoginScreen() {
 
   const continueAfterLogin = () => {
     const destination = getReturnRoute();
-
     router.replace(destination as any);
   };
 
@@ -97,41 +97,29 @@ export default function LoginScreen() {
 
   const signIn = async () => {
     if (!email.trim() || !password) {
-      Alert.alert(
-        "Error",
-        "Email and password required"
-      );
+      Alert.alert("Error", "Email and password required");
       return;
     }
 
     setLoading(true);
 
     try {
-      const {
-        data,
-        error,
-      } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password: password.trim(),
-      });
+      const { data, error } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password: password.trim(),
+        });
 
       if (error) {
         if (error.message?.includes("JWT expired")) {
           await supabase.auth.signOut();
-
           setLoading(false);
-
           router.replace("/(auth)/login" as any);
           return;
         }
 
         setLoading(false);
-
-        Alert.alert(
-          "Login failed",
-          error.message
-        );
-
+        Alert.alert("Login failed", error.message);
         return;
       }
 
@@ -139,12 +127,7 @@ export default function LoginScreen() {
 
       if (!user) {
         setLoading(false);
-
-        Alert.alert(
-          "Error",
-          "Login failed"
-        );
-
+        Alert.alert("Error", "Login failed");
         return;
       }
 
@@ -152,9 +135,7 @@ export default function LoginScreen() {
       // STEP 1: ADMIN CHECK
       // ==========================================
 
-      const {
-        data: adminData,
-      } = await supabase
+      const { data: adminData } = await supabase
         .from("admins")
         .select("user_id")
         .eq("user_id", user.id)
@@ -162,8 +143,6 @@ export default function LoginScreen() {
 
       if (adminData) {
         setLoading(false);
-
-        // Preserve existing admin destination.
         router.replace("/browse" as any);
         return;
       }
@@ -172,18 +151,15 @@ export default function LoginScreen() {
       // STEP 2: GET VERIFICATION STATUS
       // ==========================================
 
-      const {
-        data: profile,
-        error: profileError,
-      } = await (supabase as any)
-        .from("profiles")
-        .select("verification_status")
-        .eq("id", user.id)
-        .single();
+      const { data: profile, error: profileError } =
+        await (supabase as any)
+          .from("profiles")
+          .select("verification_status")
+          .eq("id", user.id)
+          .single();
 
       if (profileError || !profile) {
         setLoading(false);
-
         goToVerification();
         return;
       }
@@ -192,9 +168,7 @@ export default function LoginScreen() {
       // STEP 3: REJECTED USERS
       // ==========================================
 
-      if (
-        profile.verification_status === "rejected"
-      ) {
+      if (profile.verification_status === "rejected") {
         setLoading(false);
 
         Alert.alert(
@@ -203,7 +177,6 @@ export default function LoginScreen() {
         );
 
         await supabase.auth.signOut();
-
         return;
       }
 
@@ -216,11 +189,7 @@ export default function LoginScreen() {
         profile.verification_status === "approved"
       ) {
         setLoading(false);
-
-        // Return the visitor to the seller shop
-        // or their original requested destination.
         continueAfterLogin();
-
         return;
       }
 
@@ -233,9 +202,7 @@ export default function LoginScreen() {
         profile.verification_status === "none"
       ) {
         setLoading(false);
-
         goToVerification();
-
         return;
       }
 
@@ -244,7 +211,6 @@ export default function LoginScreen() {
       // ==========================================
 
       setLoading(false);
-
       continueAfterLogin();
 
     } catch (err: any) {
@@ -278,9 +244,7 @@ export default function LoginScreen() {
   // ==========================================
 
   const sendOTP = async () => {
-    const {
-      error,
-    } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
       options: {
         shouldCreateUser: false,
@@ -288,15 +252,9 @@ export default function LoginScreen() {
     });
 
     if (error) {
-      Alert.alert(
-        "Error",
-        error.message
-      );
+      Alert.alert("Error", error.message);
     } else {
-      Alert.alert(
-        "OTP sent to your email"
-      );
-
+      Alert.alert("OTP sent to your email");
       router.push("/reset-password" as any);
     }
   };
@@ -307,22 +265,17 @@ export default function LoginScreen() {
 
   const handleUpdate = async () => {
     if (!mode || !newValue || !currentPassword) {
-      Alert.alert(
-        "Error",
-        "All fields required"
-      );
-
+      Alert.alert("Error", "All fields required");
       return;
     }
 
     setLoading(true);
 
-    const {
-      error: authError,
-    } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
-      password: currentPassword,
-    });
+    const { error: authError } =
+      await supabase.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password: currentPassword,
+      });
 
     if (authError) {
       setLoading(false);
@@ -344,25 +297,16 @@ export default function LoginScreen() {
             password: newValue.trim(),
           };
 
-    const {
-      error,
-    } = await supabase.auth.updateUser(payload);
+    const { error } = await supabase.auth.updateUser(payload);
 
     setLoading(false);
 
     if (error) {
-      Alert.alert(
-        "Update failed",
-        error.message
-      );
-
+      Alert.alert("Update failed", error.message);
       return;
     }
 
-    Alert.alert(
-      "Success",
-      "Updated successfully!"
-    );
+    Alert.alert("Success", "Updated successfully!");
 
     setModalVisible(false);
     setMode(null);
@@ -376,143 +320,252 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={
-        Platform.OS === "ios"
-          ? "padding"
-          : undefined
-      }
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.container}
     >
-      <View style={styles.header}>
-        <Text style={styles.logo}>
-          Nasara
-        </Text>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={COLORS.navy}
+      />
 
-        <Text style={styles.tagline}>
-          Create. Trade. Compete. Earn. 🚀
-        </Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ======================================
+            HERO HEADER
+        ====================================== */}
 
-        <Text style={styles.subtitle}>
-          One platform for ads, battles, auctions, reels & more.
-        </Text>
-      </View>
+        <View style={styles.hero}>
+          <View style={styles.heroDecorationOne} />
+          <View style={styles.heroDecorationTwo} />
 
-      <View style={styles.card}>
-        <Text style={styles.title}>
-          Sign In
-        </Text>
+          <View style={styles.logoRow}>
+            <View style={styles.logoIcon}>
+              <Text style={styles.logoIconText}>N</Text>
+            </View>
 
-        <Text style={styles.label}>
-          Email
-        </Text>
+            <Text style={styles.logo}>NASARA</Text>
+          </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="example@email.com"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-        />
+          <View style={styles.goldLine} />
 
-        <View style={{ position: "relative" }}>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter password"
-            secureTextEntry={!showPassword}
-            value={password}
-            onChangeText={setPassword}
-          />
+          <Text style={styles.heroTitle}>
+            Welcome Back
+          </Text>
+
+          <Text style={styles.tagline}>
+            Your marketplace. Your opportunities.
+          </Text>
+
+          <Text style={styles.subtitle}>
+            Buy, sell, connect, promote and grow with Nasara.
+          </Text>
+
+          <View style={styles.featureRow}>
+            <View style={styles.featurePill}>
+              <Text style={styles.featureText}>🛍️ Marketplace</Text>
+            </View>
+
+            <View style={styles.featurePill}>
+              <Text style={styles.featureText}>📢 Business</Text>
+            </View>
+
+            <View style={styles.featurePill}>
+              <Text style={styles.featureText}>🤝 Community</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ======================================
+            LOGIN CARD
+        ====================================== */}
+
+        <View style={styles.card}>
+          <View style={styles.cardHeading}>
+            <Text style={styles.title}>Sign in to Nasara</Text>
+
+            <Text style={styles.cardSubtitle}>
+              Enter your account details to continue.
+            </Text>
+          </View>
+
+          {/* EMAIL */}
+
+          <Text style={styles.label}>Email Address</Text>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputIcon}>✉️</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="example@email.com"
+              placeholderTextColor={COLORS.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* PASSWORD */}
+
+          <View style={styles.passwordLabelRow}>
+            <Text style={styles.label}>Password</Text>
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputIcon}>🔒</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your password"
+              placeholderTextColor={COLORS.muted}
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              autoCapitalize="none"
+              returnKeyType="done"
+              onSubmitEditing={signIn}
+            />
+
+            <TouchableOpacity
+              onPress={() => setShowPassword(!showPassword)}
+              style={styles.eyeButton}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.eyeText}>
+                {showPassword ? "Hide" : "Show"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* FORGOT PASSWORD */}
 
           <TouchableOpacity
+            style={styles.forgotButton}
             onPress={() =>
-              setShowPassword(!showPassword)
+              router.push("/forgot-password" as any)
             }
-            style={{
-              position: "absolute",
-              right: 15,
-              top: 18,
-            }}
+            activeOpacity={0.7}
           >
-            <Text>
-              {showPassword ? "🙈" : "👁️"}
+            <Text style={styles.forgotText}>
+              Forgot Password?
+            </Text>
+          </TouchableOpacity>
+
+          {/* LOGIN BUTTON */}
+
+          <TouchableOpacity
+            style={[
+              styles.button,
+              loading && styles.buttonDisabled,
+            ]}
+            onPress={signIn}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.buttonText}>
+              {loading ? "Signing in..." : "Sign In"}
+            </Text>
+
+            {!loading && (
+              <Text style={styles.buttonArrow}>→</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* DIVIDER */}
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>
+              NEW TO NASARA?
+            </Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          {/* SIGNUP */}
+
+          <TouchableOpacity
+            style={styles.signupButton}
+            onPress={goSignup}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.signupText}>
+              Create Your Account
+            </Text>
+
+            <Text style={styles.signupArrow}>→</Text>
+          </TouchableOpacity>
+
+          {/* BACK TO MARKETPLACE */}
+
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() =>
+              router.replace("/browse" as any)
+            }
+            activeOpacity={0.7}
+          >
+            <Text style={styles.backText}>
+              ← Explore Marketplace
             </Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[
-            styles.button,
-            loading && { opacity: 0.7 },
-          ]}
-          onPress={signIn}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? "Signing in..." : "Login"}
-          </Text>
-        </TouchableOpacity>
+        {/* ======================================
+            ACCOUNT SETTINGS
+        ====================================== */}
 
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={goSignup}
-        >
-          <Text style={styles.secondaryText}>
-            New customer? Create Account →
+        <View style={styles.accountSettings}>
+          <Text style={styles.settingsTitle}>
+            Account settings
           </Text>
-        </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={() =>
-            router.push("/forgot-password" as any)
-          }
-        >
-          <Text
-            style={{
-              color: "#2563eb",
-              textAlign: "center",
-              marginTop: 10,
-            }}
-          >
-            Forgot Password?
-          </Text>
-        </TouchableOpacity>
+          <View style={styles.settingsRow}>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => {
+                setMode("email");
+                setModalVisible(true);
+              }}
+            >
+              <Text style={styles.settingsButtonText}>
+                Change Email
+              </Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() =>
-            router.replace("/browse" as any)
-          }
-        >
-          <Text style={styles.backText}>
-            ← Back to Marketplace
-          </Text>
-        </TouchableOpacity>
+            <View style={styles.settingsDivider} />
 
-        <TouchableOpacity
-          style={styles.link}
-          onPress={() => {
-            setMode("email");
-            setModalVisible(true);
-          }}
-        >
-          <Text style={styles.linkText}>
-            Change Email
-          </Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => {
+                setMode("password");
+                setModalVisible(true);
+              }}
+            >
+              <Text style={styles.settingsButtonText}>
+                Change Password
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-        <TouchableOpacity
-          style={styles.link}
-          onPress={() => {
-            setMode("password");
-            setModalVisible(true);
-          }}
-        >
-          <Text style={styles.linkText}>
-            Change Password
+        {/* FOOTER */}
+
+        <View style={styles.footer}>
+          <Text style={styles.footerBrand}>
+            NASARA
           </Text>
-        </TouchableOpacity>
-      </View>
+
+          <Text style={styles.footerText}>
+            One platform. Endless opportunities.
+          </Text>
+        </View>
+      </ScrollView>
 
       {/* ======================================
           CHANGE EMAIL / PASSWORD MODAL
@@ -522,96 +575,124 @@ export default function LoginScreen() {
         visible={modalVisible}
         transparent
         animationType="fade"
+        onRequestClose={() => {
+          setModalVisible(false);
+          setMode(null);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>
-              {mode === "email"
-                ? "Change Email"
-                : "Change Password"}
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>
+                  {mode === "email"
+                    ? "Change Email"
+                    : "Change Password"}
+                </Text>
+
+                <Text style={styles.modalSubtitle}>
+                  Verify your account before updating.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => {
+                  setModalVisible(false);
+                  setMode(null);
+                }}
+              >
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* CURRENT PASSWORD */}
+
+            <Text style={styles.label}>
+              Current Account Password
             </Text>
 
-            {/* CURRENT FIELD */}
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>🔒</Text>
 
-            {mode === "password" ? (
-              <View style={{ position: "relative" }}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Current Password"
-                  secureTextEntry={!showCurrentPassword}
-                  value={currentPassword}
-                  onChangeText={setCurrentPassword}
-                />
-
-                <TouchableOpacity
-                  onPress={() =>
-                    setShowCurrentPassword(
-                      !showCurrentPassword
-                    )
-                  }
-                  style={{
-                    position: "absolute",
-                    right: 15,
-                    top: 18,
-                  }}
-                >
-                  <Text>
-                    {showCurrentPassword ? "🙈" : "👁️"}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
               <TextInput
                 style={styles.input}
-                placeholder="Current Email"
+                placeholder="Enter current password"
+                placeholderTextColor={COLORS.muted}
+                secureTextEntry={!showCurrentPassword}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
               />
-            )}
 
-            {/* NEW FIELD */}
+              <TouchableOpacity
+                onPress={() =>
+                  setShowCurrentPassword(!showCurrentPassword)
+                }
+                style={styles.eyeButton}
+              >
+                <Text style={styles.eyeText}>
+                  {showCurrentPassword ? "Hide" : "Show"}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
-            {mode === "password" ? (
-              <View style={{ position: "relative" }}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="New Password"
-                  secureTextEntry={!showNewPassword}
-                  value={newValue}
-                  onChangeText={setNewValue}
-                />
+            {/* NEW VALUE */}
 
+            <Text style={styles.label}>
+              {mode === "email" ? "New Email Address" : "New Password"}
+            </Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputIcon}>
+                {mode === "email" ? "✉️" : "🔐"}
+              </Text>
+
+              <TextInput
+                style={styles.input}
+                placeholder={
+                  mode === "email"
+                    ? "Enter new email"
+                    : "Enter new password"
+                }
+                placeholderTextColor={COLORS.muted}
+                secureTextEntry={
+                  mode === "password" && !showNewPassword
+                }
+                value={newValue}
+                onChangeText={setNewValue}
+                autoCapitalize="none"
+                keyboardType={
+                  mode === "email"
+                    ? "email-address"
+                    : "default"
+                }
+              />
+
+              {mode === "password" && (
                 <TouchableOpacity
                   onPress={() =>
                     setShowNewPassword(!showNewPassword)
                   }
-                  style={{
-                    position: "absolute",
-                    right: 15,
-                    top: 18,
-                  }}
+                  style={styles.eyeButton}
                 >
-                  <Text>
-                    {showNewPassword ? "🙈" : "👁️"}
+                  <Text style={styles.eyeText}>
+                    {showNewPassword ? "Hide" : "Show"}
                   </Text>
                 </TouchableOpacity>
-              </View>
-            ) : (
-              <TextInput
-                style={styles.input}
-                placeholder="New Email"
-                value={newValue}
-                onChangeText={setNewValue}
-                autoCapitalize="none"
-              />
-            )}
+              )}
+            </View>
 
             <TouchableOpacity
-              style={styles.button}
+              style={[
+                styles.button,
+                loading && styles.buttonDisabled,
+              ]}
               onPress={handleUpdate}
+              disabled={loading}
+              activeOpacity={0.85}
             >
               <Text style={styles.buttonText}>
-                Update
+                {loading ? "Updating..." : "Update Account"}
               </Text>
             </TouchableOpacity>
 
@@ -619,7 +700,10 @@ export default function LoginScreen() {
               onPress={() => {
                 setModalVisible(false);
                 setMode(null);
+                setNewValue("");
+                setCurrentPassword("");
               }}
+              style={styles.cancelButton}
             >
               <Text style={styles.cancelText}>
                 Cancel
@@ -633,147 +717,476 @@ export default function LoginScreen() {
 }
 
 // ==========================================
+// NASARA BRAND COLOURS
+// ==========================================
+
+const COLORS = {
+  navy: "#101B3D",
+  navyLight: "#1A2B55",
+  gold: "#D6A84F",
+  goldLight: "#F3E4BD",
+  white: "#FFFFFF",
+  background: "#F7F6F2",
+  text: "#17213A",
+  muted: "#8A91A3",
+  border: "#E7E8ED",
+  input: "#F9FAFC",
+  green: "#16845B",
+};
+
+// ==========================================
 // STYLES
 // ==========================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    justifyContent: "center",
-    backgroundColor: "#f1f5f9",
+    backgroundColor: COLORS.background,
   },
 
-  header: {
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "android" ? 35 : 55,
+    paddingBottom: 35,
+    justifyContent: "center",
+  },
+
+  // HERO
+
+  hero: {
+    backgroundColor: COLORS.navy,
+    borderRadius: 25,
+    paddingHorizontal: 22,
+    paddingTop: 28,
+    paddingBottom: 25,
     alignItems: "center",
-    marginBottom: 30,
-    paddingVertical: 25,
-    borderRadius: 16,
-    backgroundColor: "#0f172a",
+    overflow: "hidden",
+    marginBottom: 22,
+  },
+
+  heroDecorationOne: {
+    position: "absolute",
+    width: 190,
+    height: 190,
+    borderRadius: 95,
+    borderWidth: 25,
+    borderColor: "rgba(214,168,79,0.08)",
+    top: -95,
+    right: -60,
+  },
+
+  heroDecorationTwo: {
+    position: "absolute",
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255,255,255,0.035)",
+    bottom: -80,
+    left: -50,
+  },
+
+  logoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  logoIcon: {
+    width: 43,
+    height: 43,
+    borderRadius: 13,
+    backgroundColor: COLORS.gold,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  logoIconText: {
+    fontSize: 27,
+    fontWeight: "900",
+    color: COLORS.navy,
   },
 
   logo: {
-    fontSize: 38,
+    fontSize: 29,
     fontWeight: "900",
-    color: "#22c55e",
-    letterSpacing: 1.2,
+    color: COLORS.white,
+    letterSpacing: 2,
+  },
+
+  goldLine: {
+    width: 55,
+    height: 3,
+    backgroundColor: COLORS.gold,
+    borderRadius: 5,
+    marginTop: 17,
+    marginBottom: 17,
+  },
+
+  heroTitle: {
+    fontSize: 27,
+    fontWeight: "900",
+    color: COLORS.white,
+    textAlign: "center",
   },
 
   tagline: {
-    fontSize: 16,
-    color: "#fff",
-    marginTop: 8,
+    fontSize: 15,
     fontWeight: "700",
+    color: COLORS.gold,
+    marginTop: 9,
+    textAlign: "center",
   },
 
   subtitle: {
-    fontSize: 13,
-    marginTop: 6,
-    color: "#cbd5f5",
+    fontSize: 12,
+    lineHeight: 19,
+    color: "#D2D8E8",
     textAlign: "center",
+    marginTop: 8,
+    maxWidth: 290,
   },
 
-  card: {
-    backgroundColor: "#ffffff",
-    padding: 22,
-    borderRadius: 18,
+  featureRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 7,
+    marginTop: 19,
+  },
+
+  featurePill: {
+    backgroundColor: "rgba(255,255,255,0.10)",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 5,
+    borderColor: "rgba(255,255,255,0.10)",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+
+  featureText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  // LOGIN CARD
+
+  card: {
+    backgroundColor: COLORS.white,
+    padding: 22,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    shadowColor: COLORS.navy,
+    shadowOpacity: 0.07,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 7,
+    },
+    elevation: 4,
+  },
+
+  cardHeading: {
+    marginBottom: 23,
   },
 
   title: {
-    fontSize: 22,
-    fontWeight: "800",
-    marginBottom: 18,
+    fontSize: 23,
+    fontWeight: "900",
+    color: COLORS.text,
     textAlign: "center",
+  },
+
+  cardSubtitle: {
+    color: COLORS.muted,
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 7,
   },
 
   label: {
-    fontWeight: "600",
-    marginBottom: 6,
+    fontSize: 13,
+    fontWeight: "800",
+    color: COLORS.text,
+    marginBottom: 9,
+  },
+
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.input,
+    borderRadius: 13,
+    minHeight: 54,
+    paddingHorizontal: 13,
+    marginBottom: 18,
+  },
+
+  inputIcon: {
+    fontSize: 16,
+    color: COLORS.navy,
+    width: 28,
   },
 
   input: {
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 14,
-    backgroundColor: "#f9fafb",
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 14,
+    paddingVertical: 14,
+    minWidth: 0,
+  },
+
+  passwordLabelRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+
+  eyeButton: {
+    paddingHorizontal: 5,
+    paddingVertical: 8,
+  },
+
+  eyeText: {
+    fontSize: 12,
+    color: COLORS.navy,
+    fontWeight: "800",
+  },
+
+  forgotButton: {
+    alignSelf: "flex-end",
+    marginTop: -8,
+    marginBottom: 17,
+  },
+
+  forgotText: {
+    color: COLORS.navy,
+    fontSize: 12,
+    fontWeight: "800",
   },
 
   button: {
-    backgroundColor: "#16a34a",
-    padding: 15,
-    borderRadius: 12,
+    flexDirection: "row",
+    justifyContent: "center",
     alignItems: "center",
-    marginTop: 6,
+    backgroundColor: COLORS.navy,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    borderRadius: 13,
+    marginTop: 5,
+    shadowColor: COLORS.navy,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 3,
+  },
+
+  buttonDisabled: {
+    opacity: 0.65,
   },
 
   buttonText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 16,
+    color: COLORS.white,
+    fontSize: 15,
+    fontWeight: "900",
   },
 
-  secondaryButton: {
-    marginTop: 14,
+  buttonArrow: {
+    color: COLORS.gold,
+    fontSize: 21,
+    fontWeight: "900",
+    marginLeft: 12,
+  },
+
+  // SIGNUP
+
+  dividerRow: {
+    flexDirection: "row",
     alignItems: "center",
+    marginTop: 25,
+    marginBottom: 19,
   },
 
-  secondaryText: {
-    color: "#2563eb",
-    fontWeight: "700",
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+
+  dividerText: {
+    color: COLORS.muted,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1.4,
+    marginHorizontal: 12,
+  },
+
+  signupButton: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: COLORS.gold,
+    backgroundColor: "#FFFCF5",
+    paddingVertical: 14,
+    borderRadius: 13,
+  },
+
+  signupText: {
+    color: COLORS.navy,
     fontSize: 14,
+    fontWeight: "900",
+  },
+
+  signupArrow: {
+    color: COLORS.gold,
+    fontSize: 20,
+    fontWeight: "900",
+    marginLeft: 10,
   },
 
   backButton: {
-    marginTop: 14,
     alignItems: "center",
+    marginTop: 21,
+    paddingVertical: 5,
   },
 
   backText: {
-    color: "gray",
-    fontSize: 13,
+    color: COLORS.muted,
+    fontSize: 12,
+    fontWeight: "700",
   },
 
-  link: {
-    marginTop: 14,
+  // ACCOUNT SETTINGS
+
+  accountSettings: {
+    marginTop: 19,
+    backgroundColor: COLORS.white,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 15,
+  },
+
+  settingsTitle: {
+    color: COLORS.muted,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    textAlign: "center",
+    marginBottom: 13,
+  },
+
+  settingsRow: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
   },
 
-  linkText: {
-    fontWeight: "600",
+  settingsButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 7,
   },
+
+  settingsButtonText: {
+    color: COLORS.navy,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  settingsDivider: {
+    height: 20,
+    width: 1,
+    backgroundColor: COLORS.border,
+  },
+
+  // FOOTER
+
+  footer: {
+    alignItems: "center",
+    marginTop: 23,
+  },
+
+  footerBrand: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 3,
+    color: COLORS.gold,
+  },
+
+  footerText: {
+    fontSize: 10,
+    color: COLORS.muted,
+    marginTop: 5,
+  },
+
+  // MODAL
 
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(9,17,40,0.72)",
     justifyContent: "center",
-    padding: 24,
+    padding: 22,
   },
 
   modalBox: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 10,
+    backgroundColor: COLORS.white,
+    padding: 22,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.goldLight,
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 22,
   },
 
   modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 14,
-    textAlign: "center",
+    fontSize: 21,
+    fontWeight: "900",
+    color: COLORS.navy,
+  },
+
+  modalSubtitle: {
+    fontSize: 11,
+    color: COLORS.muted,
+    marginTop: 5,
+  },
+
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  closeButtonText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.navy,
+  },
+
+  cancelButton: {
+    alignItems: "center",
+    marginTop: 16,
+    paddingVertical: 8,
   },
 
   cancelText: {
-    textAlign: "center",
-    marginTop: 14,
-    color: "red",
-    fontWeight: "600",
+    color: COLORS.muted,
+    fontSize: 13,
+    fontWeight: "800",
   },
 });

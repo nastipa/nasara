@@ -963,7 +963,7 @@ export default function Analytics() {
         <View style={styles.valuationBox}>
 
           <Text style={styles.investorEyebrow}>
-            NASARA INVESTMENT POTENTIAL
+            NASARA VALUATION
           </Text>
 
           <Text style={styles.valuationTitle}>
