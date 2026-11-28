@@ -237,10 +237,12 @@ function MyItemCard({
   item,
   onDelete,
   onPromote,
+  onDiscount,
 }: {
   item: any;
   onDelete: (item: any) => void;
   onPromote: (id: number) => void;
+  onDiscount: (item: any) => void;
 }) {
   const router = useRouter();
   const postId = Number(item.original_id || item.id);
@@ -250,6 +252,19 @@ function MyItemCard({
     item.is_boosted === true ||
     item.is_featured === true;
 
+    const originalPrice = Number(item.price || 0);
+const discountPrice = Number(item.discount_price || 0);
+
+const hasValidDiscount =
+  item.discount_enabled === true &&
+  discountPrice > 0 &&
+  discountPrice < originalPrice;
+
+const savings = hasValidDiscount
+  ? Math.round(
+      ((originalPrice - discountPrice) / originalPrice) * 100
+    )
+  : 0;
   return (
     <View
       style={{
@@ -348,17 +363,60 @@ function MyItemCard({
         >
           {item.title}
         </Text>
+{hasValidDiscount ? (
+  <View style={{ marginTop: 7 }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: 8,
+      }}
+    >
+      <Text
+        style={{
+          color: COLORS.green,
+          fontSize: 19,
+          fontWeight: "900",
+        }}
+      >
+        {formatMoney(discountPrice)}
+      </Text>
 
-        <Text
-          style={{
-            fontWeight: "900",
-            marginTop: 5,
-            fontSize: 17,
-            color: COLORS.navy,
-          }}
-        >
-          GH₵ {Number(item.price || 0).toLocaleString()}
-        </Text>
+      <Text
+        style={{
+          color: COLORS.muted,
+          fontSize: 13,
+          textDecorationLine: "line-through",
+        }}
+      >
+        {formatMoney(originalPrice)}
+      </Text>
+    </View>
+
+    <Text
+      style={{
+        color: COLORS.green,
+        fontSize: 11,
+        fontWeight: "900",
+        marginTop: 4,
+      }}
+    >
+      SAVE {savings}% ON THIS PRODUCT
+    </Text>
+  </View>
+) : (
+  <Text
+    style={{
+      fontWeight: "900",
+      marginTop: 5,
+      fontSize: 17,
+      color: COLORS.navy,
+    }}
+  >
+    {formatMoney(originalPrice)}
+  </Text>
+)}
 
         {item.location ? (
           <Text
@@ -415,6 +473,15 @@ function MyItemCard({
               }
             />
           </View>
+          <View style={{ flex: 1, minWidth: 100 }}>
+  <Button
+    title={
+      hasValidDiscount ? "Edit Discount" : "Add Discount"
+    }
+    color={COLORS.green}
+    onPress={() => onDiscount(item)}
+  />
+</View>
 
           <View style={{ flex: 1, minWidth: 75 }}>
             <Button
@@ -459,7 +526,16 @@ export default function My() {
   const [buyerOrders, setBuyerOrders] = useState<any[]>([]);
   const [buyerOrdersLoading, setBuyerOrdersLoading] = useState(false);
   const [buyerPaymentReference, setBuyerPaymentReference] = useState("");
+  
+  // MY PURCHASES AND MY ORDERS POP-UP WINDOWS
+const [purchasesModalVisible, setPurchasesModalVisible] = useState(false);
+const [sellerOrdersModalVisible, setSellerOrdersModalVisible] = useState(false);
 
+// PRODUCT DISCOUNT MANAGEMENT
+const [discountModalVisible, setDiscountModalVisible] = useState(false);
+const [discountItem, setDiscountItem] = useState<any>(null);
+const [discountPriceInput, setDiscountPriceInput] = useState("");
+const [discountSaving, setDiscountSaving] = useState(false);
   /* ===================================================
      MARKETPLACE ORDER STATE
   =================================================== */
@@ -476,6 +552,7 @@ export default function My() {
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [transactionReference, setTransactionReference] = useState("");
+  const dashboardScrollRef = useRef<ScrollView | null>(null);
 
   /* ===================================================
      SELLER QR CODE
@@ -1524,6 +1601,141 @@ export default function My() {
     setPayVisible(true);
   };
 
+  /* =====================================================
+   OPEN PRODUCT DISCOUNT MODAL
+===================================================== */
+
+const openDiscountModal = (item: any) => {
+  setDiscountItem(item);
+  setDiscountPriceInput(
+    item.discount_enabled && item.discount_price
+      ? String(item.discount_price)
+      : ""
+  );
+  setDiscountModalVisible(true);
+};
+
+/* =====================================================
+   SAVE OR UPDATE PRODUCT DISCOUNT
+===================================================== */
+
+const saveProductDiscount = async () => {
+  if (!discountItem || discountSaving) return;
+
+  const discountPrice = Number(discountPriceInput);
+  const originalPrice = Number(discountItem.price || 0);
+
+  if (
+    !Number.isFinite(discountPrice) ||
+    discountPrice <= 0
+  ) {
+    showAlert("Invalid Discount", "Enter a valid discount price.");
+    return;
+  }
+
+  if (discountPrice >= originalPrice) {
+    showAlert(
+      "Invalid Discount",
+      "The discount price must be lower than the original product price."
+    );
+    return;
+  }
+
+  setDiscountSaving(true);
+
+  try {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      throw new Error("Please log in again.");
+    }
+
+    const { error } = await (supabase as any)
+      .from("items_live")
+      .update({
+        discount_enabled: true,
+        discount_price: discountPrice,
+        discount_expires_at: null,
+      })
+      .eq("id", Number(discountItem.original_id || discountItem.id))
+      .eq("user_id", user.id);
+
+    if (error) throw new Error(error.message);
+
+    setDiscountModalVisible(false);
+    setDiscountItem(null);
+    setDiscountPriceInput("");
+
+    showAlert(
+      "Discount Saved",
+      "Your product discount has been saved successfully. The original price remains unchanged."
+    );
+
+    await fetchMyItems();
+  } catch (error: any) {
+    showAlert(
+      "Discount Error",
+      error?.message || "Unable to save this discount."
+    );
+  } finally {
+    setDiscountSaving(false);
+  }
+};
+
+/* =====================================================
+   REMOVE PRODUCT DISCOUNT
+===================================================== */
+
+const removeProductDiscount = async () => {
+  if (!discountItem || discountSaving) return;
+
+  setDiscountSaving(true);
+
+  try {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      throw new Error("Please log in again.");
+    }
+
+    const { error } = await (supabase as any)
+      .from("items_live")
+      .update({
+        discount_enabled: false,
+        discount_price: null,
+        discount_expires_at: null,
+      })
+      .eq("id", Number(discountItem.original_id || discountItem.id))
+      .eq("user_id", user.id);
+
+    if (error) throw new Error(error.message);
+
+    setDiscountModalVisible(false);
+    setDiscountItem(null);
+    setDiscountPriceInput("");
+
+    showAlert(
+      "Discount Removed",
+      "The product is now back to its original price."
+    );
+
+    await fetchMyItems();
+  } catch (error: any) {
+    showAlert(
+      "Discount Error",
+      error?.message || "Unable to remove this discount."
+    );
+  } finally {
+    setDiscountSaving(false);
+  }
+};
+
   /* ===================================================
      SEND PROMOTION PAYMENT REQUEST
   =================================================== */
@@ -1704,11 +1916,21 @@ export default function My() {
     const paymentStatus = getPaymentStatus(order);
     const fulfilmentStatus = getFulfilmentStatus(order);
 
-    const buyerDeclared = [
-      "buyer_declared",
-      "payment_declared",
-    ].includes(paymentStatus);
+   const hasPaymentReference = Boolean(
+  String(
+    order.transaction_reference ||
+    order.payment_reference ||
+    order.momo_transaction_reference ||
+    ""
+  ).trim()
+);
 
+const buyerDeclared =
+  !["seller_confirmed", "rejected"].includes(paymentStatus) &&
+  (
+    ["buyer_declared", "payment_declared"].includes(paymentStatus) ||
+    hasPaymentReference
+  );
     const sellerConfirmed =
       paymentStatus === "seller_confirmed";
 
@@ -2972,11 +3194,12 @@ export default function My() {
         backgroundColor: COLORS.background,
       }}
     >
-      <ScrollView
-        contentContainerStyle={{
-          padding: 15,
-          paddingBottom: 45,
-        }}
+     <ScrollView
+  ref={dashboardScrollRef}
+  contentContainerStyle={{
+    padding: 15,
+    paddingBottom: 45,
+  }}
         refreshControl={
           <RefreshControl
             refreshing={loading || ordersLoading || buyerOrdersLoading}
@@ -3201,142 +3424,332 @@ export default function My() {
           )}
         </View>
 
-        {/* SELLER MARKETPLACE ORDERS */}
+       {/* =================================================
+    NASARA BUSINESS MANAGEMENT SHORTCUTS
+================================================= */}
 
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 11,
-          }}
-        >
-          <Text
-            style={{
-              color: COLORS.navy,
-              fontSize: 17,
-              fontWeight: "900",
-            }}
-          >
-            Orders for My Products
-          </Text>
+<Text
+  style={{
+    color: COLORS.navy,
+    fontSize: 18,
+    fontWeight: "900",
+    marginTop: 5,
+    marginBottom: 12,
+  }}
+>
+  Manage My Business
+</Text>
 
-          <TouchableOpacity
-            onPress={fetchMarketplaceOrders}
-          >
-            <Text
-              style={{
-                color: COLORS.blue,
-                fontSize: 12,
-                fontWeight: "800",
-              }}
-            >
-              Refresh
-            </Text>
-          </TouchableOpacity>
-        </View>
+<View
+  style={{
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  }}
+>
+  {/* MY LISTINGS */}
 
-        {ordersLoading && marketplaceOrders.length === 0 ? (
-          <ActivityIndicator
-            color={COLORS.navy}
-            style={{ marginVertical: 20 }}
-          />
-        ) : marketplaceOrders.length === 0 ? (
-          <View
-            style={{
-              backgroundColor: COLORS.white,
-              borderRadius: 12,
-              padding: 18,
-              marginBottom: 20,
-              alignItems: "center",
-              borderWidth: 1,
-              borderColor: COLORS.border,
-            }}
-          >
-            <Text
-              style={{
-                color: COLORS.muted,
-                fontSize: 12,
-                textAlign: "center",
-              }}
-            >
-              You do not have any marketplace orders yet.
-              New customer orders will appear here.
-            </Text>
-          </View>
-        ) : (
-          <View style={{ marginBottom: 20 }}>
-            {marketplaceOrders.map(renderMarketplaceOrder)}
-          </View>
-        )}
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={() => dashboardScrollRef.current?.scrollToEnd({ animated: true })}
+    style={{
+      width: "48.5%",
+      backgroundColor: COLORS.white,
+      borderRadius: 16,
+      padding: 15,
+      marginBottom: 11,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderBottomWidth: 4,
+      borderBottomColor: COLORS.blue,
+    }}
+  >
+    <View style={{
+      width: 43,
+      height: 43,
+      borderRadius: 13,
+      backgroundColor: "#EFF6FF",
+      justifyContent: "center",
+      alignItems: "center",
+    }}>
+      <Text style={{ fontSize: 22 }}>📦</Text>
+    </View>
 
-        {/* MY PURCHASES */}
+    <Text style={{
+      color: COLORS.navy,
+      fontWeight: "900",
+      fontSize: 15,
+      marginTop: 11,
+    }}>
+      My Listings
+    </Text>
 
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 11,
-          }}
-        >
-          <Text
-            style={{
-              color: COLORS.navy,
-              fontSize: 17,
-              fontWeight: "900",
-            }}
-          >
-            My Purchases
-          </Text>
+    <Text style={{
+      color: COLORS.muted,
+      fontSize: 11,
+      marginTop: 4,
+    }}>
+      Manage your products
+    </Text>
 
-          <TouchableOpacity onPress={fetchBuyerOrders}>
-            <Text
-              style={{
-                color: COLORS.blue,
-                fontSize: 12,
-                fontWeight: "800",
-              }}
-            >
-              Refresh
-            </Text>
-          </TouchableOpacity>
-        </View>
+    <View style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 12,
+    }}>
+      <Text style={{
+        color: COLORS.blue,
+        fontWeight: "900",
+        fontSize: 17,
+      }}>
+        {formatNumber(stats.listings)}
+      </Text>
+      <Text style={{ color: COLORS.navy, fontSize: 18 }}>→</Text>
+    </View>
+  </TouchableOpacity>
 
-        {buyerOrdersLoading && buyerOrders.length === 0 ? (
-          <ActivityIndicator
-            color={COLORS.navy}
-            style={{ marginVertical: 20 }}
-          />
-        ) : buyerOrders.length === 0 ? (
-          <View
-            style={{
-              backgroundColor: COLORS.white,
-              borderRadius: 12,
-              padding: 18,
-              marginBottom: 20,
-              alignItems: "center",
-              borderWidth: 1,
-              borderColor: COLORS.border,
-            }}
-          >
-            <Text
-              style={{
-                color: COLORS.muted,
-                fontSize: 12,
-                textAlign: "center",
-              }}
-            >
-              You have not placed any marketplace orders yet.
-              Your purchases will appear here.
-            </Text>
-          </View>
-        ) : (
-          <View style={{ marginBottom: 20 }}>
-            {buyerOrders.map(renderBuyerOrder)}
-          </View>
-        )}
+  {/* MY ADS */}
 
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={() => router.push("ads/my-ads")}
+    style={{
+      width: "48.5%",
+      backgroundColor: COLORS.white,
+      borderRadius: 16,
+      padding: 15,
+      marginBottom: 11,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderBottomWidth: 4,
+      borderBottomColor: COLORS.gold,
+    }}
+  >
+    <View style={{
+      width: 43,
+      height: 43,
+      borderRadius: 13,
+      backgroundColor: "#FFF8E7",
+      justifyContent: "center",
+      alignItems: "center",
+    }}>
+      <Text style={{ fontSize: 22 }}>📢</Text>
+    </View>
+
+    <Text style={{
+      color: COLORS.navy,
+      fontWeight: "900",
+      fontSize: 15,
+      marginTop: 11,
+    }}>
+      My Ads
+    </Text>
+
+    <Text style={{
+      color: COLORS.muted,
+      fontSize: 11,
+      marginTop: 4,
+    }}>
+      Manage advertisements
+    </Text>
+
+    <View style={{
+      alignItems: "flex-end",
+      marginTop: 12,
+    }}>
+      <Text style={{ color: COLORS.navy, fontSize: 18 }}>→</Text>
+    </View>
+  </TouchableOpacity>
+
+  {/* MY BANNERS */}
+
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={() => router.push("banner/my-banner" as any)}
+    style={{
+      width: "48.5%",
+      backgroundColor: COLORS.white,
+      borderRadius: 16,
+      padding: 15,
+      marginBottom: 11,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderBottomWidth: 4,
+      borderBottomColor: COLORS.green,
+    }}
+  >
+    <View style={{
+      width: 43,
+      height: 43,
+      borderRadius: 13,
+      backgroundColor: "#F0FDF4",
+      justifyContent: "center",
+      alignItems: "center",
+    }}>
+      <Text style={{ fontSize: 22 }}>🖼️</Text>
+    </View>
+
+    <Text style={{
+      color: COLORS.navy,
+      fontWeight: "900",
+      fontSize: 15,
+      marginTop: 11,
+    }}>
+      My Banners
+    </Text>
+
+    <Text style={{
+      color: COLORS.muted,
+      fontSize: 11,
+      marginTop: 4,
+    }}>
+      Manage banner promotions
+    </Text>
+
+    <View style={{
+      alignItems: "flex-end",
+      marginTop: 12,
+    }}>
+      <Text style={{ color: COLORS.navy, fontSize: 18 }}>→</Text>
+    </View>
+  </TouchableOpacity>
+
+  {/* MY PURCHASES */}
+
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={() => setPurchasesModalVisible(true)}
+    style={{
+      width: "48.5%",
+      backgroundColor: COLORS.white,
+      borderRadius: 16,
+      padding: 15,
+      marginBottom: 11,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderBottomWidth: 4,
+      borderBottomColor: "#A855F7",
+    }}
+  >
+    <View style={{
+      width: 43,
+      height: 43,
+      borderRadius: 13,
+      backgroundColor: "#FAF5FF",
+      justifyContent: "center",
+      alignItems: "center",
+    }}>
+      <Text style={{ fontSize: 22 }}>🛍️</Text>
+    </View>
+
+    <Text style={{
+      color: COLORS.navy,
+      fontWeight: "900",
+      fontSize: 15,
+      marginTop: 11,
+    }}>
+      My Purchases
+    </Text>
+
+    <Text style={{
+      color: COLORS.muted,
+      fontSize: 11,
+      marginTop: 4,
+    }}>
+      Products you have ordered
+    </Text>
+
+    <View style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 12,
+    }}>
+      <Text style={{
+        color: "#A855F7",
+        fontWeight: "900",
+        fontSize: 17,
+      }}>
+        {formatNumber(buyerOrders.length)}
+      </Text>
+      <Text style={{ color: COLORS.navy, fontSize: 18 }}>→</Text>
+    </View>
+  </TouchableOpacity>
+
+  {/* MY ORDERS */}
+
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={() => setSellerOrdersModalVisible(true)}
+    style={{
+      width: "100%",
+      backgroundColor: COLORS.navy,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 11,
+      borderBottomWidth: 4,
+      borderBottomColor: COLORS.gold,
+      flexDirection: "row",
+      alignItems: "center",
+    }}
+  >
+    <View style={{
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      backgroundColor: "#FFFFFF18",
+      justifyContent: "center",
+      alignItems: "center",
+    }}>
+      <Text style={{ fontSize: 24 }}>🛒</Text>
+    </View>
+
+    <View style={{ flex: 1, marginLeft: 13 }}>
+      <Text style={{
+        color: COLORS.white,
+        fontWeight: "900",
+        fontSize: 16,
+      }}>
+        My Orders
+      </Text>
+
+      <Text style={{
+        color: "#DCE3EF",
+        fontSize: 11,
+        marginTop: 4,
+      }}>
+        Manage customer payments and deliveries
+      </Text>
+    </View>
+
+    <View style={{
+      backgroundColor: COLORS.gold,
+      minWidth: 34,
+      height: 34,
+      borderRadius: 17,
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 8,
+    }}>
+      <Text style={{
+        color: COLORS.navy,
+        fontWeight: "900",
+      }}>
+        {formatNumber(marketplaceOrders.length)}
+      </Text>
+    </View>
+
+    <Text style={{
+      color: COLORS.white,
+      fontSize: 21,
+      marginLeft: 10,
+    }}>
+      →
+    </Text>
+  </TouchableOpacity>
+</View>
         {/* MY PRODUCT LISTINGS */}
 
         <View
@@ -3420,15 +3833,598 @@ export default function My() {
           <View>
             {displayItems.map((item: any) => (
               <MyItemCard
-                key={item.card_id}
-                item={item}
-                onDelete={deleteItem}
-                onPromote={promoteItem}
-              />
+  key={item.card_id}
+  item={item}
+  onDelete={deleteItem}
+  onPromote={promoteItem}
+  onDiscount={openDiscountModal}
+/>
             ))}
           </View>
         )}
       </ScrollView>
+
+      {/* =================================================
+   MY PURCHASES POP-UP
+================================================= */}
+
+<Modal
+  visible={purchasesModalVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setPurchasesModalVisible(false)}
+>
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: "#00000088",
+      justifyContent: "flex-end",
+    }}
+  >
+    <View
+      style={{
+        height: "88%",
+        backgroundColor: COLORS.background,
+        borderTopLeftRadius: 23,
+        borderTopRightRadius: 23,
+        overflow: "hidden",
+      }}
+    >
+      <View
+        style={{
+          backgroundColor: COLORS.navy,
+          padding: 19,
+          paddingTop: 23,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <View>
+            <Text
+              style={{
+                color: COLORS.gold,
+                fontSize: 11,
+                fontWeight: "900",
+                letterSpacing: 1,
+              }}
+            >
+              NASARA MARKETPLACE
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.white,
+                fontSize: 21,
+                fontWeight: "900",
+                marginTop: 5,
+              }}
+            >
+              My Purchases
+            </Text>
+
+            <Text
+              style={{
+                color: "#DCE3EF",
+                fontSize: 12,
+                marginTop: 4,
+              }}
+            >
+              Track your payments and deliveries
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setPurchasesModalVisible(false)}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 20,
+              backgroundColor: "#FFFFFF20",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: COLORS.white, fontSize: 22 }}>×</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 17,
+          }}
+        >
+          <Text style={{ color: COLORS.white, fontSize: 12 }}>
+            {buyerOrders.length} purchase(s)
+          </Text>
+
+          <TouchableOpacity
+            onPress={fetchBuyerOrders}
+            style={{
+              backgroundColor: COLORS.gold,
+              paddingHorizontal: 13,
+              paddingVertical: 8,
+              borderRadius: 8,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontSize: 11,
+                fontWeight: "900",
+              }}
+            >
+              ↻ REFRESH
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{ padding: 15, paddingBottom: 35 }}
+      >
+        {buyerOrdersLoading && buyerOrders.length === 0 ? (
+          <ActivityIndicator
+            color={COLORS.navy}
+            size="large"
+            style={{ marginTop: 35 }}
+          />
+        ) : buyerOrders.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              borderRadius: 16,
+              padding: 25,
+              alignItems: "center",
+              marginTop: 15,
+            }}
+          >
+            <Text style={{ fontSize: 35 }}>🛍️</Text>
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontWeight: "900",
+                fontSize: 16,
+                marginTop: 10,
+              }}
+            >
+              No purchases yet
+            </Text>
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                textAlign: "center",
+                marginTop: 6,
+                lineHeight: 18,
+              }}
+            >
+              Products you order from Nasara sellers will appear here.
+            </Text>
+          </View>
+        ) : (
+          buyerOrders.map(renderBuyerOrder)
+        )}
+      </ScrollView>
+    </View>
+  </View>
+</Modal>
+
+{/* =================================================
+   MY ORDERS POP-UP
+================================================= */}
+
+<Modal
+  visible={sellerOrdersModalVisible}
+  transparent
+  animationType="slide"
+  onRequestClose={() => setSellerOrdersModalVisible(false)}
+>
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: "#00000088",
+      justifyContent: "flex-end",
+    }}
+  >
+    <View
+      style={{
+        height: "88%",
+        backgroundColor: COLORS.background,
+        borderTopLeftRadius: 23,
+        borderTopRightRadius: 23,
+        overflow: "hidden",
+      }}
+    >
+      <View
+        style={{
+          backgroundColor: COLORS.navy,
+          padding: 19,
+          paddingTop: 23,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <View>
+            <Text
+              style={{
+                color: COLORS.gold,
+                fontSize: 11,
+                fontWeight: "900",
+                letterSpacing: 1,
+              }}
+            >
+              NASARA SELLER CENTRE
+            </Text>
+
+            <Text
+              style={{
+                color: COLORS.white,
+                fontSize: 21,
+                fontWeight: "900",
+                marginTop: 5,
+              }}
+            >
+              My Orders
+            </Text>
+
+            <Text
+              style={{
+                color: "#DCE3EF",
+                fontSize: 12,
+                marginTop: 4,
+              }}
+            >
+              Manage customer payments and deliveries
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setSellerOrdersModalVisible(false)}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 20,
+              backgroundColor: "#FFFFFF20",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: COLORS.white, fontSize: 22 }}>×</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 17,
+          }}
+        >
+          <Text style={{ color: COLORS.white, fontSize: 12 }}>
+            {marketplaceOrders.length} customer order(s)
+          </Text>
+
+          <TouchableOpacity
+            onPress={fetchMarketplaceOrders}
+            style={{
+              backgroundColor: COLORS.gold,
+              paddingHorizontal: 13,
+              paddingVertical: 8,
+              borderRadius: 8,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontSize: 11,
+                fontWeight: "900",
+              }}
+            >
+              ↻ REFRESH
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{ padding: 15, paddingBottom: 35 }}
+      >
+        {ordersLoading && marketplaceOrders.length === 0 ? (
+          <ActivityIndicator
+            color={COLORS.navy}
+            size="large"
+            style={{ marginTop: 35 }}
+          />
+        ) : marketplaceOrders.length === 0 ? (
+          <View
+            style={{
+              backgroundColor: COLORS.white,
+              borderRadius: 16,
+              padding: 25,
+              alignItems: "center",
+              marginTop: 15,
+            }}
+          >
+            <Text style={{ fontSize: 35 }}>📦</Text>
+            <Text
+              style={{
+                color: COLORS.navy,
+                fontWeight: "900",
+                fontSize: 16,
+                marginTop: 10,
+              }}
+            >
+              No customer orders yet
+            </Text>
+            <Text
+              style={{
+                color: COLORS.muted,
+                fontSize: 12,
+                textAlign: "center",
+                marginTop: 6,
+                lineHeight: 18,
+              }}
+            >
+              Orders placed for your products will appear here.
+            </Text>
+          </View>
+        ) : (
+          marketplaceOrders.map(renderMarketplaceOrder)
+        )}
+      </ScrollView>
+    </View>
+  </View>
+</Modal>
+
+{/* =================================================
+   PRODUCT DISCOUNT MODAL
+================================================= */}
+
+<Modal
+  visible={discountModalVisible}
+  transparent
+  animationType="fade"
+  onRequestClose={() => {
+    if (!discountSaving) {
+      setDiscountModalVisible(false);
+      setDiscountItem(null);
+    }
+  }}
+>
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: "#00000099",
+      justifyContent: "center",
+      padding: 20,
+    }}
+  >
+    <View
+      style={{
+        backgroundColor: COLORS.white,
+        borderRadius: 20,
+        padding: 20,
+      }}
+    >
+      <Text
+        style={{
+          color: COLORS.gold,
+          fontSize: 11,
+          fontWeight: "900",
+          letterSpacing: 1,
+        }}
+      >
+        NASARA SELLER TOOLS
+      </Text>
+
+      <Text
+        style={{
+          color: COLORS.navy,
+          fontSize: 21,
+          fontWeight: "900",
+          marginTop: 5,
+        }}
+      >
+        Product Discount
+      </Text>
+
+      <Text
+        style={{
+          color: COLORS.muted,
+          fontSize: 12,
+          marginTop: 7,
+          lineHeight: 18,
+        }}
+      >
+        Set a special selling price for this product. Your original
+        price will remain saved.
+      </Text>
+
+      <View
+        style={{
+          backgroundColor: COLORS.background,
+          padding: 13,
+          borderRadius: 11,
+          marginTop: 15,
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.muted,
+            fontSize: 11,
+            fontWeight: "700",
+          }}
+        >
+          PRODUCT
+        </Text>
+
+        <Text
+          style={{
+            color: COLORS.navy,
+            fontSize: 14,
+            fontWeight: "900",
+            marginTop: 4,
+          }}
+        >
+          {discountItem?.title || "Selected product"}
+        </Text>
+
+        <Text
+          style={{
+            color: COLORS.muted,
+            fontSize: 12,
+            marginTop: 8,
+          }}
+        >
+          Original price:{" "}
+          {formatMoney(Number(discountItem?.price || 0))}
+        </Text>
+      </View>
+
+      <Text
+        style={{
+          color: COLORS.text,
+          fontWeight: "800",
+          fontSize: 12,
+          marginTop: 17,
+          marginBottom: 7,
+        }}
+      >
+        New Discount Price (GH₵)
+      </Text>
+
+      <TextInput
+        value={discountPriceInput}
+        onChangeText={setDiscountPriceInput}
+        placeholder="Enter your new selling price"
+        keyboardType="decimal-pad"
+        style={{
+          borderWidth: 1,
+          borderColor: COLORS.border,
+          borderRadius: 11,
+          padding: 14,
+          color: COLORS.navy,
+          fontSize: 17,
+          fontWeight: "800",
+        }}
+      />
+
+      {Number(discountPriceInput) > 0 &&
+        Number(discountPriceInput) < Number(discountItem?.price || 0) && (
+          <View
+            style={{
+              backgroundColor: "#F0FDF4",
+              borderRadius: 10,
+              padding: 11,
+              marginTop: 11,
+            }}
+          >
+            <Text
+              style={{
+                color: COLORS.green,
+                fontWeight: "900",
+                fontSize: 13,
+              }}
+            >
+              Customer saves{" "}
+              {formatMoney(
+                Number(discountItem?.price || 0) -
+                  Number(discountPriceInput)
+              )}
+            </Text>
+          </View>
+        )}
+
+      <TouchableOpacity
+        disabled={discountSaving}
+        onPress={saveProductDiscount}
+        style={{
+          backgroundColor: COLORS.navy,
+          padding: 14,
+          borderRadius: 11,
+          alignItems: "center",
+          marginTop: 17,
+          opacity: discountSaving ? 0.6 : 1,
+        }}
+      >
+        {discountSaving ? (
+          <ActivityIndicator color={COLORS.white} />
+        ) : (
+          <Text
+            style={{
+              color: COLORS.white,
+              fontWeight: "900",
+            }}
+          >
+            SAVE DISCOUNT PRICE
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      {discountItem?.discount_enabled === true && (
+        <TouchableOpacity
+          disabled={discountSaving}
+          onPress={removeProductDiscount}
+          style={{
+            borderWidth: 1,
+            borderColor: COLORS.red,
+            padding: 12,
+            borderRadius: 11,
+            alignItems: "center",
+            marginTop: 9,
+            opacity: discountSaving ? 0.6 : 1,
+          }}
+        >
+          <Text
+            style={{
+              color: COLORS.red,
+              fontWeight: "900",
+            }}
+          >
+            REMOVE DISCOUNT
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity
+        disabled={discountSaving}
+        onPress={() => {
+          setDiscountModalVisible(false);
+          setDiscountItem(null);
+          setDiscountPriceInput("");
+        }}
+        style={{
+          padding: 12,
+          alignItems: "center",
+          marginTop: 5,
+        }}
+      >
+        <Text
+          style={{
+            color: COLORS.muted,
+            fontWeight: "800",
+          }}
+        >
+          CANCEL
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
 
       {/* =================================================
          PROMOTION PAYMENT MODAL

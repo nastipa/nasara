@@ -267,45 +267,7 @@ if (!response.ok) {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={
-          styles.item
-        }
-
-        onPress={() =>
-          router.push(
-            "/profile"
-          )
-        }
-      >
-        <Text
-          style={
-            styles.text
-          }
-        >
-          👤 Edit Profile
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={
-          styles.item
-        }
-
-        onPress={() =>
-          router.push(
-            "/notifications"
-          )
-        }
-      >
-        <Text
-          style={
-            styles.text
-          }
-        >
-          🔔 Notifications
-        </Text>
-      </TouchableOpacity>
+    
 
      
 

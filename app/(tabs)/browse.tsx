@@ -80,7 +80,82 @@ type Item = {
   created_at?: string;
   url?: string | null;
   original_id?: string;
+  discount_enabled?: boolean;
+discount_price?: number | null;
+discount_expires_at?: string | null;
   type?: "item" | "ad" | "banner" | "promoted" | "boosted";
+};
+
+// =====================================================
+// SELLER DISCOUNT HELPERS
+// =====================================================
+
+const isSellerDiscountActive = (item: Item): boolean => {
+  const now = Date.now();
+
+  const originalPrice = Number(item.price);
+  const discountPrice = Number(item.discount_price);
+
+  return (
+    item.discount_enabled === true &&
+    Number.isFinite(originalPrice) &&
+    Number.isFinite(discountPrice) &&
+    originalPrice > 0 &&
+    discountPrice > 0 &&
+    discountPrice < originalPrice &&
+    (
+      !item.discount_expires_at ||
+      new Date(item.discount_expires_at).getTime() > now
+    )
+  );
+};
+
+const isFridayDealActive = (item: Item): boolean => {
+  const now = Date.now();
+
+  return (
+    item.is_deal === true &&
+    Number(item.deal_price) > 0 &&
+    Number(item.deal_price) < Number(item.price) &&
+    (
+      !item.deal_start ||
+      new Date(item.deal_start).getTime() <= now
+    ) &&
+    (
+      !item.deal_end ||
+      new Date(item.deal_end).getTime() >= now
+    )
+  );
+};
+
+// Friday Deal takes priority over seller discount.
+const getItemFinalPrice = (item: Item): number => {
+  if (isFridayDealActive(item)) {
+    return Number(item.deal_price);
+  }
+
+  if (isSellerDiscountActive(item)) {
+    return Number(item.discount_price);
+  }
+
+  return Number(item.price);
+};
+
+// =====================================================
+// SELLER DISCOUNT PERCENTAGE
+// =====================================================
+
+const getDiscountPercentage = (item: Item): number => {
+  if (!isSellerDiscountActive(item)) {
+    return 0;
+  }
+
+  const originalPrice = Number(item.price);
+  const discountPrice = Number(item.discount_price);
+
+  return Math.round(
+    ((originalPrice - discountPrice) / originalPrice) * 100
+  );
 };
 
 type CartItem = {
@@ -586,6 +661,9 @@ const loadLiveStreams = async () => {
           is_deal,
           deal_start,
           deal_end,
+          discount_enabled,
+          discount_price,
+          discount_expires_at,
           image_url,
           image_urls,
           video_url,
@@ -644,6 +722,10 @@ const loadLiveStreams = async () => {
           is_deal: i.is_deal,
           deal_price: i.deal_price,
           deal_start: i.deal_start,
+            // SELLER DISCOUNT
+  discount_enabled: i.discount_enabled ?? false,
+  discount_price: i.discount_price ?? null,
+  discount_expires_at: i.discount_expires_at ?? null,
           deal_end: i.deal_end,
           image_url: images[0] || null,
           image_urls: images,
@@ -875,20 +957,8 @@ const addToCart = async (item: Item) => {
       return;
     }
 
-    // Use the deal price only while the deal is active.
-    const now = Date.now();
-
-    const dealIsActive =
-      item.is_deal === true &&
-      Number(item.deal_price) > 0 &&
-      (!item.deal_start ||
-        new Date(item.deal_start).getTime() <= now) &&
-      (!item.deal_end ||
-        new Date(item.deal_end).getTime() >= now);
-
-    const finalPrice = dealIsActive
-      ? Number(item.deal_price)
-      : Number(item.price);
+    // Use the active Friday Deal or seller discount price.
+const finalPrice = getItemFinalPrice(item);
 
     if (
       !Number.isFinite(finalPrice) ||
@@ -977,6 +1047,9 @@ const addToCart = async (item: Item) => {
   deal_price,
   is_deal,
   deal_start,
+  discount_enabled,
+discount_price,
+discount_expires_at,
   deal_end,
   image_url,
   image_urls,
@@ -1030,6 +1103,9 @@ const addToCart = async (item: Item) => {
 is_deal: item.is_deal,
 deal_start: item.deal_start,
 deal_end: item.deal_end,
+discount_enabled: item.discount_enabled ?? false,
+discount_price: item.discount_price ?? null,
+discount_expires_at: item.discount_expires_at ?? null,
 user_id: item.user_id,
 seller_phone: item.seller_phone,
 negotiable: Boolean(item.is_negotiable),
@@ -2096,36 +2172,43 @@ is_negotiable: Boolean(b.is_negotiable),
 
               
 
-              {/* 🟡 BADGES */}
+              {/* PRODUCT BADGES */}
 
-              <View
-                pointerEvents="none"
-                style={styles.badgeContainer}
-              >
-                {item.type === "ad" && (
-                  <Badge label="📢 AD" />
-                )}
+<View
+  pointerEvents="none"
+  style={styles.badgeContainer}
+>
+  {item.type === "ad" && (
+    <Badge label="📢 AD" />
+  )}
 
-                {item.type === "banner" && (
-                  <Badge label="🎯 BANNER" />
-                )}
+  {item.type === "banner" && (
+    <Badge label="🎯 BANNER" />
+  )}
 
-                {item.type === "promoted" && (
-                  <Badge label="⭐ PROMOTED" />
-                )}
+  {item.type === "promoted" && (
+    <Badge label="⭐ PROMOTED" />
+  )}
 
-                {item.type === "boosted" && (
-                  <Badge label="🚀 BOOSTED" />
-                )}
+  {item.type === "boosted" && (
+    <Badge label="🚀 BOOSTED" />
+  )}
 
-                {item.is_deal === true && (
-                  <Badge label="🔥 DEAL" />
-                )}
+  {isFridayDealActive(item) && (
+    <Badge label="🔥 FRIDAY DEAL" />
+  )}
 
-                {(item.negotiable || item.is_negotiable) && (
-                  <Badge label="NEGOTIABLE" />
-                )}
-              </View>
+  {!isFridayDealActive(item) &&
+    isSellerDiscountActive(item) && (
+      <Badge
+        label={`🏷️ ${getDiscountPercentage(item)}% OFF`}
+      />
+    )}
+
+  {(item.negotiable || item.is_negotiable) && (
+    <Badge label="NEGOTIABLE" />
+  )}
+</View>
 
               {/* 🟡 ADMIN DELETE */}
 
@@ -2167,39 +2250,62 @@ is_negotiable: Boolean(b.is_negotiable),
 
               {/* 🟡 PRICE */}
 
-              {item.is_deal && item.deal_price ? (
-                <View style={styles.dealPriceContainer}>
-                  <Text style={styles.originalPrice}>
-                    GH₵ {item.price}
-                  </Text>
+             {isFridayDealActive(item) ? (
+  // FRIDAY DEAL PRICE
+  <View style={styles.dealPriceContainer}>
+    <Text style={styles.originalPrice}>
+      GH₵ {Number(item.price).toLocaleString()}
+    </Text>
 
-                  <Text style={styles.dealPrice}>
-                    GH₵ {item.deal_price}
-                  </Text>
+    <Text style={styles.dealPrice}>
+      GH₵ {Number(item.deal_price).toLocaleString()}
+    </Text>
 
-                  {item.price !== undefined && (
-                    <Text style={styles.savingText}>
-                      Save GH₵{" "}
-                      {Math.max(
-                        0,
-                        Number(item.price) -
-                          Number(item.deal_price)
-                      ).toFixed(2)}
-                    </Text>
-                  )}
+    <Text style={styles.savingText}>
+      Save GH₵{" "}
+      {(
+        Number(item.price) -
+        Number(item.deal_price)
+      ).toFixed(2)}
+    </Text>
+     <Text style={styles.fridayDealLabel}>
+  🔥 FRIDAY MARKET SPECIAL
+</Text>
+    {dealTime && (
+      <Text style={styles.dealTime}>
+        ⏳ {dealTime}
+      </Text>
+    )}
+  </View>
+) : isSellerDiscountActive(item) ? (
+  // SELLER DISCOUNT PRICE
+  <View style={styles.dealPriceContainer}>
+    <Text style={styles.originalPrice}>
+      GH₵ {Number(item.price).toLocaleString()}
+    </Text>
 
-                  {dealTime && (
-                    <Text style={styles.dealTime}>
-                      ⏳ {dealTime}
-                    </Text>
-                  )}
-                </View>
-              ) : item.price !== undefined &&
-                item.price !== null ? (
-                <Text style={styles.productPrice}>
-                  GH₵ {Number(item.price).toLocaleString()}
-                </Text>
-              ) : null}
+    <Text style={styles.discountPrice}>
+      GH₵ {Number(item.discount_price).toLocaleString()}
+    </Text>
+
+    <Text style={styles.savingText}>
+      Save GH₵{" "}
+      {(
+        Number(item.price) -
+        Number(item.discount_price)
+      ).toFixed(2)}
+    </Text>
+
+    <Text style={styles.discountLabel}>
+  🏷️ SELLER DISCOUNT · {getDiscountPercentage(item)}% OFF
+</Text>
+  </View>
+) : item.price !== undefined &&
+  item.price !== null ? (
+  <Text style={styles.productPrice}>
+    GH₵ {Number(item.price).toLocaleString()}
+  </Text>
+) : null}
 
               {/* 🟡 LOCATION */}
 
@@ -2481,6 +2587,8 @@ function Badge({ label }: { label: string }) {
     backgroundColor = "#07865B";
   } else if (label.includes("DEAL")) {
     backgroundColor = "#DC2626";
+    } else if (label.includes("DISCOUNT")) {
+  backgroundColor = "#07865B";
   } else if (label.includes("NEGOTIABLE")) {
     backgroundColor = "#475569";
   }
@@ -3186,12 +3294,23 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  savingText: {
-    color: GREEN,
-    fontSize: 10,
-    fontWeight: "800",
-    marginTop: 3,
-  },
+ savingText: {
+  color: "#DC2626",
+  fontSize: 10,
+  fontWeight: "900",
+  marginTop: 3,
+},
+fridayDealLabel: {
+  color: "#DC2626",
+  backgroundColor: "#FEE2E2",
+  fontSize: 9,
+  fontWeight: "900",
+  marginTop: 5,
+  paddingHorizontal: 8,
+  paddingVertical: 5,
+  borderRadius: 6,
+  alignSelf: "flex-start",
+},
 
   dealTime: {
     color: "#B45309",
@@ -3406,5 +3525,23 @@ addToCartButtonText: {
   color: GOLD,
   fontSize: 10,
   fontWeight: "900",
+},
+discountPrice: {
+  color: "#07865B",
+  fontSize: 17,
+  fontWeight: "900",
+  marginTop: 2,
+},
+
+discountLabel: {
+  color: "#07865B",
+  backgroundColor: "#DCFCE7",
+  fontSize: 9,
+  fontWeight: "900",
+  marginTop: 5,
+  paddingHorizontal: 8,
+  paddingVertical: 5,
+  borderRadius: 6,
+  alignSelf: "flex-start",
 },
 });
